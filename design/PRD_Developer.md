@@ -47,13 +47,13 @@ The primary workspace for viewing and translating terms.
 
 #### 1. Widescreen Data Grid
 *   Display a data table with all columns from the selected Bitable table.
-*   **Frozen Columns**: The first two columns `term_id` and `zh_cn` must be sticky on the left side during horizontal scrolling.
-*   Columns must include: `term_id`, `zh_cn`, `context`, and target language columns (e.g. `en_us`, `es_es`, `de_de`, `fr_fr`, `it_it`, `ja_jp`, `ko_kr`, etc.).
-*   Columns for `modified_by` (Lark User Field) and `modified_time` (Lark Date Field) must be shown at the right.
+*   **Frozen Columns**: The first two columns `KW` and `中文` must be sticky on the left side during horizontal scrolling.
+*   Columns must include: `词条所在界面（注意是界面不是模块！！）` (context), `KW` (key), `负责人` (owner/developer), `中文` (source word), and 19 target language columns (`英文`, `法语`, `德语`, `西班牙语`, `意大利语`, `葡萄牙语`, `韩语`, `日语`, `俄语`, `波兰语`, `繁体中文`, `丹麦语`, `捷克语`, `瑞典语`, `挪威语`, `荷兰语`, `泰语`, `芬兰语`, `土耳其语`).
+*   Additional system columns or custom fields may be appended at the right.
 
 #### 2. Toolbar & Filtering
 *   **Table Selector**: A dropdown menu displaying available version tables (e.g., `3.2`, `3.3`) in the active Bitable Base.
-*   **Search**: A search input filtering rows matching `term_id` or `zh_cn` (case-insensitive).
+*   **Search**: A search input filtering rows matching `KW` or `中文` (case-insensitive).
 *   **Filter Untranslated**: A toggle switch showing only rows where one or more target language columns are empty.
 *   **Actions**:
     *   `新增词条` (Add Term) Button.
@@ -81,9 +81,9 @@ Allows Git-like diff comparison between two firmware versions.
 +----------------------------------------------------------------------------------+
 | Filter: [ All ] [ Added (12) ] [ Modified (5) ] [ Unchanged ]    [ Search... ]   |
 +----------------------------------------------------------------------------------+
-| term_id       | zh_cn      | en_us             | es_es             | Status      |
+| KW            | 中文       | 英文               | 西班牙语           | Status      |
 +---------------+------------+-------------------+-------------------+-------------+
-| lbl_speed     | 速度       | Speed             | Velocidad         | Unchanged   |
+| KW_SPEED      | 速度       | Speed             | Velocidad         | Unchanged   |
 | [Green Row]   | 功率       | Power             | Potencia          | Added       |
 | [Yellow Row]  | 气温       | Temp -> Air Temp  | Temp. -> Temp.    | Modified    |
 +----------------------------------------------------------------------------------+
@@ -94,7 +94,7 @@ Allows Git-like diff comparison between two firmware versions.
 *   When a target version $V_{curr}$ is selected, the source version defaults to $V_{prev}$ (the predecessor in the sorted version array).
 
 #### 2. Diff Calculation & Color Coding
-*   Query all records from Table A and Table B. Compare them in memory by matching `term_id`.
+*   Query all records from Table A and Table B. Compare them in memory by matching `KW`.
 *   **Added Rows**: Rows present in Table B but not in Table A. Rendered with a light green background and an `Added` tag.
 *   **Modified Rows**: Rows present in both tables, but containing different translation values in any language column. Rendered with a light yellow background and a `Modified` tag.
 *   **Deleted Rows**: Rows present in Table A but not in Table B. Listed under a "Deleted terms" summary list.
@@ -106,7 +106,7 @@ Allows Git-like diff comparison between two firmware versions.
 Form fields to configure API credentials, saved in `localStorage`:
 *   `Dify Base URL` (e.g. `https://api.dify.ai/v1`).
 *   `Dify API Key` (Password-masked input).
-*   `Test Connection` Button: Sends a dummy payload (`zh_cn: "速度"`) to the Dify workflow endpoint to verify setup. Displays success/error notifications.
+*   `Test Connection` Button: Sends a dummy payload (`zh_cn: "速度"`, mapped from `中文`) to the Dify workflow endpoint to verify setup. Displays success/error notifications.
 
 ---
 
@@ -163,13 +163,14 @@ When importing a CSV representing a new version $V_{new}$:
     const { tableId } = await bitable.base.addTable({ name: versionString });
     const table = await bitable.base.getTableById(tableId);
     ```
-3.  **Add Predefined Columns**: Create `term_id`, `zh_cn`, `context` as text fields.
+3.  **Add Predefined Columns**: Create `词条所在界面（注意是界面不是模块！！）`, `KW`, `负责人`, `中文` as text fields.
     ```javascript
-    await table.addField({ name: 'term_id', type: 1 }); // Type 1 is Text
-    await table.addField({ name: 'zh_cn', type: 1 });
-    await table.addField({ name: 'context', type: 1 });
+    await table.addField({ name: '词条所在界面（注意是界面不是模块！！）', type: 1 }); // Type 1 is Text
+    await table.addField({ name: 'KW', type: 1 });
+    await table.addField({ name: '负责人', type: 1 });
+    await table.addField({ name: '中文', type: 1 });
     ```
-4.  **Add Dynamic Columns**: Read headers of the CSV. If any language code (e.g. `it_it`) is not in the current table field list, call `table.addField({ name: 'it_it', type: 1 })` to append it at the right.
+4.  **Add Dynamic Columns**: Read headers of the CSV. If any language column (e.g. `意大利语`) is not in the current table field list, call `table.addField({ name: '意大利语', type: 1 })` to append it at the right.
 
 ### 4.5 CSV Export with UTF-8 BOM
 To support Windows Excel readability:
@@ -193,10 +194,10 @@ To support Windows Excel readability:
     ```json
     {
       "inputs": {
-        "term_id": "string",
-        "zh_cn": "string",
-        "context": "string",
-        "target_languages": "string" // comma-separated e.g. "en_us,es_es,de_de"
+        "term_id": "string",          // Mapped from 'KW'
+        "zh_cn": "string",            // Mapped from '中文'
+        "context": "string",          // Mapped from '词条所在界面（注意是界面不是模块！！）'
+        "target_languages": "string"  // Comma-separated Chinese language names, e.g. "英文,法语,德语"
       },
       "response_mode": "blocking",
       "user": "glossahub_user"

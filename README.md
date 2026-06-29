@@ -1,16 +1,83 @@
-# React + Vite
+# GlossaHub | 迈金词条智能翻译与协作平台
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+GlossaHub 是一款专为迈金科技打造的词条智能翻译、多语言同步与版本比对管理工具。作为飞书多维表格（Bitable）的增强型自定义小组件插件，它通过接入 Dify AI 智能工作流并整合本地 SQLite 缓存库，实现了高效的词条录入、智能预翻译、版本差异化比对和历史操作追溯。
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🌟 核心特性
 
-## React Compiler
+### 1. ⚡ Bitable 数据双向同步与监听
+*   **立即同步**：在线模式下一键手动触发强刷，将飞书多维表格的最新数据毫秒级存入本地 SQLite 数据库。
+*   **实时事件监听 (方案 A)**：前端实时捕获多维表格的行新增（`onRecordAdd`）、行编辑（`onRecordModify`）及行删除（`onRecordDelete`）事件，结合 **1.5秒防抖延迟合并** 机制，静默在后台同步本地数据库，无感保持双端一致性。
+*   **离线演示模式**：在脱离飞书 Iframe 环境时，智能切换为本地 SQLite / 内存只读缓存读取模式，并显示警示 Banner，极大方便了本地开发、调试与独立演示。
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 2. 🤖 AI 智能预翻译 (Dify 引擎)
+*   **单条 AI 智能翻译**：在新增词条或编辑词条弹窗中，支持一键单独触发 Dify 工作流翻译，快速对当前录入进行填补与修正。
+*   **批量翻译**：一键扫描当前表内所有未翻译的空白行，支持多线程并发批量调用 Dify 翻译工作流，并智能回填。
 
-## Expanding the Oxlint configuration
+### 3. 🔍 词条录入校验与同义词拦截
+*   **KW 唯一性检查**：在保存新增或批量录入时，强制校验 KW 标识，发现完全重复的 KW 将拒绝保存并予以弹窗拦截。
+*   **中文语义相似度提示**：利用 Jaccard 字符重叠度算法判定新词与已有词条的相似性。如果重合比率超过 **50%** 且包含 2 个以上相同文字（如“踏频”与“平均踏频”），将发出同义词确认弹窗，防范冗余词目录入。
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### 4. 📝 词条管理与清理
+*   **数据清理**：一键检测并清除无 KW 或无中文的“空行/脏数据”，执行时会弹窗提醒 `系统检测到当前版本表内有 x 条空数据，是否确认清理？`
+*   **批量删除**：左侧提供复选框，可多选当前过滤后的条目，一键执行分批次（每批 200 条）安全删除。
+*   **手动批量新增**：支持每次最多 **15 行** 的多列手动录入面板，包含必填项红星标记校验与 AI 批量回填机制。
+*   **多维排序**：支持“创建时间新到旧”和“修改时间新到旧”等排序方式。针对 Bitable SDK 缺失原生创建时间戳的问题，采用逆序自然索引（Reverse-Index Fallback）完美兼容。
+
+### 5. ⚖️ 科学版本对比
+*   **主体对齐**：采用源版本 A（比对版本）与目标版本 B（历史基准）的对位机制。
+    *   **新增 (ADD)**：A 拥有但 B 中未定义的词条。
+    *   **删除 (DEL)**：B 拥有但 A 中已被删除的词条。
+    *   **修改 (MOD)**：翻译值发生变更，并在详情面板中清晰展示差异（`old` 呈现基准 B，`new` 呈现最新 A）。
+*   **假差异过滤 (Text Normalization)**：自动标准化文本符号。将 Unicode 单字省略号 `…` 标准化为三个点 `...`；弯引号转为直引号；过滤零宽及特殊空格。结合 `KW + 所在页面 + 中文 + 出现次序` 复合键匹配，即使多维表格乱序返回数据，也能精准过滤 CSV 导入导出的不可见假差异。
+
+### 6. 🕒 无限制协作修改日志
+*   **全量日志存储**：本地修改日志在 SQLite 数据库中永久存储，不设容量条数上限。
+*   **智能版本标定**：自动提取每一次变更事件所对应的多维表格版本（如 `3.1`），并在日志列表中附带高亮版本 Badge。
+*   **多维过滤器**：在日志侧边栏中支持**按表格版本**和**自定义日期区间**（开始日期至结束日期）进行实时筛选过滤，方便回溯历史操作。
+
+---
+
+## 🛠️ 项目结构
+
+```bash
+├── server.cjs                 # Express 后端入口，提供本地 SQLite 与 Dify 接口网关
+├── src
+│   ├── App.jsx                # 前端主入口，控制顶栏 Tab 切换及日志抽屉
+│   ├── index.css              # 全局样式文件（含 Bitable 侧边栏紧凑防折行适配）
+│   ├── components
+│   │   ├── TranslationTab.jsx # 词条翻译看板（包含同步、新增、AI翻译、数据清理等）
+│   │   ├── ComparisonTab.jsx  # 版本对比看板（包含复合匹配比对、CSV读取等）
+│   │   └── SettingsTab.jsx    # 引擎设置看板（设置 Dify API 接口与密钥）
+│   └── utils
+│       ├── csvHelper.js       # CSV 解析与导出辅助类
+│       └── difyHelper.js      # Dify 工作流调用接口封装
+└── database.sqlite            # 本地 SQLite 缓存数据库（启动后自动生成）
+```
+
+---
+
+## 🚀 启动与调试部署
+
+### 1. 本地启动
+运行以下命令安装依赖并启动前端 Vite + 后端 Express 联调服务器：
+```bash
+# 安装依赖
+npm install
+
+# 启动联调服务 (前端 5173 端口，后端 3000 端口)
+npm run dev:all
+```
+
+### 2. 飞书小组件关联调试
+1. 在多维表格的右侧点击 **小组件 (Extensions) -> 添加小组件 -> 创建自定义小组件**。
+2. 开发模式选择 **本地开发 (Localhost)**，地址填入：`http://localhost:5173`。
+3. 点击确定，即可在飞书中加载本地前端界面，并获得完整的表格读写及事件同步权限。
+
+### 3. 构建发布
+```bash
+# 静态资源打包
+npm run build
+```
+打包完成后，将生成在 `dist` 目录中的静态资源包压缩上传至飞书小组件的**“线上部署 (Host Online)”**托管中发布，供团队其他协作成员使用。

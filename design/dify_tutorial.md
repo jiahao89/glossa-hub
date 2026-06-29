@@ -24,10 +24,10 @@
 
 | 变量标识 (Key) | 变量类型 (Type) | 是否必填 | 描述 |
 | :--- | :--- | :--- | :--- |
-| `term_id` | 单行文本 (Short Text) | 否 | 词条唯一标识（如 `lbl_avg_speed`） |
-| `zh_cn` | 段落文本 (Paragraph) | 是 | 需要翻译的中文源词（如 `平均速度`） |
-| `context` | 段落文本 (Paragraph) | 否 | 词条的上下文描述（如 `用在主页第一格，限制8个字符`） |
-| `target_languages` | 段落文本 (Paragraph) | 是 | 逗号分隔的目标语种列表（如 `en_us,es_es,de_de`） |
+| `term_id` | 单行文本 (Short Text) | 否 | 词条唯一标识（对应 KW 字段，如 `KW_RIDE_PAUSED`） |
+| `zh_cn` | 段落文本 (Paragraph) | 是 | 需要翻译的中文源词（对应 中文 字段，如 `骑行已暂停`） |
+| `context` | 段落文本 (Paragraph) | 否 | 词条的上下文描述（对应 `词条所在界面（注意是界面不是模块！！）` 字段，如 `表盘页面`） |
+| `target_languages` | 段落文本 (Paragraph) | 是 | 逗号分隔的目标语种列表（使用中文名称，如 `英文,法语,德语`） |
 
 ---
 
@@ -64,11 +64,11 @@
 - 需要翻译的目标语种编码列表: {{sys.query.target_languages}}
 
 ### 要求的 JSON 输出格式：
-键为目标语种编码，值为对应的翻译结果。示例如下：
+键为目标语种中文名称，值为对应的翻译结果。示例如下：
 {
-  "en_us": "Avg Speed",
-  "es_es": "Vel. media",
-  "de_de": "Avg. Geschw."
+  "英文": "Ride Paused",
+  "法语": "Sortie en pause",
+  "德语": "Fahrt pausiert"
 }
 ```
 
@@ -125,11 +125,11 @@ def main(llm_output: str) -> dict:
 ## 7. 步骤六：发布工作流并获取密钥
 
 1. **测试运行**：点击画布右上角的 **“运行”**。输入测试数据：
-   - `term_id`: `lbl_max_cadence`
-   - `zh_cn`: `最大踏频`
-   - `context`: `限10字符`
-   - `target_languages`: `en_us,es_es,de_de`
-   点击“开始运行”，检查结束节点输出的 `translations` 字段，确保其形如：`{"en_us": "Max Cadence", "es_es": "Cadencia máx.", "de_de": "Max. Trittfr."}`。
+   - `term_id`: `KW_RIDE_PAUSED`
+   - `zh_cn`: `骑行已暂停`
+   - `context`: `表盘页面`
+   - `target_languages`: `英文,法语,德语`
+   点击“开始运行”，检查结束节点输出的 `translations` 字段，确保其形如：`{"英文": "Ride Paused", "法语": "Sortie en pause", "德语": "Fahrt pausiert"}`。
 2. **发布**：测试无误后，点击右上角的 **“发布”** ➜ **“更新运行”**。
 3. **获取 API 密钥与地址**：
    - 在 Dify 左侧菜单栏，点击 **“API 访问”**。
