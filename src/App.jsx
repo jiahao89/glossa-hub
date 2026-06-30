@@ -267,16 +267,30 @@ export default function App() {
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
+                      onClick={(e) => {
+                        try {
+                          e.target.showPicker();
+                        } catch (err) {
+                          console.warn('Native picker not supported:', err);
+                        }
+                      }}
                       className="text-input"
-                      style={{ height: '24px', fontSize: '0.7rem', padding: '0 0.2rem', flex: 1, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)' }}
+                      style={{ height: '24px', fontSize: '0.7rem', padding: '0 0.2rem', flex: 1, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', cursor: 'pointer' }}
                     />
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>至</span>
                     <input 
                       type="date"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
+                      onClick={(e) => {
+                        try {
+                          e.target.showPicker();
+                        } catch (err) {
+                          console.warn('Native picker not supported:', err);
+                        }
+                      }}
                       className="text-input"
-                      style={{ height: '24px', fontSize: '0.7rem', padding: '0 0.2rem', flex: 1, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)' }}
+                      style={{ height: '24px', fontSize: '0.7rem', padding: '0 0.2rem', flex: 1, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', cursor: 'pointer' }}
                     />
                     {(startDate || endDate) && (
                       <button 
