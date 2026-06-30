@@ -236,6 +236,30 @@ export default function TranslationTab({
     loadTables();
   }, []);
 
+  const mergeTimestamps = useCallback(async (allRecords, tableId) => {
+    try {
+      const res = await fetch(`/api/tables/${tableId}/records`);
+      if (res.ok) {
+        const dbRecords = await res.json();
+        const dbMap = {};
+        dbRecords.forEach(r => {
+          dbMap[r.recordId] = r;
+        });
+        return allRecords.map(rec => {
+          const dbRec = dbMap[rec.recordId];
+          return {
+            ...rec,
+            createdAt: dbRec ? dbRec.createdAt : rec.createdAt || '',
+            updatedAt: dbRec ? dbRec.updatedAt : rec.updatedAt || ''
+          };
+        });
+      }
+    } catch (err) {
+      console.warn('⚠️ 补充时间戳缓存失败:', err.message);
+    }
+    return allRecords;
+  }, []);
+
   const loadTableData = useCallback(async (tableId) => {
     try {
       setLoading(true);
@@ -315,7 +339,8 @@ export default function TranslationTab({
         pageToken = result.pageToken;
       }
       
-      setRecords(allRecords);
+      const enrichedRecords = await mergeTimestamps(allRecords, tableId);
+      setRecords(enrichedRecords);
 
       // Auto sync to SQLite backend in background
       try {
@@ -368,7 +393,7 @@ export default function TranslationTab({
     } finally {
       setLoading(false);
     }
-  }, [isDemoMode, mockDatabase, tables, setModifiedCells]);
+  }, [isDemoMode, mockDatabase, tables, setModifiedCells, mergeTimestamps]);
 
   // Load Fields and Records when selected table changes
   useEffect(() => {
@@ -447,7 +472,8 @@ export default function TranslationTab({
               });
               
               // Update local state without showing a blocking loading spinner
-              setRecords(allRecords);
+              const enrichedRecords = await mergeTimestamps(allRecords, selectedTableId);
+              setRecords(enrichedRecords);
             } catch (err) {
               console.warn('❌ Silent synchronization failed:', err);
             }
@@ -483,7 +509,7 @@ export default function TranslationTab({
         }
       });
     };
-  }, [selectedTableId, isDemoMode, tables]);
+  }, [selectedTableId, isDemoMode, tables, mergeTimestamps]);
 
   const showStatus = (type, text) => {
     setStatusMessage({ type, text });
@@ -787,6 +813,19 @@ export default function TranslationTab({
         onAddLog('修改翻译', editModalRecord.KW, editModalRecord.中文, `【${log.lang}】从 "${log.oldVal || '空'}" 修改为 "${log.newVal}"`);
       });
 
+      // Update local records state with new values & new updatedAt timestamp
+      setRecords(prev => prev.map(rec => {
+        if (rec.recordId === editModalRecord.recordId) {
+          const newFields = { ...rec.fields, ...fieldsToUpdate };
+          return {
+            ...rec,
+            fields: newFields,
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return rec;
+      }));
+
       // Update local highlights
       setModifiedCells(prev => ({
         ...prev,
@@ -795,7 +834,6 @@ export default function TranslationTab({
 
       showStatus('success', '词条修改成功！');
       setEditModalRecord(null);
-      await loadTableData(selectedTableId);
     } catch (err) {
       showStatus('danger', `保存修改失败: ${err.message}`);
     } finally {
