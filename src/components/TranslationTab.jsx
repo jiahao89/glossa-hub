@@ -137,7 +137,7 @@ export default function TranslationTab({
   // Filter/Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [filterUntranslated, setFilterUntranslated] = useState(false);
-  const [sortBy, setSortBy] = useState('default'); // 'default' | 'createdTime' | 'modifiedTime'
+  const [sortBy, setSortBy] = useState('changeFirst'); // 'changeFirst' | 'default' | 'createdTime' | 'modifiedTime'
 
   // Field mappings
   const [fieldMap, setFieldMap] = useState({}); // { name: id }
@@ -534,6 +534,32 @@ export default function TranslationTab({
       
       return true;
     });
+
+    if (sortBy === 'changeFirst') {
+      return [...list].sort((a, b) => {
+        const isModA = modifiedCells[a.recordId] ? 1 : 0;
+        const isModB = modifiedCells[b.recordId] ? 1 : 0;
+        if (isModA !== isModB) {
+          return isModB - isModA;
+        }
+
+        const timeA = Math.max(
+          a.updatedAt ? new Date(a.updatedAt).getTime() : 0,
+          a.createdAt ? new Date(a.createdAt).getTime() : 0
+        );
+        const timeB = Math.max(
+          b.updatedAt ? new Date(b.updatedAt).getTime() : 0,
+          b.createdAt ? new Date(b.createdAt).getTime() : 0
+        );
+        if (timeA && timeB && timeA !== timeB) {
+          return timeB - timeA;
+        }
+
+        const idxA = recordIndexMap[a.recordId] ?? 0;
+        const idxB = recordIndexMap[b.recordId] ?? 0;
+        return idxB - idxA;
+      });
+    }
 
     if (sortBy === 'createdTime') {
       return [...list].sort((a, b) => {
@@ -937,7 +963,7 @@ export default function TranslationTab({
         onAddLog('新增词条 (离线)', newTerm.KW, newTerm.中文);
         setModifiedCells(prev => ({
           ...prev,
-          [newRecordId]: addedLangs
+          [newRecordId]: { ...addedLangs, isAdded: true }
         }));
 
         showStatus('success', `成功新增词条 (目标版本: ${tables.find(t => t.id === addTargetTableId)?.name || '未名'})！`);
@@ -970,7 +996,7 @@ export default function TranslationTab({
       
       setModifiedCells(prev => ({
         ...prev,
-        [newRecordId]: addedLangs
+        [newRecordId]: { ...addedLangs, isAdded: true }
       }));
 
       onAddLog('新增词条', newTerm.KW, newTerm.中文);
@@ -1484,7 +1510,7 @@ export default function TranslationTab({
           TARGET_LANGUAGES.forEach(lang => {
             if (row.translations[lang]) addedLangs[lang] = true;
           });
-          updatedCellsDict[rec.recordId] = addedLangs;
+          updatedCellsDict[rec.recordId] = { ...addedLangs, isAdded: true };
           onAddLog('批量新增 (离线)', row.KW, row.中文);
         });
         setModifiedCells(updatedCellsDict);
@@ -1516,7 +1542,7 @@ export default function TranslationTab({
         });
 
         const newRecordId = await table.addRecord({ fields });
-        updatedCellsDict[newRecordId] = addedLangs;
+        updatedCellsDict[newRecordId] = { ...addedLangs, isAdded: true };
         onAddLog('批量新增', row.KW, row.中文);
       }
 
@@ -1741,6 +1767,7 @@ export default function TranslationTab({
           const updatedRecords = [...records];
           let localUpdateCount = 0;
           let localAddCount = 0;
+          const updatedCellsDict = { ...modifiedCells };
 
           rows.forEach((row) => {
             const kw = row[kwIdx]?.trim();
@@ -1765,6 +1792,21 @@ export default function TranslationTab({
 
             const existingIdx = updatedRecords.findIndex(r => r.fields[fieldMap['KW']] === kw);
             if (existingIdx !== -1) {
+              const existingRecordObj = updatedRecords[existingIdx];
+              TARGET_LANGUAGES.forEach(lang => {
+                const fieldId = fieldMap[lang];
+                const csvLangIdx = headers.findIndex(h => h.trim() === lang);
+                if (csvLangIdx !== -1) {
+                  const csvVal = row[csvLangIdx] || '';
+                  const oldVal = existingRecordObj.fields[fieldId] || '';
+                  if (csvVal !== oldVal) {
+                    if (!updatedCellsDict[existingRecordObj.recordId]) {
+                      updatedCellsDict[existingRecordObj.recordId] = {};
+                    }
+                    updatedCellsDict[existingRecordObj.recordId][lang] = true;
+                  }
+                }
+              });
               updatedRecords[existingIdx] = {
                 ...updatedRecords[existingIdx],
                 fields: {
@@ -1774,8 +1816,10 @@ export default function TranslationTab({
               };
               localUpdateCount++;
             } else {
+              const newRecordId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+              updatedCellsDict[newRecordId] = { isAdded: true };
               updatedRecords.push({
-                recordId: `rec_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                recordId: newRecordId,
                 fields
               });
               localAddCount++;
@@ -1790,6 +1834,7 @@ export default function TranslationTab({
             }
           }));
           setRecords(updatedRecords);
+          setModifiedCells(updatedCellsDict);
 
           onAddLog('导入 CSV (离线)', '', '', `更新了 ${localUpdateCount} 条，新增了 ${localAddCount} 条词条`);
           showStatus('success', `导入成功 (离线模式)！更新 ${localUpdateCount} 条，新增 ${localAddCount} 条。`);
@@ -1799,7 +1844,6 @@ export default function TranslationTab({
 
         const table = await bitable.base.getTableById(selectedTableId);
         
-        // Find existing records to perform updates by matching KW
         const existingKwsMap = {}; // { kw: recordId }
         records.forEach(rec => {
           const kw = getRecordValueByName(rec, 'KW');
@@ -1816,7 +1860,7 @@ export default function TranslationTab({
         rows.forEach((row) => {
           const kw = row[kwIdx]?.trim();
           const zh = row[zhIdx]?.trim();
-          if (!kw || !zh) return; // skip empty rows
+          if (!kw || !zh) return;
 
           const fields = {};
           if (fieldMap['KW']) fields[fieldMap['KW']] = kw;
@@ -1824,7 +1868,6 @@ export default function TranslationTab({
           if (pageIdx !== -1 && fieldMap['所在页面']) fields[fieldMap['所在页面']] = row[pageIdx] || '';
           if (ownerIdx !== -1 && fieldMap['负责人']) fields[fieldMap['负责人']] = row[ownerIdx] || '';
 
-          // Read language columns
           TARGET_LANGUAGES.forEach(lang => {
             const fieldId = fieldMap[lang];
             if (fieldId) {
@@ -1849,20 +1892,45 @@ export default function TranslationTab({
           }
         });
 
-        // Batch write to Bitable (chunks of 200)
+        const updatedCellsDict = { ...modifiedCells };
+
+        recordsToUpdate.forEach(item => {
+          const existingRec = records.find(r => r.recordId === item.recordId);
+          if (existingRec) {
+            TARGET_LANGUAGES.forEach(lang => {
+              const fieldId = fieldMap[lang];
+              if (fieldId && item.fields[fieldId] !== undefined) {
+                const csvVal = item.fields[fieldId];
+                const oldVal = getRecordValueByName(existingRec, lang);
+                if (csvVal !== oldVal) {
+                  if (!updatedCellsDict[item.recordId]) {
+                    updatedCellsDict[item.recordId] = {};
+                  }
+                  updatedCellsDict[item.recordId][lang] = true;
+                }
+              }
+            });
+          }
+        });
+
         const chunkSize = 200;
         
-        // Updates
         for (let i = 0; i < recordsToUpdate.length; i += chunkSize) {
           const chunk = recordsToUpdate.slice(i, i + chunkSize);
           await table.setRecords(chunk);
         }
 
-        // Additions
         for (let i = 0; i < recordsToAdd.length; i += chunkSize) {
           const chunk = recordsToAdd.slice(i, i + chunkSize);
-          await table.addRecords(chunk);
+          const chunkIds = await table.addRecords(chunk);
+          if (Array.isArray(chunkIds)) {
+            chunkIds.forEach(id => {
+              updatedCellsDict[id] = { isAdded: true };
+            });
+          }
         }
+
+        setModifiedCells(updatedCellsDict);
 
         onAddLog('导入 CSV', '', '', `更新了 ${updateCount} 条，新增了 ${addCount} 条词条`);
         showStatus('success', `导入成功！更新 ${updateCount} 条，新增 ${addCount} 条。`);
@@ -2135,6 +2203,7 @@ export default function TranslationTab({
               className="select-input"
               style={{ height: '34px', fontSize: '0.8rem', padding: '0 0.4rem' }}
             >
+              <option value="changeFirst">变更/新增优先</option>
               <option value="default">默认顺序</option>
               <option value="createdTime">创建时间 (新→旧)</option>
               <option value="modifiedTime">修改时间 (新→旧)</option>
@@ -2262,18 +2331,27 @@ export default function TranslationTab({
                         }}
                       />
                     </td>
-                    <td className="sticky-col-1 mono" title={kw}>{kw}</td>
-                    <td className="sticky-col-2" title={zh} style={{ fontWeight: '500' }}>{zh}</td>
-                    <td title={page}>{page || <span className="cell-empty">未填</span>}</td>
-                    <td title={owner}>{owner || <span className="cell-empty">未填</span>}</td>
+                    <td className={`sticky-col-1 mono ${rowModified.isAdded ? 'cell-added' : ''}`} title={kw}>{kw}</td>
+                    <td className={`sticky-col-2 ${rowModified.isAdded ? 'cell-added' : ''}`} title={zh} style={{ fontWeight: '500' }}>{zh}</td>
+                    <td className={rowModified.isAdded ? 'cell-added' : ''} title={page}>{page || <span className="cell-empty">未填</span>}</td>
+                    <td className={rowModified.isAdded ? 'cell-added' : ''} title={owner}>{owner || <span className="cell-empty">未填</span>}</td>
                     {TARGET_LANGUAGES.map(lang => {
                       if (!visibleLanguages.includes(lang)) return null;
                       const val = getRecordValueByName(rec, lang);
                       const isModified = rowModified[lang];
+                      const isAdded = rowModified.isAdded;
+                      
+                      let cellClass = '';
+                      if (isModified) {
+                        cellClass = 'cell-modified';
+                      } else if (isAdded) {
+                        cellClass = 'cell-added';
+                      }
+
                       return (
                         <td 
                           key={lang} 
-                          className={isModified ? 'cell-modified' : ''} 
+                          className={cellClass} 
                           title={val}
                         >
                           {val || <span className="cell-empty">未翻译</span>}
