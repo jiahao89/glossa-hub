@@ -494,7 +494,15 @@ export default function TranslationTab({
 
   // Helpers to get field value by Name
   const getRecordValueByName = useCallback((record, fieldName) => {
-    const fId = fieldMap[fieldName];
+    const getFieldId = (name) => {
+      if (fieldMap[name]) return fieldMap[name];
+      const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
+      const normName = normalize(name);
+      const foundKey = Object.keys(fieldMap).find(k => normalize(k) === normName);
+      return foundKey ? fieldMap[foundKey] : null;
+    };
+
+    const fId = getFieldId(fieldName);
     if (!fId) return '';
     const cell = record.fields[fId];
     if (!cell) return '';
@@ -597,6 +605,7 @@ export default function TranslationTab({
       });
     }
 
+    return list; // fallback default sorting
   }, [records, searchQuery, filterUntranslated, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, visibleLanguages]);
 
   // Open Edit Modal
@@ -657,8 +666,16 @@ export default function TranslationTab({
       });
 
       const getFieldId = (possibleNames) => {
+        // Try exact match first
         for (const name of possibleNames) {
           if (fieldMap[name]) return fieldMap[name];
+        }
+        // Try normalized match (remove spaces, normalize parentheses)
+        const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
+        for (const name of possibleNames) {
+          const normName = normalize(name);
+          const foundKey = Object.keys(fieldMap).find(k => normalize(k) === normName);
+          if (foundKey) return fieldMap[foundKey];
         }
         return null;
       };
