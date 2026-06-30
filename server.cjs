@@ -18,6 +18,55 @@ const FALLBACK_TABLES_PATH = path.join(__dirname, 'db_tables_fallback.json');
 let dbType = 'sqlite';
 let sqliteDb = null;
 
+// Canonical language key names (new Bitable column headers)
+const TARGET_LANGUAGES = [
+  'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
+  'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
+  'CZ(捷克)', '瑞典', '挪威', '荷兰'
+];
+
+// Map old/legacy translation key names → new canonical names
+const LEGACY_TO_NEW_LANG_MAP = {
+  '英文': 'EN（英文）', 'EN': 'EN（英文）',
+  '法语': 'FR（法）', 'FR': 'FR（法）', '法': 'FR（法）',
+  '德语': 'DE（德）', 'DE': 'DE（德）', '德': 'DE（德）',
+  '西班牙语': 'ES（西班牙）', 'ES': 'ES（西班牙）', '西班牙': 'ES（西班牙）',
+  '意大利语': 'IT（意大利）', 'IT': 'IT（意大利）', '意大利': 'IT（意大利）',
+  '葡萄牙语': 'PT（葡萄牙）', 'PT': 'PT（葡萄牙）', '葡萄牙': 'PT（葡萄牙）',
+  '韩语': 'KO（韩）', 'KO': 'KO（韩）', '韩': 'KO（韩）',
+  '日语': 'JP（日）', 'JP': 'JP（日）', '日': 'JP（日）',
+  '俄语': 'RU（俄罗斯）', 'RU': 'RU（俄罗斯）', '俄罗斯': 'RU（俄罗斯）',
+  '波兰语': 'PL（波兰）', 'PL': 'PL（波兰）', '波兰': 'PL（波兰）',
+  '繁体': 'TC（繁）', 'TC': 'TC（繁）', '繁': 'TC（繁）', '繁体中文': 'TC（繁）',
+  '丹麦语': 'DA（丹麦）', 'DA': 'DA（丹麦）', '丹麦': 'DA（丹麦）',
+  '捷克语': 'CZ(捷克)', 'CZ': 'CZ(捷克)', '捷克': 'CZ(捷克)',
+  '瑞典语': '瑞典',
+  '挪威语': '挪威',
+  '荷兰语': '荷兰'
+};
+
+/**
+ * Normalize translation keys from any legacy format to canonical new format.
+ * E.g. {"英文": "Hello", "法语": "Bonjour"} → {"EN（英文）": "Hello", "FR（法）": "Bonjour"}
+ */
+function normalizeTranslations(trans) {
+  if (!trans || typeof trans !== 'object') return {};
+  const normalized = {};
+  for (const [key, value] of Object.entries(trans)) {
+    // If the key is already a canonical name, keep it
+    if (TARGET_LANGUAGES.includes(key)) {
+      normalized[key] = value;
+    } else if (LEGACY_TO_NEW_LANG_MAP[key]) {
+      // Map legacy key to new canonical name
+      normalized[LEGACY_TO_NEW_LANG_MAP[key]] = value;
+    } else {
+      // Unknown key, preserve as-is
+      normalized[key] = value;
+    }
+  }
+  return normalized;
+}
+
 try {
   const sqlite3 = require('sqlite3').verbose();
   sqliteDb = new sqlite3.Database(DB_PATH, (err) => {
@@ -232,18 +281,22 @@ app.post('/api/sync-table', (req, res) => {
         const page = fields['所在页面'] || fields['词条所在界面（注意是界面不是模块！！）'] || '';
         const owner = fields['字号类别'] || fields['负责人'] || '';
 
-        // Extract translation fields
-        const translations = {};
-        const TARGET_LANGUAGES = [
-          'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
-          'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
-          'CZ(捷克)', '瑞典', '挪威', '荷兰'
-        ];
+        // Extract translation fields - collect both canonical and legacy keys
+        const rawTranslations = {};
+        // First, collect all canonical keys
         TARGET_LANGUAGES.forEach(lang => {
           if (fields[lang] !== undefined) {
-            translations[lang] = fields[lang];
+            rawTranslations[lang] = fields[lang];
           }
         });
+        // Then, collect any legacy keys present
+        Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
+          if (fields[legacyKey] !== undefined) {
+            rawTranslations[legacyKey] = fields[legacyKey];
+          }
+        });
+        // Normalize all keys to canonical format
+        const translations = normalizeTranslations(rawTranslations);
 
         const created = rec.createdAt || nowStr;
         const updated = rec.updatedAt || nowStr;
@@ -286,17 +339,18 @@ app.post('/api/sync-table', (req, res) => {
       const nowStr = new Date().toISOString();
       db.records[tableId] = records.map(rec => {
         const fields = rec.fields || {};
-        const translations = {};
-        const TARGET_LANGUAGES = [
-          'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
-          'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
-          'CZ(捷克)', '瑞典', '挪威', '荷兰'
-        ];
+        const rawTranslations = {};
         TARGET_LANGUAGES.forEach(lang => {
           if (fields[lang] !== undefined) {
-            translations[lang] = fields[lang];
+            rawTranslations[lang] = fields[lang];
           }
         });
+        Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
+          if (fields[legacyKey] !== undefined) {
+            rawTranslations[legacyKey] = fields[legacyKey];
+          }
+        });
+        const translations = normalizeTranslations(rawTranslations);
 
         return {
           recordId: rec.recordId,
@@ -354,6 +408,9 @@ app.get('/api/tables/:tableId/records', (req, res) => {
           trans = JSON.parse(row.translations || '{}');
         } catch {}
 
+        // Normalize legacy keys ("英文" → "EN（英文）") to canonical format
+        const normalizedTrans = normalizeTranslations(trans);
+
         return {
           recordId: row.recordId,
           createdAt: row.createdAt,
@@ -363,7 +420,7 @@ app.get('/api/tables/:tableId/records', (req, res) => {
             'CN（中文）': row.chinese,
             所在页面: row.page,
             字号类别: row.owner,
-            ...trans
+            ...normalizedTrans
           }
         };
       });
@@ -374,18 +431,21 @@ app.get('/api/tables/:tableId/records', (req, res) => {
       const data = fs.readFileSync(FALLBACK_TABLES_PATH, 'utf8');
       const db = JSON.parse(data);
       const records = db.records[tableId] || [];
-      const formatted = records.map(r => ({
-        recordId: r.recordId,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-        fields: {
-          KW: r.kw,
-          'CN（中文）': r.chinese,
-          所在页面: r.page,
-          字号类别: r.owner,
-          ...(r.translations || {})
-        }
-      }));
+      const formatted = records.map(r => {
+        const normalizedTrans = normalizeTranslations(r.translations || {});
+        return {
+          recordId: r.recordId,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+          fields: {
+            KW: r.kw,
+            'CN（中文）': r.chinese,
+            所在页面: r.page,
+            字号类别: r.owner,
+            ...normalizedTrans
+          }
+        };
+      });
       res.json(formatted);
     } catch (err) {
       res.status(500).json({ error: `读取 JSON records 失败: ${err.message}` });

@@ -31,9 +31,9 @@ export default function TranslationTab({
     tbl_3_1: {
       fields: [
         { id: 'fld_kw', name: 'KW' },
-        { id: 'fld_zh', name: '中文' },
+        { id: 'fld_zh', name: 'CN（中文）' },
         { id: 'fld_page', name: '所在页面' },
-        { id: 'fld_owner', name: '负责人' },
+        { id: 'fld_owner', name: '字号类别' },
         ...TARGET_LANGUAGES.map((lang, idx) => ({ id: `fld_lang_${idx}`, name: lang }))
       ],
       records: [
@@ -83,9 +83,9 @@ export default function TranslationTab({
     tbl_3_2: {
       fields: [
         { id: 'fld_kw', name: 'KW' },
-        { id: 'fld_zh', name: '中文' },
+        { id: 'fld_zh', name: 'CN（中文）' },
         { id: 'fld_page', name: '所在页面' },
-        { id: 'fld_owner', name: '负责人' },
+        { id: 'fld_owner', name: '字号类别' },
         ...TARGET_LANGUAGES.map((lang, idx) => ({ id: `fld_lang_${idx}`, name: lang }))
       ],
       records: [
@@ -261,9 +261,9 @@ export default function TranslationTab({
               
               const fMap = {
                 'KW': 'KW',
-                '中文': '中文',
+                'CN（中文）': 'CN（中文）',
                 '所在页面': '所在页面',
-                '负责人': '负责人'
+                '字号类别': '字号类别'
               };
               TARGET_LANGUAGES.forEach(lang => {
                 fMap[lang] = lang;
@@ -517,7 +517,7 @@ export default function TranslationTab({
   const filteredRecords = useMemo(() => {
     const list = records.filter(rec => {
       const kw = getRecordValueByName(rec, 'KW');
-      const zh = getRecordValueByName(rec, '中文');
+      const zh = getRecordValueByName(rec, 'CN（中文）');
       const matchesSearch = 
         kw.toLowerCase().includes(searchQuery.toLowerCase()) || 
         zh.toLowerCase().includes(searchQuery.toLowerCase());
@@ -602,9 +602,9 @@ export default function TranslationTab({
     const data = {
       recordId: record.recordId,
       KW: getRecordValueByName(record, 'KW'),
-      中文: getRecordValueByName(record, '中文'),
+      中文: getRecordValueByName(record, 'CN（中文）'),
       所在页面: getRecordValueByName(record, '所在页面'),
-      负责人: getRecordValueByName(record, '负责人'),
+      字号类别: getRecordValueByName(record, '字号类别'),
       translations: {}
     };
     TARGET_LANGUAGES.forEach(lang => {
@@ -649,9 +649,9 @@ export default function TranslationTab({
                 }
               });
               updatedFields[fieldMap['KW']] = editModalRecord.KW;
-              updatedFields[fieldMap['中文']] = editModalRecord.中文;
+              updatedFields[fieldMap['CN（中文）']] = editModalRecord.中文;
               updatedFields[fieldMap['所在页面']] = editModalRecord.所在页面;
-              updatedFields[fieldMap['负责人']] = editModalRecord.负责人;
+              updatedFields[fieldMap['字号类别']] = editModalRecord.字号类别;
               return { 
                 ...rec, 
                 fields: updatedFields,
@@ -679,9 +679,9 @@ export default function TranslationTab({
               }
             });
             updatedFields[fieldMap['KW']] = editModalRecord.KW;
-            updatedFields[fieldMap['中文']] = editModalRecord.中文;
+            updatedFields[fieldMap['CN（中文）']] = editModalRecord.中文;
             updatedFields[fieldMap['所在页面']] = editModalRecord.所在页面;
-            updatedFields[fieldMap['负责人']] = editModalRecord.负责人;
+            updatedFields[fieldMap['字号类别']] = editModalRecord.字号类别;
             return { 
               ...rec, 
               fields: updatedFields,
@@ -710,9 +710,9 @@ export default function TranslationTab({
       
       // Standard Fields
       if (fieldMap['KW']) fieldsToUpdate[fieldMap['KW']] = editModalRecord.KW;
-      if (fieldMap['中文']) fieldsToUpdate[fieldMap['中文']] = editModalRecord.中文;
+      if (fieldMap['CN（中文）']) fieldsToUpdate[fieldMap['CN（中文）']] = editModalRecord.中文;
       if (fieldMap['所在页面']) fieldsToUpdate[fieldMap['所在页面']] = editModalRecord.所在页面;
-      if (fieldMap['负责人']) fieldsToUpdate[fieldMap['负责人']] = editModalRecord.负责人;
+      if (fieldMap['字号类别']) fieldsToUpdate[fieldMap['字号类别']] = editModalRecord.字号类别;
       
       TARGET_LANGUAGES.forEach(lang => {
         const fieldId = fieldMap[lang];
@@ -839,7 +839,7 @@ export default function TranslationTab({
           let cnVal = '';
           Object.keys(r.fields).forEach(key => {
             if (key === 'KW') kwVal = r.fields[key];
-            if (key === '中文') cnVal = r.fields[key];
+            if (key === 'CN（中文）') cnVal = r.fields[key];
           });
           return { kw: (kwVal || '').toString().trim(), chinese: (cnVal || '').toString().trim() };
         });
@@ -868,7 +868,7 @@ export default function TranslationTab({
         fieldMap[f.name] = f.id;
       });
       const kwId = fieldMap['KW'];
-      const cnId = fieldMap['中文'];
+      const cnId = fieldMap['CN（中文）'];
       if (!kwId || !cnId) return [];
 
       let hasMore = true;
@@ -967,9 +967,9 @@ export default function TranslationTab({
         
         const targetFieldMap = {
           'KW': 'KW',
-          '中文': '中文',
+          'CN（中文）': 'CN（中文）',
           '所在页面': '所在页面',
-          '负责人': '负责人'
+          '字号类别': '字号类别'
         };
         TARGET_LANGUAGES.forEach(lang => {
           targetFieldMap[lang] = lang;
@@ -977,9 +977,9 @@ export default function TranslationTab({
 
         const newFields = {
           [targetFieldMap['KW']]: newTerm.KW,
-          [targetFieldMap['中文']]: newTerm.中文,
+          [targetFieldMap['CN（中文）']]: newTerm.中文,
           [targetFieldMap['所在页面']]: newTerm.所在页面 || '',
-          [targetFieldMap['负责人']]: newTerm.负责人 || ''
+          [targetFieldMap['字号类别']]: newTerm.字号类别 || ''
         };
 
         TARGET_LANGUAGES.forEach(lang => {
@@ -1016,7 +1016,7 @@ export default function TranslationTab({
 
         showStatus('success', `成功新增词条 (目标版本: ${tables.find(t => t.id === addTargetTableId)?.name || '未名'})！`);
         setAddModalOpen(false);
-        setNewTerm({ KW: '', 中文: '', 所在页面: '', 负责人: '', translations: {} });
+        setNewTerm({ KW: '', 中文: '', 所在页面: '', 字号类别: '', translations: {} });
         return;
       }
 
@@ -1029,9 +1029,9 @@ export default function TranslationTab({
 
       const newFields = {};
       if (targetFieldMap['KW']) newFields[targetFieldMap['KW']] = newTerm.KW;
-      if (targetFieldMap['中文']) newFields[targetFieldMap['中文']] = newTerm.中文;
+      if (targetFieldMap['CN（中文）']) newFields[targetFieldMap['CN（中文）']] = newTerm.中文;
       if (targetFieldMap['所在页面']) newFields[targetFieldMap['所在页面']] = newTerm.所在页面;
-      if (targetFieldMap['负责人']) newFields[targetFieldMap['负责人']] = newTerm.负责人;
+      if (targetFieldMap['字号类别']) newFields[targetFieldMap['字号类别']] = newTerm.字号类别;
       
       TARGET_LANGUAGES.forEach(lang => {
         const fieldId = targetFieldMap[lang];
@@ -1079,7 +1079,7 @@ export default function TranslationTab({
           const res = await fetch(`/api/tables/${tableId}/records`);
           if (res.ok) {
             targetRecordsList = await res.json();
-            targetFieldMap = { 'KW': 'KW', '中文': '中文', '所在页面': '所在页面', '负责人': '负责人' };
+            targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
             TARGET_LANGUAGES.forEach(lang => { targetFieldMap[lang] = lang; });
           }
         } catch (err) {
@@ -1134,7 +1134,7 @@ export default function TranslationTab({
       return {
         recordId: rec.recordId,
         KW: getValue(rec, 'KW'),
-        中文: getValue(rec, '中文'),
+        中文: getValue(rec, 'CN（中文）'),
         所在页面: getValue(rec, '所在页面'),
         missingLangs,
         translations: {}
@@ -1233,7 +1233,7 @@ export default function TranslationTab({
       // Fetch or define target field mappings
       let targetFieldMap = {};
       if (isDemoMode) {
-        targetFieldMap = { 'KW': 'KW', '中文': '中文', '所在页面': '所在页面', '负责人': '负责人' };
+        targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
         TARGET_LANGUAGES.forEach(lang => {
           targetFieldMap[lang] = lang;
         });
@@ -1502,7 +1502,7 @@ export default function TranslationTab({
       }
       let targetFieldMap = {};
       if (isDemoMode) {
-        targetFieldMap = { 'KW': 'KW', '中文': '中文', '所在页面': '所在页面', '负责人': '负责人' };
+        targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
         TARGET_LANGUAGES.forEach(lang => {
           targetFieldMap[lang] = lang;
         });
@@ -1521,9 +1521,9 @@ export default function TranslationTab({
           const newRecordId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const fields = {
             [targetFieldMap['KW']]: row.KW,
-            [targetFieldMap['中文']]: row.中文,
+            [targetFieldMap['CN（中文）']]: row.中文,
             [targetFieldMap['所在页面']]: row.所在页面,
-            [targetFieldMap['负责人']]: 'AI/Manual'
+            [targetFieldMap['字号类别']]: 'AI/Manual'
           };
           TARGET_LANGUAGES.forEach(lang => {
             fields[lang] = row.translations[lang] || '';
@@ -1578,9 +1578,9 @@ export default function TranslationTab({
         const row = completedRows[i];
         const fields = {};
         if (targetFieldMap['KW']) fields[targetFieldMap['KW']] = row.KW;
-        if (targetFieldMap['中文']) fields[targetFieldMap['中文']] = row.中文;
+        if (targetFieldMap['CN（中文）']) fields[targetFieldMap['CN（中文）']] = row.中文;
         if (targetFieldMap['所在页面']) fields[targetFieldMap['所在页面']] = row.所在页面;
-        if (targetFieldMap['负责人']) fields[targetFieldMap['负责人']] = 'AI/Manual';
+        if (targetFieldMap['字号类别']) fields[targetFieldMap['字号类别']] = 'AI/Manual';
         
         const addedLangs = {};
         TARGET_LANGUAGES.forEach(lang => {
@@ -1709,16 +1709,16 @@ export default function TranslationTab({
   const handleDataClean = async () => {
     const emptyRecords = records.filter(r => {
       const kw = getRecordValueByName(r, 'KW').trim();
-      const cn = getRecordValueByName(r, '中文').trim();
+      const cn = getRecordValueByName(r, 'CN（中文）').trim();
       return !kw || !cn;
     });
 
     if (emptyRecords.length === 0) {
-      alert('当前数据表中未发现空词条（KW 或中文为空的词条）！');
+      alert('当前数据表中未发现空词条（KW 或 CN（中文） 为空的词条）！');
       return;
     }
 
-    const confirmMessage = `系统检测到当前版本表内有 ${emptyRecords.length} 条空词条（缺少 KW 或缺少中文）。\n\n是否确认清理并从数据表中永久删除这 ${emptyRecords.length} 条空词条？`;
+    const confirmMessage = `系统检测到当前版本表内有 ${emptyRecords.length} 条空词条（缺少 KW 或缺少 CN（中文））。\n\n是否确认清理并从数据表中永久删除这 ${emptyRecords.length} 条空词条？`;
     if (!window.confirm(confirmMessage)) {
       return;
     }
