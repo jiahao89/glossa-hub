@@ -2119,10 +2119,6 @@ export default function TranslationTab({
           throw new Error(`数据表 【${tMeta.name}】 同步失败: ${errJson.error || '服务器响应异常'}`);
         }
 
-        if (tMeta.id === selectedTableId) {
-          setRecords(allRecords);
-        }
-
         totalSyncedCount += formattedRecords.length;
       }
 
