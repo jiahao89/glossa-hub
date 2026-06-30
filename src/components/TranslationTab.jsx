@@ -622,13 +622,31 @@ export default function TranslationTab({
 
       const currentCellSessionModified = { ...modifiedCells[editModalRecord.recordId] };
       let logsList = [];
+      const recordObj = records.find(r => r.recordId === editModalRecord.recordId);
+
+      if (!recordObj) {
+        throw new Error('找不到对应的原始词条记录');
+      }
+
+      // Check standard fields modifications
+      const standardFieldsConfig = [
+        { key: 'KW', dbName: 'KW', label: '词条ID(KW)' },
+        { key: '中文', dbName: 'CN（中文）', label: '中文源词' },
+        { key: '所在页面', dbName: '所在页面', label: '所在页面' },
+        { key: '字号类别', dbName: '字号类别', label: '字号类别' }
+      ];
+
+      standardFieldsConfig.forEach(f => {
+        const newValue = editModalRecord[f.key] || '';
+        const oldValue = getRecordValueByName(recordObj, f.dbName) || '';
+        if (newValue !== oldValue) {
+          logsList.push({ lang: f.label, oldVal: oldValue, newVal: newValue });
+        }
+      });
 
       TARGET_LANGUAGES.forEach(lang => {
         const newValue = editModalRecord.translations[lang] || '';
-        const oldValue = getRecordValueByName(
-          records.find(r => r.recordId === editModalRecord.recordId), 
-          lang
-        );
+        const oldValue = getRecordValueByName(recordObj, lang);
         
         if (newValue !== oldValue) {
           // Track modification
@@ -636,6 +654,13 @@ export default function TranslationTab({
           logsList.push({ lang, oldVal: oldValue, newVal: newValue });
         }
       });
+
+      const getFieldId = (possibleNames) => {
+        for (const name of possibleNames) {
+          if (fieldMap[name]) return fieldMap[name];
+        }
+        return null;
+      };
 
       if (isDemoMode) {
         setMockDatabase(prev => {
@@ -649,10 +674,16 @@ export default function TranslationTab({
                   updatedFields[fId] = editModalRecord.translations[lang] || '';
                 }
               });
-              updatedFields[fieldMap['KW']] = editModalRecord.KW;
-              updatedFields[fieldMap['CN（中文）']] = editModalRecord.中文;
-              updatedFields[fieldMap['所在页面']] = editModalRecord.所在页面;
-              updatedFields[fieldMap['字号类别']] = editModalRecord.字号类别;
+              const kwId = getFieldId(['KW', 'kw', '词条ID']);
+              const cnId = getFieldId(['CN（中文）', '中文', 'CN(中文)']);
+              const pageId = getFieldId(['所在页面', '页面']);
+              const categoryId = getFieldId(['字号类别', '类别', '负责人']);
+
+              if (kwId) updatedFields[kwId] = editModalRecord.KW;
+              if (cnId) updatedFields[cnId] = editModalRecord.中文;
+              if (pageId) updatedFields[pageId] = editModalRecord.所在页面;
+              if (categoryId) updatedFields[categoryId] = editModalRecord.字号类别;
+              
               return { 
                 ...rec, 
                 fields: updatedFields,
@@ -679,10 +710,16 @@ export default function TranslationTab({
                 updatedFields[fId] = editModalRecord.translations[lang] || '';
               }
             });
-            updatedFields[fieldMap['KW']] = editModalRecord.KW;
-            updatedFields[fieldMap['CN（中文）']] = editModalRecord.中文;
-            updatedFields[fieldMap['所在页面']] = editModalRecord.所在页面;
-            updatedFields[fieldMap['字号类别']] = editModalRecord.字号类别;
+            const kwId = getFieldId(['KW', 'kw', '词条ID']);
+            const cnId = getFieldId(['CN（中文）', '中文', 'CN(中文)']);
+            const pageId = getFieldId(['所在页面', '页面']);
+            const categoryId = getFieldId(['字号类别', '类别', '负责人']);
+
+            if (kwId) updatedFields[kwId] = editModalRecord.KW;
+            if (cnId) updatedFields[cnId] = editModalRecord.中文;
+            if (pageId) updatedFields[pageId] = editModalRecord.所在页面;
+            if (categoryId) updatedFields[categoryId] = editModalRecord.字号类别;
+            
             return { 
               ...rec, 
               fields: updatedFields,
@@ -709,11 +746,15 @@ export default function TranslationTab({
       const table = await bitable.base.getTableById(selectedTableId);
       const fieldsToUpdate = {};
       
-      // Standard Fields
-      if (fieldMap['KW']) fieldsToUpdate[fieldMap['KW']] = editModalRecord.KW;
-      if (fieldMap['CN（中文）']) fieldsToUpdate[fieldMap['CN（中文）']] = editModalRecord.中文;
-      if (fieldMap['所在页面']) fieldsToUpdate[fieldMap['所在页面']] = editModalRecord.所在页面;
-      if (fieldMap['字号类别']) fieldsToUpdate[fieldMap['字号类别']] = editModalRecord.字号类别;
+      const kwId = getFieldId(['KW', 'kw', '词条ID']);
+      const cnId = getFieldId(['CN（中文）', '中文', 'CN(中文)']);
+      const pageId = getFieldId(['所在页面', '页面']);
+      const categoryId = getFieldId(['字号类别', '类别', '负责人']);
+
+      if (kwId) fieldsToUpdate[kwId] = editModalRecord.KW;
+      if (cnId) fieldsToUpdate[cnId] = editModalRecord.中文;
+      if (pageId) fieldsToUpdate[pageId] = editModalRecord.所在页面;
+      if (categoryId) fieldsToUpdate[categoryId] = editModalRecord.字号类别;
       
       TARGET_LANGUAGES.forEach(lang => {
         const fieldId = fieldMap[lang];
