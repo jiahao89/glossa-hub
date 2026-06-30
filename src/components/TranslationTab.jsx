@@ -1754,12 +1754,12 @@ export default function TranslationTab({
 
         // Map column indexes
         const kwIdx = headers.findIndex(h => h.trim() === 'KW');
-        const zhIdx = headers.findIndex(h => h.trim() === '中文');
+        const zhIdx = headers.findIndex(h => h.trim() === 'CN（中文）' || h.trim() === '中文');
         const pageIdx = headers.findIndex(h => h.trim() === '词条所在界面（注意是界面不是模块！！）' || h.trim() === '所在页面');
-        const ownerIdx = headers.findIndex(h => h.trim() === '负责人');
+        const ownerIdx = headers.findIndex(h => h.trim() === '字号类别' || h.trim() === '负责人');
 
         if (kwIdx === -1 || zhIdx === -1) {
-          alert('CSV 结构非法：必须包含 "KW" 和 "中文" 列！');
+          alert('CSV 结构非法：必须包含 "KW" 和 "CN（中文）" 列！');
           return;
         }
 
@@ -1776,9 +1776,9 @@ export default function TranslationTab({
 
             const fields = {};
             fields[fieldMap['KW']] = kw;
-            fields[fieldMap['中文']] = zh;
+            fields[fieldMap['CN（中文）']] = zh;
             if (pageIdx !== -1) fields[fieldMap['所在页面']] = row[pageIdx] || '';
-            if (ownerIdx !== -1) fields[fieldMap['负责人']] = row[ownerIdx] || '';
+            if (ownerIdx !== -1) fields[fieldMap['字号类别']] = row[ownerIdx] || '';
 
             TARGET_LANGUAGES.forEach(lang => {
               const fieldId = fieldMap[lang];
@@ -1864,9 +1864,9 @@ export default function TranslationTab({
 
           const fields = {};
           if (fieldMap['KW']) fields[fieldMap['KW']] = kw;
-          if (fieldMap['中文']) fields[fieldMap['中文']] = zh;
+          if (fieldMap['CN（中文）']) fields[fieldMap['CN（中文）']] = zh;
           if (pageIdx !== -1 && fieldMap['所在页面']) fields[fieldMap['所在页面']] = row[pageIdx] || '';
-          if (ownerIdx !== -1 && fieldMap['负责人']) fields[fieldMap['负责人']] = row[ownerIdx] || '';
+          if (ownerIdx !== -1 && fieldMap['字号类别']) fields[fieldMap['字号类别']] = row[ownerIdx] || '';
 
           TARGET_LANGUAGES.forEach(lang => {
             const fieldId = fieldMap[lang];
@@ -1950,14 +1950,14 @@ export default function TranslationTab({
   // CSV Export
   const handleExportCSV = () => {
     try {
-      const headers = ['词条所在界面（注意是界面不是模块！！）', 'KW', '负责人', '中文', ...TARGET_LANGUAGES];
+      const headers = ['所在页面', '字号类别', 'KW', 'CN（中文）', ...TARGET_LANGUAGES];
       
       const csvData = filteredRecords.map(rec => {
         const row = [
           getRecordValueByName(rec, '所在页面'),
+          getRecordValueByName(rec, '字号类别'),
           getRecordValueByName(rec, 'KW'),
-          getRecordValueByName(rec, '负责人'),
-          getRecordValueByName(rec, '中文')
+          getRecordValueByName(rec, 'CN（中文）')
         ];
         
         TARGET_LANGUAGES.forEach(lang => {
@@ -2313,9 +2313,9 @@ export default function TranslationTab({
                   />
                 </th>
                 <th className="sticky-col-1" style={{ width: '150px' }}>KW (Key)</th>
-                <th className="sticky-col-2" style={{ width: '180px' }}>中文 (Source)</th>
+                <th className="sticky-col-2" style={{ width: '180px' }}>CN（中文）</th>
                 <th style={{ width: '150px' }}>所在页面</th>
-                <th style={{ width: '100px' }}>负责人</th>
+                <th style={{ width: '100px' }}>字号类别</th>
                 {TARGET_LANGUAGES.map(lang => {
                   if (!visibleLanguages.includes(lang)) return null;
                   return <th key={lang} style={{ width: '160px' }}>{lang}</th>;
@@ -2327,9 +2327,9 @@ export default function TranslationTab({
               {filteredRecords.map(rec => {
                 const recId = rec.recordId;
                 const kw = getRecordValueByName(rec, 'KW');
-                const zh = getRecordValueByName(rec, '中文');
+                const zh = getRecordValueByName(rec, 'CN（中文）');
                 const page = getRecordValueByName(rec, '所在页面');
-                const owner = getRecordValueByName(rec, '负责人');
+                const owner = getRecordValueByName(rec, '字号类别');
                 const rowModified = modifiedCells[recId] || {};
 
                 return (
@@ -2413,7 +2413,7 @@ export default function TranslationTab({
                   />
                 </div>
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>中文源词</label>
+                  <label>CN（中文）</label>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <input 
                       type="text" 
@@ -2442,11 +2442,11 @@ export default function TranslationTab({
                   />
                 </div>
                 <div className="form-group">
-                  <label>负责人</label>
+                  <label>字号类别</label>
                   <input 
                     type="text" 
-                    value={editModalRecord.负责人} 
-                    onChange={(e) => setEditModalRecord({ ...editModalRecord, 负责人: e.target.value })}
+                    value={editModalRecord.字号类别} 
+                    onChange={(e) => setEditModalRecord({ ...editModalRecord, 字号类别: e.target.value })}
                     className="text-input"
                   />
                 </div>
@@ -2513,7 +2513,7 @@ export default function TranslationTab({
                 </div>
                 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>中文源词 (必填)</label>
+                  <label>CN（中文） (必填)</label>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <input 
                       type="text" 
@@ -2545,13 +2545,13 @@ export default function TranslationTab({
                   />
                 </div>
                 <div className="form-group">
-                  <label>负责人</label>
+                  <label>字号类别</label>
                   <input 
                     type="text" 
-                    value={newTerm.负责人} 
-                    onChange={(e) => setNewTerm({ ...newTerm, 负责人: e.target.value })}
+                    value={newTerm.字号类别} 
+                    onChange={(e) => setNewTerm({ ...newTerm, 字号类别: e.target.value })}
                     className="text-input"
-                    placeholder="开发/PM名称"
+                    placeholder="例如: H3、H5"
                   />
                 </div>
 

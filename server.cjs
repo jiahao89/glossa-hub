@@ -228,15 +228,16 @@ app.post('/api/sync-table', (req, res) => {
       records.forEach(rec => {
         const fields = rec.fields || {};
         const kw = fields['KW'] || '';
-        const chinese = fields['中文'] || '';
+        const chinese = fields['CN（中文）'] || fields['中文'] || '';
         const page = fields['所在页面'] || fields['词条所在界面（注意是界面不是模块！！）'] || '';
-        const owner = fields['负责人'] || '';
+        const owner = fields['字号类别'] || fields['负责人'] || '';
 
         // Extract translation fields
         const translations = {};
         const TARGET_LANGUAGES = [
-          '英文', '法语', '德语', '西班牙语', '意大利语', '葡萄牙语', '韩语', '日语', '俄语', '波兰语', 
-          '繁体中文', '丹麦语', '捷克语', '瑞典语', '挪威语', '荷兰语', '泰语', '芬兰语', '土耳其语'
+          'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
+          'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
+          'CZ(捷克)', '瑞典', '挪威', '荷兰'
         ];
         TARGET_LANGUAGES.forEach(lang => {
           if (fields[lang] !== undefined) {
@@ -287,8 +288,9 @@ app.post('/api/sync-table', (req, res) => {
         const fields = rec.fields || {};
         const translations = {};
         const TARGET_LANGUAGES = [
-          '英文', '法语', '德语', '西班牙语', '意大利语', '葡萄牙语', '韩语', '日语', '俄语', '波兰语', 
-          '繁体中文', '丹麦语', '捷克语', '瑞典语', '挪威语', '荷兰语', '泰语', '芬兰语', '土耳其语'
+          'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
+          'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
+          'CZ(捷克)', '瑞典', '挪威', '荷兰'
         ];
         TARGET_LANGUAGES.forEach(lang => {
           if (fields[lang] !== undefined) {
@@ -300,9 +302,9 @@ app.post('/api/sync-table', (req, res) => {
           recordId: rec.recordId,
           tableId: tableId,
           kw: fields['KW'] || '',
-          chinese: fields['中文'] || '',
+          chinese: fields['CN（中文）'] || fields['中文'] || '',
           page: fields['所在页面'] || fields['词条所在界面（注意是界面不是模块！！）'] || '',
-          owner: fields['负责人'] || '',
+          owner: fields['字号类别'] || fields['负责人'] || '',
           translations: translations,
           createdAt: rec.createdAt || nowStr,
           updatedAt: rec.updatedAt || nowStr
@@ -358,9 +360,9 @@ app.get('/api/tables/:tableId/records', (req, res) => {
           updatedAt: row.updatedAt,
           fields: {
             KW: row.kw,
-            中文: row.chinese,
+            'CN（中文）': row.chinese,
             所在页面: row.page,
-            负责人: row.owner,
+            字号类别: row.owner,
             ...trans
           }
         };
@@ -378,9 +380,9 @@ app.get('/api/tables/:tableId/records', (req, res) => {
         updatedAt: r.updatedAt,
         fields: {
           KW: r.kw,
-          中文: r.chinese,
+          'CN（中文）': r.chinese,
           所在页面: r.page,
-          负责人: r.owner,
+          字号类别: r.owner,
           ...(r.translations || {})
         }
       }));
