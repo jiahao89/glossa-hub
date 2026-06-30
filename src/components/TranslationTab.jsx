@@ -1991,78 +1991,93 @@ export default function TranslationTab({
     }
   };
 
-  // Sync Bitable data to local SQLite database immediately
-  const handleSyncCurrentTable = async () => {
+  // Sync all Bitable data to local SQLite database immediately
+  const handleSyncAllTables = async () => {
     if (isDemoMode) {
       alert('当前处于离线模式，无法从飞书同步！请在飞书多维表格内运行插件以进行同步。');
       return;
     }
     
     setLoading(true);
-    showStatus('info', '正在从飞书多维表格同步最新数据...');
+    showStatus('info', '正在开始从飞书同步所有词条数据表...');
     
     try {
-      const table = await bitable.base.getTableById(selectedTableId);
-      
-      const fieldMetaList = await table.getFieldMetaList();
-      const targetFieldMap = {};
-      const revFMap = {};
-      fieldMetaList.forEach(f => {
-        targetFieldMap[f.name] = f.id;
-        revFMap[f.id] = f.name;
-      });
-
-      let hasMore = true;
-      let pageToken = undefined;
-      const allRecords = [];
-      while (hasMore) {
-        const result = await table.getRecordsByPage({ pageToken, pageSize: 200 });
-        allRecords.push(...(result.records || []));
-        hasMore = result.hasMore;
-        pageToken = result.pageToken;
+      const tableMetaList = await bitable.base.getTableMetaList();
+      if (tableMetaList.length === 0) {
+        throw new Error('未在当前飞书多维表格中找到任何数据表');
       }
 
-      const formattedRecords = allRecords.map(rec => {
-        const fields = {};
-        Object.keys(rec.fields).forEach(fId => {
-          const fName = revFMap[fId] || fId;
-          let val = rec.fields[fId];
-          if (Array.isArray(val)) {
-            val = val.map(s => s.text || '').join('');
-          } else if (typeof val === 'object' && val !== null && val.text) {
-            val = val.text;
-          }
-          fields[fName] = val;
+      let totalSyncedCount = 0;
+
+      for (const tMeta of tableMetaList) {
+        showStatus('info', `正在同步词条表: 【${tMeta.name}】...`);
+        const table = await bitable.base.getTableById(tMeta.id);
+        const fieldMetaList = await table.getFieldMetaList();
+        
+        const targetFieldMap = {};
+        const revFMap = {};
+        fieldMetaList.forEach(f => {
+          targetFieldMap[f.name] = f.id;
+          revFMap[f.id] = f.name;
         });
 
-        return {
-          recordId: rec.recordId,
-          fields,
-          createdAt: rec.createdAt || '',
-          updatedAt: rec.updatedAt || ''
-        };
-      });
+        let hasMore = true;
+        let pageToken = undefined;
+        const allRecords = [];
+        while (hasMore) {
+          const result = await table.getRecordsByPage({ pageToken, pageSize: 200 });
+          allRecords.push(...(result.records || []));
+          hasMore = result.hasMore;
+          pageToken = result.pageToken;
+        }
 
-      const syncRes = await fetch('/api/sync-table', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tableId: selectedTableId,
-          tableName: tables.find(t => t.id === selectedTableId)?.name || '未名',
-          records: formattedRecords
-        })
-      });
+        const formattedRecords = allRecords.map(rec => {
+          const fields = {};
+          Object.keys(rec.fields).forEach(fId => {
+            const fName = revFMap[fId] || fId;
+            let val = rec.fields[fId];
+            if (Array.isArray(val)) {
+              val = val.map(s => s.text || '').join('');
+            } else if (typeof val === 'object' && val !== null && val.text) {
+              val = val.text;
+            }
+            fields[fName] = val;
+          });
 
-      if (syncRes.ok) {
-        showStatus('success', `同步成功！已同步 ${formattedRecords.length} 条最新数据到本地数据库。`);
-        // Refresh local UI state
-        setRecords(allRecords);
-      } else {
-        const errJson = await syncRes.json();
-        throw new Error(errJson.error || '同步服务器响应异常');
+          return {
+            recordId: rec.recordId,
+            fields,
+            createdAt: rec.createdAt || '',
+            updatedAt: rec.updatedAt || ''
+          };
+        });
+
+        const syncRes = await fetch('/api/sync-table', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tableId: tMeta.id,
+            tableName: tMeta.name,
+            records: formattedRecords
+          })
+        });
+
+        if (!syncRes.ok) {
+          const errJson = await syncRes.json();
+          throw new Error(`数据表 【${tMeta.name}】 同步失败: ${errJson.error || '服务器响应异常'}`);
+        }
+
+        if (tMeta.id === selectedTableId) {
+          setRecords(allRecords);
+        }
+
+        totalSyncedCount += formattedRecords.length;
       }
+
+      setTables(tableMetaList);
+      showStatus('success', `同步成功！已同步全部 ${tableMetaList.length} 个词条表，共计 ${totalSyncedCount} 条数据。`);
     } catch (err) {
-      showStatus('danger', `同步到本地数据库失败: ${err.message}`);
+      showStatus('danger', `同步失败: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -2074,7 +2089,10 @@ export default function TranslationTab({
       <div className="toolbar">
         <div className="toolbar-left">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>当前版本:</span>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <span>当前词条表:</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(共 {records.length} 条)</span>
+            </span>
             <select 
               value={selectedTableId} 
               onChange={(e) => setSelectedTableId(e.target.value)}
@@ -2087,12 +2105,12 @@ export default function TranslationTab({
             
             {!isDemoMode ? (
               <button 
-                onClick={handleSyncCurrentTable} 
+                onClick={handleSyncAllTables} 
                 className="btn btn-secondary" 
                 style={{ height: '34px', fontSize: '0.8rem', padding: '0 0.6rem', color: 'var(--accent)', borderColor: 'var(--accent)', gap: '0.2rem' }}
-                title="立即同步当前多维表格最新数据到本地 SQLite 数据库"
+                title="一键同步当前飞书多维表格中所有词条数据表到本地 SQLite"
               >
-                🔄 立即同步
+                🔄 一键同步
               </button>
             ) : (
               <span 
