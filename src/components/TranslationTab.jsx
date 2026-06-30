@@ -743,6 +743,53 @@ export default function TranslationTab({
     }
   };
 
+  // Helper to extract a value from Dify response using fuzzy matching
+  const findValueInDifyResult = (lang, result) => {
+    if (!result || typeof result !== 'object') return undefined;
+    
+    // 1. Exact match
+    if (result[lang] !== undefined) return result[lang];
+    
+    // 2. Case-insensitive exact match
+    const lowerLang = lang.toLowerCase();
+    const exactKey = Object.keys(result).find(k => k.toLowerCase() === lowerLang);
+    if (exactKey) return result[exactKey];
+    
+    // 3. Clean string and compare (fuzzy matching)
+    const getCoreChars = (str) => {
+      // Remove symbols, brackets, and spaces
+      return str.replace(/[^\u4e00-\u9fa5a-zA-Z]/g, '');
+    };
+    
+    const coreLang = getCoreChars(lang);
+    if (!coreLang) return undefined;
+    
+    // Find key where one contains the other
+    for (const key of Object.keys(result)) {
+      const coreKey = getCoreChars(key);
+      if (!coreKey) continue;
+      if (coreLang.includes(coreKey) || coreKey.includes(coreLang)) {
+        return result[key];
+      }
+    }
+    
+    // Find key that shares characters
+    for (const key of Object.keys(result)) {
+      const coreKey = getCoreChars(key);
+      if (!coreKey) continue;
+      const shared = [...new Set(coreKey.split(''))].filter(char => new Set(coreLang.split('')).has(char));
+      if (shared.length > 0) {
+        // Exclude generic suffixes
+        const meaningfulShared = shared.filter(char => char !== '语' && char !== '文' && char !== '体');
+        if (meaningfulShared.length > 0) {
+          return result[key];
+        }
+      }
+    }
+    
+    return undefined;
+  };
+
   // AI pre-translate single term in Add Modal
   const handleSingleAiTranslate = async () => {
     if (!newTerm.中文) {
@@ -768,8 +815,9 @@ export default function TranslationTab({
       // Merge results
       const updatedTrans = { ...newTerm.translations };
       TARGET_LANGUAGES.forEach(lang => {
-        if (result[lang]) {
-          updatedTrans[lang] = result[lang];
+        const val = findValueInDifyResult(lang, result);
+        if (val !== undefined) {
+          updatedTrans[lang] = val;
         }
       });
       setNewTerm(prev => ({ ...prev, translations: updatedTrans }));
@@ -1154,8 +1202,9 @@ export default function TranslationTab({
         // Merge translations
         const trans = {};
         item.missingLangs.forEach(lang => {
-          if (result[lang]) {
-            trans[lang] = result[lang];
+          const val = findValueInDifyResult(lang, result);
+          if (val !== undefined) {
+            trans[lang] = val;
           }
         });
         
@@ -1374,8 +1423,9 @@ export default function TranslationTab({
         
         const trans = {};
         TARGET_LANGUAGES.forEach(lang => {
-          if (result[lang]) {
-            trans[lang] = result[lang];
+          const val = findValueInDifyResult(lang, result);
+          if (val !== undefined) {
+            trans[lang] = val;
           }
         });
         
@@ -1584,8 +1634,9 @@ export default function TranslationTab({
       
       const updatedTrans = { ...editModalRecord.translations };
       TARGET_LANGUAGES.forEach(lang => {
-        if (result[lang]) {
-          updatedTrans[lang] = result[lang];
+        const val = findValueInDifyResult(lang, result);
+        if (val !== undefined) {
+          updatedTrans[lang] = val;
         }
       });
       setEditModalRecord(prev => ({ ...prev, translations: updatedTrans }));
