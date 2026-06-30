@@ -526,8 +526,9 @@ export default function TranslationTab({
       if (!matchesSearch) return false;
       
       if (filterUntranslated) {
-        // Find if at least one language is empty
-        return TARGET_LANGUAGES.some(lang => {
+        // Find if at least one visible language is empty
+        const langsToCheck = visibleLanguages.length > 0 ? visibleLanguages : TARGET_LANGUAGES;
+        return langsToCheck.some(lang => {
           const val = getRecordValueByName(rec, lang);
           return !val || val.trim() === '';
         });
@@ -595,8 +596,7 @@ export default function TranslationTab({
       });
     }
 
-    return list;
-  }, [records, searchQuery, filterUntranslated, getRecordValueByName, sortBy, modifiedCells, recordIndexMap]);
+  }, [records, searchQuery, filterUntranslated, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, visibleLanguages]);
 
   // Open Edit Modal
   const handleRowDoubleClick = (record) => {
