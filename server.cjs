@@ -373,6 +373,62 @@ app.post('/api/sync-table', (req, res) => {
   }
 });
 
+// 4b. POST /api/sync-cleanup - 清理在飞书中已被物理删除的表格及词条缓存
+app.post('/api/sync-cleanup', (req, res) => {
+  const { activeTableIds } = req.body;
+  if (!Array.isArray(activeTableIds)) {
+    return res.status(400).json({ error: '必须包含 activeTableIds 数组！' });
+  }
+
+  if (dbType === 'sqlite') {
+    sqliteDb.serialize(() => {
+      if (activeTableIds.length === 0) {
+        sqliteDb.run('DELETE FROM records', [], (err) => {
+          if (err) console.error('⚠️ 清理 records 失败:', err.message);
+        });
+        sqliteDb.run('DELETE FROM tables', [], (err) => {
+          if (err) {
+            return res.status(500).json({ error: `清空 SQLite tables 失败: ${err.message}` });
+          }
+          res.json({ message: '已成功清理所有废弃缓存表及数据' });
+        });
+      } else {
+        const placeholders = activeTableIds.map(() => '?').join(',');
+        sqliteDb.run(`DELETE FROM records WHERE tableId NOT IN (${placeholders})`, activeTableIds, (err) => {
+          if (err) console.error('⚠️ 清理 records 失败:', err.message);
+        });
+        sqliteDb.run(`DELETE FROM tables WHERE id NOT IN (${placeholders})`, activeTableIds, (err) => {
+          if (err) {
+            return res.status(500).json({ error: `清理 SQLite tables 失败: ${err.message}` });
+          }
+          res.json({ message: `清理成功！仅保留了 ${activeTableIds.length} 个活跃表的缓存数据` });
+        });
+      }
+    });
+  } else {
+    // JSON fallback
+    try {
+      const data = fs.readFileSync(FALLBACK_TABLES_PATH, 'utf8');
+      const db = JSON.parse(data);
+
+      db.tables = (db.tables || []).filter(t => activeTableIds.includes(t.id));
+      
+      const newRecords = {};
+      activeTableIds.forEach(id => {
+        if (db.records[id]) {
+          newRecords[id] = db.records[id];
+        }
+      });
+      db.records = newRecords;
+
+      fs.writeFileSync(FALLBACK_TABLES_PATH, JSON.stringify(db, null, 2), 'utf8');
+      res.json({ message: '缓存清理成功 (JSON Fallback)！' });
+    } catch (err) {
+      res.status(500).json({ error: `JSON 缓存清理失败: ${err.message}` });
+    }
+  }
+});
+
 // 5. GET /api/tables - 获取所有已同步的表格列表
 app.get('/api/tables', (req, res) => {
   if (dbType === 'sqlite') {

@@ -2126,8 +2126,20 @@ export default function TranslationTab({
         totalSyncedCount += formattedRecords.length;
       }
 
+      // Clean up local SQLite tables that are no longer present in Bitable
+      const activeTableIds = tableMetaList.map(t => t.id);
+      try {
+        await fetch('/api/sync-cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activeTableIds })
+        });
+      } catch (cleanErr) {
+        console.warn('⚠️ 清理本地冗余表格缓存失败:', cleanErr.message);
+      }
+
       setTables(tableMetaList);
-      showStatus('success', `同步成功！已同步全部 ${tableMetaList.length} 个词条表，共计 ${totalSyncedCount} 条数据。`);
+      showStatus('success', `同步成功！已同步全部 ${tableMetaList.length} 个词条表，共计 ${totalSyncedCount} 条数据，并清理了已在飞书中删除的废弃表缓存。`);
     } catch (err) {
       showStatus('danger', `同步失败: ${err.message}`);
     } finally {
