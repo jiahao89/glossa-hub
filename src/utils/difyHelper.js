@@ -80,7 +80,7 @@ export async function testDifyConnection(baseUrl, apiKey) {
       KW: 'KW_CONNECTION_TEST',
       text: '测试',
       context: '设置',
-      target_languages: '英文'
+      target_languages: 'EN（英文）'
     };
     
     await runDifyWorkflow(baseUrl, apiKey, testInputs);

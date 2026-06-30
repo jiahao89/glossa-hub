@@ -4,8 +4,9 @@ import { parseCSV } from '../utils/csvHelper';
 import { Search, Loader2, ArrowLeftRight, FileInput, AlertCircle, HelpCircle } from 'lucide-react';
 
 const TARGET_LANGUAGES = [
-  '英文', '法语', '德语', '西班牙语', '意大利语', '葡萄牙语', '韩语', '日语', '俄语', '波兰语', 
-  '繁体中文', '丹麦语', '捷克语', '瑞典语', '挪威语', '荷兰语', '泰语', '芬兰语', '土耳其语'
+  'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
+  'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
+  'CZ(捷克)', '瑞典', '挪威', '荷兰'
 ];
 
 const normalizeText = (text) => {
@@ -235,7 +236,7 @@ export default function ComparisonTab() {
         });
         return {
           KW: getValue(rec, 'KW')?.trim(),
-          中文: getValue(rec, '中文')?.trim(),
+          中文: getValue(rec, 'CN（中文）')?.trim(),
           所在页面: getValue(rec, '所在页面')?.trim() || getValue(rec, '词条所在界面（注意是界面不是模块！！）')?.trim(),
           translations
         };
@@ -253,7 +254,7 @@ export default function ComparisonTab() {
           });
           return {
             KW: r.fields.KW || '',
-            中文: r.fields.中文 || '',
+            中文: r.fields['CN（中文）'] || r.fields.中文 || '',
             所在页面: r.fields.所在页面 || '',
             translations: trans
           };
@@ -287,11 +288,11 @@ export default function ComparisonTab() {
         const rows = parsed.slice(1);
 
         const kwIdx = headers.findIndex(h => h === 'KW');
-        const zhIdx = headers.findIndex(h => h === '中文');
+        const zhIdx = headers.findIndex(h => h === 'CN（中文）' || h === '中文');
         const pageIdx = headers.findIndex(h => h === '所在页面' || h === '词条所在界面（注意是界面不是模块！！）');
 
         if (kwIdx === -1 || zhIdx === -1) {
-          alert('CSV 必须包含 "KW" 和 "中文" 列！');
+          alert('CSV 必须包含 "KW" 和 "CN（中文）" 列！');
           return;
         }
 

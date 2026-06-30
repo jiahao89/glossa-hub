@@ -5,8 +5,9 @@ import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2 } from 'lucide-react';
 
 const TARGET_LANGUAGES = [
-  '英文', '法语', '德语', '西班牙语', '意大利语', '葡萄牙语', '韩语', '日语', '俄语', '波兰语', 
-  '繁体中文', '丹麦语', '捷克语', '瑞典语', '挪威语', '荷兰语', '泰语', '芬兰语', '土耳其语'
+  'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
+  'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
+  'CZ(捷克)', '瑞典', '挪威', '荷兰'
 ];
 
 export default function TranslationTab({ 
@@ -129,7 +130,7 @@ export default function TranslationTab({
   const [colDropdownOpen, setColDropdownOpen] = useState(false);
   const [visibleLanguages, setVisibleLanguages] = useState(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 1000) {
-      return ['英文'];
+      return ['EN（英文）'];
     }
     return TARGET_LANGUAGES;
   });
