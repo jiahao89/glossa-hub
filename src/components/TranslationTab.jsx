@@ -239,6 +239,7 @@ export default function TranslationTab({
   const loadTableData = useCallback(async (tableId) => {
     try {
       setLoading(true);
+      setModifiedCells({}); // Clear highlights on table switch/reload
 
       if (isDemoMode) {
         const mockTable = mockDatabase[tableId];
@@ -367,7 +368,7 @@ export default function TranslationTab({
     } finally {
       setLoading(false);
     }
-  }, [isDemoMode, mockDatabase, tables]);
+  }, [isDemoMode, mockDatabase, tables, setModifiedCells]);
 
   // Load Fields and Records when selected table changes
   useEffect(() => {
@@ -2175,6 +2176,7 @@ export default function TranslationTab({
         console.warn('⚠️ 清理本地冗余表格缓存失败:', cleanErr.message);
       }
 
+      setModifiedCells({}); // Clear highlights after sync all
       setTables(tableMetaList);
       showStatus('success', `同步成功！已同步全部 ${tableMetaList.length} 个词条表，共计 ${totalSyncedCount} 条数据，并清理了已在飞书中删除的废弃表缓存。`);
     } catch (err) {
