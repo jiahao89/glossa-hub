@@ -62,28 +62,24 @@ export default function ComparisonTab() {
           timeoutPromise
         ]);
         
-        // Filter tables with numeric/version names (e.g. "3.1", "3.2", "v4.0")
-        const versionRegex = /^[vV]?\d+(\.\d+)?$/;
-        const filtered = allTables.filter(t => (t.name && versionRegex.test(t.name.trim())));
+        // Sort version tables by their version number (e.g. "3.2" or "C706码表多语言文案2.1")
+        const getVersionNum = (name) => {
+          const match = (name || '').match(/\d+(\.\d+)?/);
+          return match ? parseFloat(match[0]) : 0;
+        };
+        const sorted = [...allTables].sort((a, b) => getVersionNum(a.name) - getVersionNum(b.name));
         
-        // Sort version tables ascending
-        filtered.sort((a, b) => {
-          const numA = parseFloat(a.name.replace(/[vV]/g, ''));
-          const numB = parseFloat(b.name.replace(/[vV]/g, ''));
-          return numA - numB;
-        });
-
-        setTables(filtered);
+        setTables(sorted);
         setIsDemoMode(false);
         
-        if (filtered.length > 0) {
+        if (sorted.length > 0) {
           // Default Target Table to the latest version
-          setTargetTableId(filtered[filtered.length - 1].id);
+          setTargetTableId(sorted[sorted.length - 1].id);
           // Default Source Table to the predecessor version
-          if (filtered.length > 1) {
-            setSourceTableId(filtered[filtered.length - 2].id);
+          if (sorted.length > 1) {
+            setSourceTableId(sorted[sorted.length - 2].id);
           } else {
-            setSourceTableId(filtered[0].id);
+            setSourceTableId(sorted[0].id);
           }
         }
       } catch (err) {
