@@ -450,10 +450,6 @@ export default function TranslationTab({
             tableName,
             records: formattedRecords
           })
-        }).then(res => {
-          if (res.ok) {
-            console.log(`⚡ [SQLite] 表格【${tableName}】及其 ${formattedRecords.length} 条数据已自动同步到本地数据库`);
-          }
         }).catch(err => {
           console.warn('⚠️ 自动同步数据表到本地失败:', err.message);
         });
@@ -493,7 +489,6 @@ export default function TranslationTab({
         const triggerSilentSync = () => {
           if (timeoutId) clearTimeout(timeoutId);
           timeoutId = setTimeout(async () => {
-            console.log('🔄 Bitable data changed. Triggering silent background synchronization...');
             try {
               // Silently fetch and sync records
               const fieldMetaList = await table.getFieldMetaList();

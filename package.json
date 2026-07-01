@@ -21,12 +21,9 @@
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "concurrently": "^9.1.2",
     "oxlint": "^1.69.0",
-    "playwright": "^1.61.1",
     "vite": "^8.1.0"
   }
 }

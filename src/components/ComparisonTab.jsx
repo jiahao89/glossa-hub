@@ -400,7 +400,6 @@ export default function ComparisonTab() {
               isModified = true;
               // old is Baseline B, new is Subject A
               changes[lang] = { old: valB, new: valA };
-              console.log(`[Diff Detected] KW: "${itemA.KW}", Lang: "${lang}"\n  - Version B (Baseline): "${valB}"\n  - Version A (Comparison): "${valA}"`);
             }
           });
 
