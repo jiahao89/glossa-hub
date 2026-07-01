@@ -55,7 +55,7 @@ export default function ComparisonTab() {
         setLoading(true);
         // Create a timeout race to prevent hanging outside Feishu iframe
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('SDK 连接超时，可能未运行在飞书环境中')), 3500)
+          setTimeout(() => reject(new Error('SDK 连接超时，可能未运行在飞书环境中')), 1500)
         );
         const allTables = await Promise.race([
           bitable.base.getTableMetaList(),
@@ -92,13 +92,14 @@ export default function ComparisonTab() {
           if (res.ok) {
             const syncedTables = await res.json();
             if (syncedTables.length > 0) {
-              setTables(syncedTables);
-              setTargetTableId(syncedTables[syncedTables.length - 1].id);
-              if (syncedTables.length > 1) {
-                setSourceTableId(syncedTables[syncedTables.length - 2].id);
-              } else {
-                setSourceTableId(syncedTables[0].id);
-              }
+              const mockTables = [
+                { id: 'mock_3_1', name: '3.1 (演示)' },
+                { id: 'mock_3_2', name: '3.2 (演示)' }
+              ];
+              const allTables = [...syncedTables, ...mockTables];
+              setTables(allTables);
+              setSourceTableId('mock_3_1');
+              setTargetTableId('mock_3_2');
               setLoading(false);
               return;
             }

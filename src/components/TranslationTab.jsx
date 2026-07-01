@@ -233,9 +233,15 @@ export default function TranslationTab({
           if (res.ok) {
             const syncedTables = await res.json();
             if (syncedTables.length > 0) {
-              setTables(syncedTables);
+              // Also include mock demo tables as fallback
+              const mockTables = [
+                { id: 'tbl_3_1', name: '3.1 (演示)' },
+                { id: 'tbl_3_2', name: '3.2 (演示)' }
+              ];
+              const allTables = [...syncedTables, ...mockTables];
+              setTables(allTables);
               setSelectedTableId(syncedTables[0].id);
-              showStatus('success', `已载入本地历史同步数据 (${syncedTables.length} 个版本表)`);
+              showStatus('success', `已载入本地历史同步数据 (${syncedTables.length} 个版本表) + 演示数据`);
               setLoading(false);
               return;
             }
@@ -282,10 +288,53 @@ export default function TranslationTab({
     return allRecords;
   }, []);
 
+  const syncRecordsToSqlite = useCallback(async (tableId, recordsList) => {
+    if (isDemoMode) return;
+    try {
+      const activeTableMeta = tables.find(t => t.id === tableId);
+      const tableName = activeTableMeta ? activeTableMeta.name : 'Unknown';
+      
+      const formatted = recordsList.map(rec => {
+        const fields = {};
+        Object.keys(rec.fields).forEach(fId => {
+          const fName = _revFieldMap[fId] || fId;
+          let val = rec.fields[fId];
+          if (Array.isArray(val)) {
+            val = val.map(s => s.text || '').join('');
+          } else if (typeof val === 'object' && val !== null && val.text) {
+            val = val.text;
+          }
+          fields[fName] = val;
+        });
+
+        const localRec = records.find(r => r.recordId === rec.recordId);
+        const nowStr = new Date().toISOString();
+
+        return {
+          recordId: rec.recordId,
+          fields,
+          createdAt: rec.createdAt || localRec?.createdAt || nowStr,
+          updatedAt: rec.updatedAt || nowStr
+        };
+      });
+
+      await fetch('/api/sync-table', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableId,
+          tableName,
+          records: formatted
+        })
+      });
+    } catch (err) {
+      console.warn('⚠️ 实时同步到本地数据库失败:', err.message);
+    }
+  }, [isDemoMode, tables, _revFieldMap, records]);
+
   const loadTableData = useCallback(async (tableId) => {
     try {
       setLoading(true);
-      setModifiedCells({}); // Clear highlights on table switch/reload
 
       if (isDemoMode) {
         const mockTable = mockDatabaseRef.current[tableId];
@@ -382,11 +431,12 @@ export default function TranslationTab({
             fields[fName] = val;
           });
 
+          const localRec = enrichedRecords.find(r => r.recordId === rec.recordId);
           return {
             recordId: rec.recordId,
             fields,
-            createdAt: rec.createdAt || '',
-            updatedAt: rec.updatedAt || ''
+            createdAt: localRec?.createdAt || rec.createdAt || '',
+            updatedAt: localRec?.updatedAt || rec.updatedAt || ''
           };
         });
 
@@ -475,11 +525,12 @@ export default function TranslationTab({
                   fields[fName] = val;
                 });
 
+                const localRec = records.find(r => r.recordId === rec.recordId);
                 return {
                   recordId: rec.recordId,
                   fields,
-                  createdAt: rec.createdAt || '',
-                  updatedAt: rec.updatedAt || ''
+                  createdAt: localRec?.createdAt || rec.createdAt || '',
+                  updatedAt: localRec?.updatedAt || rec.updatedAt || ''
                 };
               });
 
@@ -629,6 +680,13 @@ export default function TranslationTab({
 
   // Open Edit Modal
   const handleRowDoubleClick = (record) => {
+    setModifiedCells(prev => {
+      if (!prev[record.recordId]) return prev;
+      const updated = { ...prev };
+      delete updated[record.recordId];
+      return updated;
+    });
+
     const data = {
       recordId: record.recordId,
       KW: getRecordValueByName(record, 'KW'),
@@ -803,17 +861,24 @@ export default function TranslationTab({
       });
 
       // Update local records state with new values & new updatedAt timestamp
+      const nowStr = new Date().toISOString();
+      let updatedRecObj = null;
       setRecords(prev => prev.map(rec => {
         if (rec.recordId === editModalRecord.recordId) {
           const newFields = { ...rec.fields, ...fieldsToUpdate };
-          return {
+          updatedRecObj = {
             ...rec,
             fields: newFields,
-            updatedAt: new Date().toISOString()
+            updatedAt: nowStr
           };
+          return updatedRecObj;
         }
         return rec;
       }));
+
+      if (updatedRecObj) {
+        await syncRecordsToSqlite(selectedTableId, [updatedRecObj]);
+      }
 
       // Update local highlights
       setModifiedCells(prev => ({
@@ -1139,6 +1204,15 @@ export default function TranslationTab({
 
       const newRecordId = await targetTable.addRecord({ fields: newFields });
       
+      const nowStr = new Date().toISOString();
+      const newRecObj = {
+        recordId: newRecordId,
+        fields: newFields,
+        createdAt: nowStr,
+        updatedAt: nowStr
+      };
+      await syncRecordsToSqlite(addTargetTableId, [newRecObj]);
+
       setModifiedCells(prev => ({
         ...prev,
         [newRecordId]: { ...addedLangs, isAdded: true }
@@ -1377,7 +1451,8 @@ export default function TranslationTab({
                   fields: {
                     ...rec.fields,
                     ...updateItem.fields
-                  }
+                  },
+                  updatedAt: new Date().toISOString()
                 };
               }
               return rec;
@@ -1403,7 +1478,8 @@ export default function TranslationTab({
                   fields: {
                     ...rec.fields,
                     ...updateItem.fields
-                  }
+                  },
+                  updatedAt: new Date().toISOString()
                 };
               }
               return rec;
@@ -1419,7 +1495,8 @@ export default function TranslationTab({
                 fields: {
                   ...rec.fields,
                   ...updateItem.fields
-                }
+                },
+                updatedAt: new Date().toISOString()
               };
             }
             return rec;
@@ -1463,6 +1540,18 @@ export default function TranslationTab({
         const chunk = recordsToUpdate.slice(i, i + chunkSize);
         await table.setRecords(chunk);
       }
+
+      // Sync to SQLite immediately
+      const nowStr = new Date().toISOString();
+      const updatedLocalRecords = recordsToUpdate.map(item => {
+        const localRec = records.find(r => r.recordId === item.recordId);
+        return {
+          recordId: item.recordId,
+          fields: { ...localRec?.fields, ...item.fields },
+          updatedAt: nowStr
+        };
+      });
+      await syncRecordsToSqlite(batchTargetTableId, updatedLocalRecords);
 
       setModifiedCells(updatedCellsDict);
       showStatus('success', `批量翻译写入成功！共回写 ${recordsToUpdate.length} 条记录。`);
@@ -1703,6 +1792,9 @@ export default function TranslationTab({
       
       const updatedCellsDict = { ...modifiedCells };
 
+      const addedRecordsForSync = [];
+      const nowStr = new Date().toISOString();
+
       for (let i = 0; i < completedRows.length; i++) {
         const row = completedRows[i];
         const fields = {};
@@ -1723,7 +1815,16 @@ export default function TranslationTab({
         const newRecordId = await table.addRecord({ fields });
         updatedCellsDict[newRecordId] = { ...addedLangs, isAdded: true };
         onAddLog('批量新增', row.KW, row.中文);
+
+        addedRecordsForSync.push({
+          recordId: newRecordId,
+          fields,
+          createdAt: nowStr,
+          updatedAt: nowStr
+        });
       }
+
+      await syncRecordsToSqlite(batchAddTargetTableId, addedRecordsForSync);
 
       setModifiedCells(updatedCellsDict);
       showStatus('success', `批量新增成功！共写入 ${completedRows.length} 条已翻译词条。`);
@@ -2218,7 +2319,6 @@ export default function TranslationTab({
       return;
     }
     
-    setLoading(true);
     showStatus('info', '正在开始从飞书同步所有词条数据表...');
     
     try {
@@ -2302,13 +2402,9 @@ export default function TranslationTab({
         console.warn('⚠️ 清理本地冗余表格缓存失败:', cleanErr.message);
       }
 
-      setModifiedCells({}); // Clear highlights after sync all
-      setTables(tableMetaList);
       showStatus('success', `同步成功！已同步全部 ${tableMetaList.length} 个词条表，共计 ${totalSyncedCount} 条数据，并清理了已在飞书中删除的废弃表缓存。`);
     } catch (err) {
       showStatus('danger', `同步失败: ${err.message}`);
-    } finally {
-      setLoading(false);
     }
   };
 

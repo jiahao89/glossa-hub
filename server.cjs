@@ -264,7 +264,7 @@ app.post('/api/sync-table', (req, res) => {
       const stmt = sqliteDb.prepare(`
         INSERT INTO records (recordId, tableId, kw, chinese, page, owner, translations, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(recordId) DO UPDATE SET
+        ON CONFLICT(recordId, tableId) DO UPDATE SET
           kw = excluded.kw,
           chinese = excluded.chinese,
           page = excluded.page,
