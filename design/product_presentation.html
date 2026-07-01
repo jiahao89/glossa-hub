@@ -132,8 +132,9 @@
       flex: 1;
       position: relative;
       width: 100%;
-      height: 100%;
       z-index: 5;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .slide {
@@ -950,9 +951,14 @@
 
     // Keyboard controls
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight' || e.key === ' ') {
+      // Avoid navigating if user is interacting with an input/textarea
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.code === 'Space' || e.code === 'ArrowRight' || e.key === 'PageDown') {
         nextSlide();
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === 'ArrowLeft' || e.code === 'ArrowLeft' || e.key === 'PageUp') {
         prevSlide();
       }
     });
