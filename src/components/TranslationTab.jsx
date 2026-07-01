@@ -574,57 +574,28 @@ export default function TranslationTab({
 
     if (sortBy === 'changeFirst') {
       return [...list].sort((a, b) => {
+        // 1. Session edits float to the top
         const isModA = modifiedCells[a.recordId] ? 1 : 0;
         const isModB = modifiedCells[b.recordId] ? 1 : 0;
         if (isModA !== isModB) {
           return isModB - isModA;
         }
 
-        const timeA = Math.max(
-          a.updatedAt ? new Date(a.updatedAt).getTime() : 0,
-          a.createdAt ? new Date(a.createdAt).getTime() : 0
-        );
-        const timeB = Math.max(
-          b.updatedAt ? new Date(b.updatedAt).getTime() : 0,
-          b.createdAt ? new Date(b.createdAt).getTime() : 0
-        );
-        if (timeA && timeB && timeA !== timeB) {
+        // 2. Parse timestamps and sort by latest updated/created time
+        const parseTime = (dateStr) => {
+          if (!dateStr) return 0;
+          const t = new Date(dateStr).getTime();
+          return isNaN(t) ? 0 : t;
+        };
+
+        const timeA = Math.max(parseTime(a.updatedAt), parseTime(a.createdAt));
+        const timeB = Math.max(parseTime(b.updatedAt), parseTime(b.createdAt));
+        
+        if (timeA !== timeB) {
           return timeB - timeA;
         }
 
-        const idxA = recordIndexMap[a.recordId] ?? 0;
-        const idxB = recordIndexMap[b.recordId] ?? 0;
-        return idxB - idxA;
-      });
-    }
-
-    if (sortBy === 'createdTime') {
-      return [...list].sort((a, b) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        if (timeA && timeB && timeA !== timeB) {
-          return timeB - timeA;
-        }
-        const idxA = recordIndexMap[a.recordId] ?? 0;
-        const idxB = recordIndexMap[b.recordId] ?? 0;
-        return idxB - idxA;
-      });
-    }
-
-    if (sortBy === 'modifiedTime') {
-      return [...list].sort((a, b) => {
-        const isModA = modifiedCells[a.recordId] ? 1 : 0;
-        const isModB = modifiedCells[b.recordId] ? 1 : 0;
-        if (isModA !== isModB) {
-          return isModB - isModA; // Session edits float to top
-        }
-
-        const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        if (timeA && timeB && timeA !== timeB) {
-          return timeB - timeA;
-        }
-
+        // 3. Fallback to natural Bitable index (index descending, since newer records are at the bottom of the table)
         const idxA = recordIndexMap[a.recordId] ?? 0;
         const idxB = recordIndexMap[b.recordId] ?? 0;
         return idxB - idxA;
@@ -2381,8 +2352,6 @@ export default function TranslationTab({
             >
               <option value="changeFirst">变更/新增优先</option>
               <option value="default">默认顺序</option>
-              <option value="createdTime">创建时间 (新→旧)</option>
-              <option value="modifiedTime">修改时间 (新→旧)</option>
             </select>
           </div>
         </div>

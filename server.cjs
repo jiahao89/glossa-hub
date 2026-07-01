@@ -260,17 +260,25 @@ app.post('/api/sync-table', (req, res) => {
         }
       });
 
-      // 2. 删除该表原有的所有词条数据
-      sqliteDb.run('DELETE FROM records WHERE tableId = ?', [tableId], (err) => {
-        if (err) {
-          console.error('⚠️ 清理旧 records 失败:', err.message);
-        }
-      });
-
-      // 3. 批量插入新词条
+      // 2. Prepare the UPSERT statement to preserve original timestamps
       const stmt = sqliteDb.prepare(`
-        INSERT OR REPLACE INTO records (recordId, tableId, kw, chinese, page, owner, translations, createdAt, updatedAt)
+        INSERT INTO records (recordId, tableId, kw, chinese, page, owner, translations, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(recordId) DO UPDATE SET
+          kw = excluded.kw,
+          chinese = excluded.chinese,
+          page = excluded.page,
+          owner = excluded.owner,
+          translations = excluded.translations,
+          updatedAt = CASE 
+            WHEN kw IS NOT excluded.kw 
+                 OR chinese IS NOT excluded.chinese 
+                 OR page IS NOT excluded.page 
+                 OR owner IS NOT excluded.owner 
+                 OR translations IS NOT excluded.translations 
+            THEN excluded.updatedAt 
+            ELSE records.updatedAt 
+          END
       `);
       
       const nowStr = new Date().toISOString();
@@ -283,19 +291,16 @@ app.post('/api/sync-table', (req, res) => {
 
         // Extract translation fields - collect both canonical and legacy keys
         const rawTranslations = {};
-        // First, collect all canonical keys
         TARGET_LANGUAGES.forEach(lang => {
           if (fields[lang] !== undefined) {
             rawTranslations[lang] = fields[lang];
           }
         });
-        // Then, collect any legacy keys present
         Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
           if (fields[legacyKey] !== undefined) {
             rawTranslations[legacyKey] = fields[legacyKey];
           }
         });
-        // Normalize all keys to canonical format
         const translations = normalizeTranslations(rawTranslations);
 
         const created = rec.createdAt || nowStr;
@@ -318,7 +323,25 @@ app.post('/api/sync-table', (req, res) => {
         if (err) {
           return res.status(500).json({ error: `批量同步 records 失败: ${err.message}` });
         }
-        res.json({ message: `同步成功！共同步 ${records.length} 条词条。` });
+        
+        // 3. 删除在当前版本表内已经不复存在的被删除词条
+        if (records.length > 0) {
+          const placeholders = records.map(() => '?').join(',');
+          const deleteParams = [tableId, ...records.map(r => r.recordId)];
+          sqliteDb.run(`DELETE FROM records WHERE tableId = ? AND recordId NOT IN (${placeholders})`, deleteParams, (delErr) => {
+            if (delErr) {
+              console.error('⚠️ 清理已删除 records 失败:', delErr.message);
+            }
+            res.json({ message: `同步成功！共同步 ${records.length} 条词条。` });
+          });
+        } else {
+          sqliteDb.run('DELETE FROM records WHERE tableId = ?', [tableId], (delErr) => {
+            if (delErr) {
+              console.error('⚠️ 清理已删除 records 失败:', delErr.message);
+            }
+            res.json({ message: '同步成功！已清空本表数据。' });
+          });
+        }
       });
     });
   } else {
