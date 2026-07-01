@@ -518,17 +518,18 @@ export default function TranslationTab({
     }
   };
 
+  // Helper to resolve field ID by Name using exact and fuzzy normalized matching
+  const getFieldIdByName = useCallback((name) => {
+    if (fieldMap[name]) return fieldMap[name];
+    const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
+    const normName = normalize(name);
+    const foundKey = Object.keys(fieldMap).find(k => normalize(k) === normName);
+    return foundKey ? fieldMap[foundKey] : null;
+  }, [fieldMap]);
+
   // Helpers to get field value by Name
   const getRecordValueByName = useCallback((record, fieldName) => {
-    const getFieldId = (name) => {
-      if (fieldMap[name]) return fieldMap[name];
-      const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
-      const normName = normalize(name);
-      const foundKey = Object.keys(fieldMap).find(k => normalize(k) === normName);
-      return foundKey ? fieldMap[foundKey] : null;
-    };
-
-    const fId = getFieldId(fieldName);
+    const fId = getFieldIdByName(fieldName);
     if (!fId) return '';
     const cell = record.fields[fId];
     if (!cell) return '';
@@ -538,7 +539,7 @@ export default function TranslationTab({
     }
     if (typeof cell === 'object' && cell.text) return cell.text;
     return String(cell);
-  }, [fieldMap]);
+  }, [getFieldIdByName]);
 
   // Get index maps for fast lookup
   const recordIndexMap = useMemo(() => {
@@ -662,20 +663,7 @@ export default function TranslationTab({
         }
       });
 
-      const getFieldId = (possibleNames) => {
-        // Try exact match first
-        for (const name of possibleNames) {
-          if (fieldMap[name]) return fieldMap[name];
-        }
-        // Try normalized match (remove spaces, normalize parentheses)
-        const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
-        for (const name of possibleNames) {
-          const normName = normalize(name);
-          const foundKey = Object.keys(fieldMap).find(k => normalize(k) === normName);
-          if (foundKey) return fieldMap[foundKey];
-        }
-        return null;
-      };
+
 
       if (isDemoMode) {
         setMockDatabase(prev => {
@@ -689,10 +677,10 @@ export default function TranslationTab({
                   updatedFields[fId] = editModalRecord.translations[lang] || '';
                 }
               });
-              const kwId = getFieldId(['KW', 'kw', '词条ID']);
-              const cnId = getFieldId(['CN（中文）', '中文', 'CN(中文)']);
-              const pageId = getFieldId(['所在页面', '页面']);
-              const categoryId = getFieldId(['字号类别', '类别', '负责人']);
+              const kwId = getFieldIdByName('KW');
+              const cnId = getFieldIdByName('CN（中文）');
+              const pageId = getFieldIdByName('所在页面');
+              const categoryId = getFieldIdByName('字号类别');
 
               if (kwId) updatedFields[kwId] = editModalRecord.KW;
               if (cnId) updatedFields[cnId] = editModalRecord.中文;
@@ -725,10 +713,10 @@ export default function TranslationTab({
                 updatedFields[fId] = editModalRecord.translations[lang] || '';
               }
             });
-            const kwId = getFieldId(['KW', 'kw', '词条ID']);
-            const cnId = getFieldId(['CN（中文）', '中文', 'CN(中文)']);
-            const pageId = getFieldId(['所在页面', '页面']);
-            const categoryId = getFieldId(['字号类别', '类别', '负责人']);
+            const kwId = getFieldIdByName('KW');
+            const cnId = getFieldIdByName('CN（中文）');
+            const pageId = getFieldIdByName('所在页面');
+            const categoryId = getFieldIdByName('字号类别');
 
             if (kwId) updatedFields[kwId] = editModalRecord.KW;
             if (cnId) updatedFields[cnId] = editModalRecord.中文;
@@ -761,10 +749,10 @@ export default function TranslationTab({
       const table = await bitable.base.getTableById(selectedTableId);
       const fieldsToUpdate = {};
       
-      const kwId = getFieldId(['KW', 'kw', '词条ID']);
-      const cnId = getFieldId(['CN（中文）', '中文', 'CN(中文)']);
-      const pageId = getFieldId(['所在页面', '页面']);
-      const categoryId = getFieldId(['字号类别', '类别', '负责人']);
+      const kwId = getFieldIdByName('KW');
+      const cnId = getFieldIdByName('CN（中文）');
+      const pageId = getFieldIdByName('所在页面');
+      const categoryId = getFieldIdByName('字号类别');
 
       if (kwId) fieldsToUpdate[kwId] = editModalRecord.KW;
       if (cnId) fieldsToUpdate[cnId] = editModalRecord.中文;
@@ -1873,10 +1861,16 @@ export default function TranslationTab({
         const rows = parsedRows.slice(1);
 
         // Map column indexes
-        const kwIdx = headers.findIndex(h => h.trim() === 'KW');
-        const zhIdx = headers.findIndex(h => h.trim() === 'CN（中文）' || h.trim() === '中文');
-        const pageIdx = headers.findIndex(h => h.trim() === '词条所在界面（注意是界面不是模块！！）' || h.trim() === '所在页面');
-        const ownerIdx = headers.findIndex(h => h.trim() === '字号类别' || h.trim() === '负责人');
+        const findHeaderIndex = (possibleNames) => {
+          const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
+          const normalizedPossibles = possibleNames.map(p => normalize(p));
+          return headers.findIndex(h => normalizedPossibles.includes(normalize(h)));
+        };
+
+        const kwIdx = findHeaderIndex(['KW', 'KW (Key)', 'KW(Key)', 'KW（Key）', 'kw']);
+        const zhIdx = findHeaderIndex(['CN（中文）', '中文', 'CN(中文)', 'CN (中文)', 'zh']);
+        const pageIdx = findHeaderIndex(['所在页面', '页面', '词条所在界面（注意是界面不是模块！！）']);
+        const ownerIdx = findHeaderIndex(['字号类别', '字号', '类别', '负责人']);
 
         if (kwIdx === -1 || zhIdx === -1) {
           alert('CSV 结构非法：必须包含 "KW" 和 "CN（中文）" 列！');
@@ -1895,10 +1889,15 @@ export default function TranslationTab({
             if (!kw || !zh) return;
 
             const fields = {};
-            fields[fieldMap['KW']] = kw;
-            fields[fieldMap['CN（中文）']] = zh;
-            if (pageIdx !== -1) fields[fieldMap['所在页面']] = row[pageIdx] || '';
-            if (ownerIdx !== -1) fields[fieldMap['字号类别']] = row[ownerIdx] || '';
+            const kwId = getFieldIdByName('KW');
+            const cnId = getFieldIdByName('CN（中文）');
+            const pageId = getFieldIdByName('所在页面');
+            const categoryId = getFieldIdByName('字号类别');
+
+            if (kwId) fields[kwId] = kw;
+            if (cnId) fields[cnId] = zh;
+            if (pageId && pageIdx !== -1) fields[pageId] = row[pageIdx] || '';
+            if (categoryId && ownerIdx !== -1) fields[categoryId] = row[ownerIdx] || '';
 
             TARGET_LANGUAGES.forEach(lang => {
               const fieldId = fieldMap[lang];
@@ -1910,7 +1909,8 @@ export default function TranslationTab({
               }
             });
 
-            const existingIdx = updatedRecords.findIndex(r => r.fields[fieldMap['KW']] === kw);
+            const kwIdVal = getFieldIdByName('KW');
+            const existingIdx = updatedRecords.findIndex(r => r.fields[kwIdVal] === kw);
             if (existingIdx !== -1) {
               const existingRecordObj = updatedRecords[existingIdx];
               TARGET_LANGUAGES.forEach(lang => {
@@ -1983,10 +1983,15 @@ export default function TranslationTab({
           if (!kw || !zh) return;
 
           const fields = {};
-          if (fieldMap['KW']) fields[fieldMap['KW']] = kw;
-          if (fieldMap['CN（中文）']) fields[fieldMap['CN（中文）']] = zh;
-          if (pageIdx !== -1 && fieldMap['所在页面']) fields[fieldMap['所在页面']] = row[pageIdx] || '';
-          if (ownerIdx !== -1 && fieldMap['字号类别']) fields[fieldMap['字号类别']] = row[ownerIdx] || '';
+          const kwId = getFieldIdByName('KW');
+          const cnId = getFieldIdByName('CN（中文）');
+          const pageId = getFieldIdByName('所在页面');
+          const categoryId = getFieldIdByName('字号类别');
+
+          if (kwId) fields[kwId] = kw;
+          if (cnId) fields[cnId] = zh;
+          if (pageId && pageIdx !== -1) fields[pageId] = row[pageIdx] || '';
+          if (categoryId && ownerIdx !== -1) fields[categoryId] = row[ownerIdx] || '';
 
           TARGET_LANGUAGES.forEach(lang => {
             const fieldId = fieldMap[lang];
