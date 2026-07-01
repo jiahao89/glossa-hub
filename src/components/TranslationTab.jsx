@@ -184,6 +184,28 @@ export default function TranslationTab({
   // File Input Ref
   const fileInputRef = useRef(null);
 
+  // Sync mock database state to ref to avoid dependency render loops
+  const mockDatabaseRef = useRef(mockDatabase);
+  useEffect(() => {
+    mockDatabaseRef.current = mockDatabase;
+  }, [mockDatabase]);
+
+  // Sync offline modifications directly to SQLite backend database
+  const saveOfflineRecords = useCallback(async (tableId, recordsList) => {
+    if (tableId === 'tbl_3_1' || tableId === 'tbl_3_2') return;
+    try {
+      const activeTableMeta = tables.find(t => t.id === tableId);
+      const tableName = activeTableMeta ? activeTableMeta.name : 'Unknown';
+      await fetch('/api/sync-table', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableId, tableName, records: recordsList })
+      });
+    } catch (err) {
+      console.warn('⚠️ 无法同步离线修改到本地 SQLite:', err.message);
+    }
+  }, [tables]);
+
   // Load Bitable Tables
   useEffect(() => {
     async function loadTables() {
@@ -266,7 +288,7 @@ export default function TranslationTab({
       setModifiedCells({}); // Clear highlights on table switch/reload
 
       if (isDemoMode) {
-        const mockTable = mockDatabase[tableId];
+        const mockTable = mockDatabaseRef.current[tableId];
         if (mockTable) {
           const fMap = {};
           const revFMap = {};
@@ -393,7 +415,7 @@ export default function TranslationTab({
     } finally {
       setLoading(false);
     }
-  }, [isDemoMode, mockDatabase, tables, setModifiedCells, mergeTimestamps]);
+  }, [isDemoMode, tables, setModifiedCells, mergeTimestamps]);
 
   // Load Fields and Records when selected table changes
   useEffect(() => {
@@ -666,9 +688,49 @@ export default function TranslationTab({
 
 
       if (isDemoMode) {
-        setMockDatabase(prev => {
-          const currentTable = prev[selectedTableId];
-          const updatedRecords = currentTable.records.map(rec => {
+        if (mockDatabaseRef.current[selectedTableId]) {
+          setMockDatabase(prev => {
+            const currentTable = prev[selectedTableId];
+            const updatedRecords = currentTable.records.map(rec => {
+              if (rec.recordId === editModalRecord.recordId) {
+                const updatedFields = { ...rec.fields };
+                TARGET_LANGUAGES.forEach(lang => {
+                  const fId = fieldMap[lang];
+                  if (fId) {
+                    updatedFields[fId] = editModalRecord.translations[lang] || '';
+                  }
+                });
+                const kwId = getFieldIdByName('KW');
+                const cnId = getFieldIdByName('CN（中文）');
+                const pageId = getFieldIdByName('所在页面');
+                const categoryId = getFieldIdByName('字号类别');
+
+                if (kwId) updatedFields[kwId] = editModalRecord.KW;
+                if (cnId) updatedFields[cnId] = editModalRecord.中文;
+                if (pageId) updatedFields[pageId] = editModalRecord.所在页面;
+                if (categoryId) updatedFields[categoryId] = editModalRecord.字号类别;
+                
+                return { 
+                  ...rec, 
+                  fields: updatedFields,
+                  updatedAt: new Date().toISOString()
+                };
+              }
+              return rec;
+            });
+            return {
+              ...prev,
+              [selectedTableId]: {
+                ...currentTable,
+                records: updatedRecords
+              }
+            };
+          });
+        }
+
+        let updatedRecordsList = [];
+        setRecords(prev => {
+          updatedRecordsList = prev.map(rec => {
             if (rec.recordId === editModalRecord.recordId) {
               const updatedFields = { ...rec.fields };
               TARGET_LANGUAGES.forEach(lang => {
@@ -695,42 +757,11 @@ export default function TranslationTab({
             }
             return rec;
           });
-          return {
-            ...prev,
-            [selectedTableId]: {
-              ...currentTable,
-              records: updatedRecords
-            }
-          };
+          return updatedRecordsList;
         });
 
-        setRecords(prev => prev.map(rec => {
-          if (rec.recordId === editModalRecord.recordId) {
-            const updatedFields = { ...rec.fields };
-            TARGET_LANGUAGES.forEach(lang => {
-              const fId = fieldMap[lang];
-              if (fId) {
-                updatedFields[fId] = editModalRecord.translations[lang] || '';
-              }
-            });
-            const kwId = getFieldIdByName('KW');
-            const cnId = getFieldIdByName('CN（中文）');
-            const pageId = getFieldIdByName('所在页面');
-            const categoryId = getFieldIdByName('字号类别');
-
-            if (kwId) updatedFields[kwId] = editModalRecord.KW;
-            if (cnId) updatedFields[cnId] = editModalRecord.中文;
-            if (pageId) updatedFields[pageId] = editModalRecord.所在页面;
-            if (categoryId) updatedFields[categoryId] = editModalRecord.字号类别;
-            
-            return { 
-              ...rec, 
-              fields: updatedFields,
-              updatedAt: new Date().toISOString()
-            };
-          }
-          return rec;
-        }));
+        // Sync changes to SQLite in background
+        saveOfflineRecords(selectedTableId, updatedRecordsList);
 
         logsList.forEach(log => {
           onAddLog('修改翻译 (离线)', editModalRecord.KW, editModalRecord.中文, `【${log.lang}】从 "${log.oldVal || '空'}" 修改为 "${log.newVal}"`);
@@ -1050,20 +1081,30 @@ export default function TranslationTab({
           updatedAt: new Date().toISOString()
         };
 
-        setMockDatabase(prev => {
-          const targetTable = prev[addTargetTableId];
-          return {
-            ...prev,
-            [addTargetTableId]: {
-              ...targetTable,
-              records: [...(targetTable?.records || []), newRecObj]
-            }
-          };
-        });
-
-        if (addTargetTableId === selectedTableId) {
-          setRecords(prev => [...prev, newRecObj]);
+        if (mockDatabaseRef.current[addTargetTableId]) {
+          setMockDatabase(prev => {
+            const targetTable = prev[addTargetTableId];
+            return {
+              ...prev,
+              [addTargetTableId]: {
+                ...targetTable,
+                records: [...(targetTable?.records || []), newRecObj]
+              }
+            };
+          });
         }
+
+        let updatedRecordsList = [];
+        if (addTargetTableId === selectedTableId) {
+          setRecords(prev => {
+            updatedRecordsList = [...prev, newRecObj];
+            return updatedRecordsList;
+          });
+        } else {
+          updatedRecordsList = [...(mockDatabaseRef.current[addTargetTableId]?.records || []), newRecObj];
+        }
+
+        saveOfflineRecords(addTargetTableId, updatedRecordsList);
 
         onAddLog('新增词条 (离线)', newTerm.KW, newTerm.中文);
         setModifiedCells(prev => ({
@@ -1326,9 +1367,52 @@ export default function TranslationTab({
       });
 
       if (isDemoMode) {
-        setMockDatabase(prev => {
-          const currentTable = prev[batchTargetTableId];
-          const updatedRecords = (currentTable?.records || []).map(rec => {
+        if (mockDatabaseRef.current[batchTargetTableId]) {
+          setMockDatabase(prev => {
+            const currentTable = prev[batchTargetTableId];
+            const updatedRecords = (currentTable?.records || []).map(rec => {
+              const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
+              if (updateItem) {
+                return {
+                  ...rec,
+                  fields: {
+                    ...rec.fields,
+                    ...updateItem.fields
+                  }
+                };
+              }
+              return rec;
+            });
+            return {
+              ...prev,
+              [batchTargetTableId]: {
+                ...currentTable,
+                records: updatedRecords
+              }
+            };
+          });
+        }
+
+        let updatedRecordsList = [];
+        if (batchTargetTableId === selectedTableId) {
+          setRecords(prev => {
+            updatedRecordsList = prev.map(rec => {
+              const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
+              if (updateItem) {
+                return {
+                  ...rec,
+                  fields: {
+                    ...rec.fields,
+                    ...updateItem.fields
+                  }
+                };
+              }
+              return rec;
+            });
+            return updatedRecordsList;
+          });
+        } else {
+          updatedRecordsList = (mockDatabaseRef.current[batchTargetTableId]?.records || []).map(rec => {
             const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
             if (updateItem) {
               return {
@@ -1341,30 +1425,9 @@ export default function TranslationTab({
             }
             return rec;
           });
-          return {
-            ...prev,
-            [batchTargetTableId]: {
-              ...currentTable,
-              records: updatedRecords
-            }
-          };
-        });
-
-        if (batchTargetTableId === selectedTableId) {
-          setRecords(prev => prev.map(rec => {
-            const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
-            if (updateItem) {
-              return {
-                ...rec,
-                fields: {
-                  ...rec.fields,
-                  ...updateItem.fields
-                }
-              };
-            }
-            return rec;
-          }));
         }
+
+        saveOfflineRecords(batchTargetTableId, updatedRecordsList);
 
         batchPreviewList.forEach(item => {
           const transCount = Object.keys(item.translations).length;
@@ -1595,20 +1658,30 @@ export default function TranslationTab({
           };
         });
 
-        setMockDatabase(prev => {
-          const currentTable = prev[batchAddTargetTableId];
-          return {
-            ...prev,
-            [batchAddTargetTableId]: {
-              ...currentTable,
-              records: [...(currentTable?.records || []), ...newMockRecords]
-            }
-          };
-        });
-
-        if (batchAddTargetTableId === selectedTableId) {
-          setRecords(prev => [...prev, ...newMockRecords]);
+        if (mockDatabaseRef.current[batchAddTargetTableId]) {
+          setMockDatabase(prev => {
+            const currentTable = prev[batchAddTargetTableId];
+            return {
+              ...prev,
+              [batchAddTargetTableId]: {
+                ...currentTable,
+                records: [...(currentTable?.records || []), ...newMockRecords]
+              }
+            };
+          });
         }
+
+        let updatedRecordsList = [];
+        if (batchAddTargetTableId === selectedTableId) {
+          setRecords(prev => {
+            updatedRecordsList = [...prev, ...newMockRecords];
+            return updatedRecordsList;
+          });
+        } else {
+          updatedRecordsList = [...(mockDatabaseRef.current[batchAddTargetTableId]?.records || []), ...newMockRecords];
+        }
+
+        saveOfflineRecords(batchAddTargetTableId, updatedRecordsList);
 
         const updatedCellsDict = { ...modifiedCells };
         newMockRecords.forEach((rec, idx) => {
@@ -1717,19 +1790,28 @@ export default function TranslationTab({
       const idsToDelete = Array.from(selectedRecordIds);
 
       if (isDemoMode) {
-        setMockDatabase(prev => {
-          const currentTable = prev[selectedTableId];
-          const updatedRecords = (currentTable?.records || []).filter(rec => !selectedRecordIds.has(rec.recordId));
-          return {
-            ...prev,
-            [selectedTableId]: {
-              ...currentTable,
-              records: updatedRecords
-            }
-          };
-        });
+        if (mockDatabaseRef.current[selectedTableId]) {
+          setMockDatabase(prev => {
+            const currentTable = prev[selectedTableId];
+            const updatedRecords = (currentTable?.records || []).filter(rec => !selectedRecordIds.has(rec.recordId));
+            return {
+              ...prev,
+              [selectedTableId]: {
+                ...currentTable,
+                records: updatedRecords
+              }
+            };
+          });
+        }
 
-        setRecords(prev => prev.filter(rec => !selectedRecordIds.has(rec.recordId)));
+        let updatedRecordsList = [];
+        setRecords(prev => {
+          updatedRecordsList = prev.filter(rec => !selectedRecordIds.has(rec.recordId));
+          return updatedRecordsList;
+        });
+        
+        // Sync deletions to SQLite in background
+        saveOfflineRecords(selectedTableId, updatedRecordsList);
         
         idsToDelete.forEach(id => {
           onAddLog('删除词条 (离线)', `ID: ${id}`, '无');
@@ -1786,19 +1868,28 @@ export default function TranslationTab({
 
       if (isDemoMode) {
         // Offline Mock mode
-        setMockDatabase(prev => {
-          const currentTable = prev[selectedTableId];
-          const updatedRecords = (currentTable?.records || []).filter(rec => !idsToDelete.includes(rec.recordId));
-          return {
-            ...prev,
-            [selectedTableId]: {
-              ...currentTable,
-              records: updatedRecords
-            }
-          };
+        if (mockDatabaseRef.current[selectedTableId]) {
+          setMockDatabase(prev => {
+            const currentTable = prev[selectedTableId];
+            const updatedRecords = (currentTable?.records || []).filter(rec => !idsToDelete.includes(rec.recordId));
+            return {
+              ...prev,
+              [selectedTableId]: {
+                ...currentTable,
+                records: updatedRecords
+              }
+            };
+          });
+        }
+
+        let updatedRecordsList = [];
+        setRecords(prev => {
+          updatedRecordsList = prev.filter(rec => !idsToDelete.includes(rec.recordId));
+          return updatedRecordsList;
         });
 
-        setRecords(prev => prev.filter(rec => !idsToDelete.includes(rec.recordId)));
+        // Sync cleanup to SQLite in background
+        saveOfflineRecords(selectedTableId, updatedRecordsList);
 
         setSelectedRecordIds(prev => {
           const updated = new Set(prev);
@@ -1946,14 +2037,19 @@ export default function TranslationTab({
             }
           });
 
-          setMockDatabase(prev => ({
-            ...prev,
-            [selectedTableId]: {
-              ...prev[selectedTableId],
-              records: updatedRecords
-            }
-          }));
+          if (mockDatabaseRef.current[selectedTableId]) {
+            setMockDatabase(prev => ({
+              ...prev,
+              [selectedTableId]: {
+                ...prev[selectedTableId],
+                records: updatedRecords
+              }
+            }));
+          }
           setRecords(updatedRecords);
+          
+          // Sync imported CSV data to SQLite in background
+          saveOfflineRecords(selectedTableId, updatedRecords);
           setModifiedCells(updatedCellsDict);
 
           onAddLog('导入 CSV (离线)', '', '', `更新了 ${localUpdateCount} 条，新增了 ${localAddCount} 条词条`);
