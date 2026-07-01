@@ -584,9 +584,8 @@ export default function TranslationTab({
       if (!matchesSearch) return false;
       
       if (filterUntranslated) {
-        // Find if at least one visible language is empty
-        const langsToCheck = visibleLanguages.length > 0 ? visibleLanguages : TARGET_LANGUAGES;
-        return langsToCheck.some(lang => {
+        // 只要中文之外的任一目标语种为空，就属于“未翻译完”
+        return TARGET_LANGUAGES.some(lang => {
           const val = getRecordValueByName(rec, lang);
           return !val || val.trim() === '';
         });
