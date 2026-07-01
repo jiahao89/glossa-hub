@@ -149,6 +149,7 @@
       padding: 2rem 6rem;
       opacity: 0;
       visibility: hidden;
+      pointer-events: none; /* Block clicks on inactive slides */
       transform: scale(0.98) translateY(10px);
       transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
                   transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
@@ -158,6 +159,7 @@
     .slide.active {
       opacity: 1;
       visibility: visible;
+      pointer-events: auto; /* Enable clicks only on the active slide */
       transform: scale(1) translateY(0);
     }
 
