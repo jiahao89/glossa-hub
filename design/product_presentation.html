@@ -148,17 +148,14 @@
       justify-content: center;
       padding: 2rem 6rem;
       opacity: 0;
-      visibility: hidden;
       pointer-events: none; /* Block clicks on inactive slides */
       transform: scale(0.98) translateY(10px);
       transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
-                  transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
-                  visibility 0.6s;
+                  transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .slide.active {
       opacity: 1;
-      visibility: visible;
       pointer-events: auto; /* Enable clicks only on the active slide */
       transform: scale(1) translateY(0);
     }
@@ -916,6 +913,13 @@
 
   <!-- Script for interactivity and simulation -->
   <script>
+    // Global Error Logger for diagnostics
+    window.onerror = function(message, source, lineno, colno, error) {
+      alert("⚠️ JavaScript Error:\n" + message + "\nLine: " + lineno + "\nCol: " + colno);
+      return false;
+    };
+    console.log("GlossaHub slide script loaded successfully");
+
     // 1. Slide Navigation Logic
     let currentSlide = 1;
     const totalSlides = 7;
