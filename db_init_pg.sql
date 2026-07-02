@@ -160,3 +160,10 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- 15. Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_pg_versions_project_id ON versions(project_id);
+CREATE INDEX IF NOT EXISTS idx_pg_terms_version_id ON terms(version_id);
+CREATE INDEX IF NOT EXISTS idx_pg_logs_user_id ON logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_pg_languages_project_id ON languages(project_id);
+CREATE INDEX IF NOT EXISTS idx_pg_glossary_terms_table_id ON glossary_terms(table_id);

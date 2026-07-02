@@ -61,6 +61,22 @@ function verifyPassword(plain, hash) {
   return bcrypt.compareSync(plain, hash);
 }
 
+// 创建关键索引以加速常用查询
+function ensureIndexes() {
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_versions_project_id ON versions(project_id)',
+    'CREATE INDEX IF NOT EXISTS idx_terms_version_id ON terms(version_id)',
+    'CREATE INDEX IF NOT EXISTS idx_logs_v2_user_id ON logs_v2(user_id)',
+    'CREATE INDEX IF NOT EXISTS idx_languages_project_id ON languages(project_id)',
+    'CREATE INDEX IF NOT EXISTS idx_glossary_terms_table_id ON glossary_terms(table_id)'
+  ];
+  if (dbType === 'sqlite') {
+    indexes.forEach(idx => sqliteDb.run(idx));
+    console.log('⚡ SQLite 索引已就绪');
+  }
+  // PostgreSQL 索引在 db_init_pg.sql 中定义
+}
+
 // ----------------------------------------------------
 // Database Initialization & Dual Driver
 // ----------------------------------------------------
@@ -1137,6 +1153,7 @@ app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, asyn
 });
 
 // 18. GET /api/dashboard/stats - 获取看版数据统计 (Approved Spec)
+// 优化: 使用 for...of 替代 forEach，减少函数创建开销；注释标注优化方向
 app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
   try {
     const languages = await db.query(
@@ -1155,63 +1172,41 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
 
     const versionCount = versions.length;
     const termCount = terms.length;
-
-    let totalCells = termCount * langCount;
+    const totalCells = termCount * langCount;
     let filledCells = 0;
     let fullyTranslatedCount = 0;
 
     const versionStatsMap = {};
     versions.forEach(v => {
-      versionStatsMap[v.id] = {
-        id: v.id,
-        name: v.version_name,
-        totalTerms: 0,
-        filledCells: 0,
-        fullyTranslatedTerms: 0
-      };
+      versionStatsMap[v.id] = { id: v.id, name: v.version_name, totalTerms: 0, filledCells: 0, fullyTranslatedTerms: 0 };
     });
 
-    terms.forEach(t => {
+    // 单次遍历聚合
+    for (const t of terms) {
       let trans = {};
-      try {
-        trans = JSON.parse(t.translations || '{}');
-      } catch {
-        trans = {};
-      }
+      try { trans = JSON.parse(t.translations || '{}'); } catch { trans = {}; }
 
       let termFilledCount = 0;
-      langNames.forEach(lang => {
+      for (const lang of langNames) {
         const val = trans[lang];
-        if (val && val.toString().trim() !== '') {
-          filledCells++;
-          termFilledCount++;
-        }
-      });
-
-      if (termFilledCount === langNames.length && langNames.length > 0) {
-        fullyTranslatedCount++;
+        if (val && val.toString().trim() !== '') { filledCells++; termFilledCount++; }
       }
+
+      const isFull = termFilledCount === langCount && langCount > 0;
+      if (isFull) fullyTranslatedCount++;
 
       const vStat = versionStatsMap[t.version_id];
       if (vStat) {
         vStat.totalTerms++;
         vStat.filledCells += termFilledCount;
-        if (termFilledCount === langNames.length && langNames.length > 0) {
-          vStat.fullyTranslatedTerms++;
-        }
+        if (isFull) vStat.fullyTranslatedTerms++;
       }
-    });
+    }
 
     const tableProgress = Object.values(versionStatsMap).map(vStat => {
       const vTotalCells = vStat.totalTerms * langCount;
       const progress = vTotalCells > 0 ? Math.round((vStat.filledCells / vTotalCells) * 100) : 0;
-      return {
-        id: vStat.id,
-        name: vStat.name,
-        totalTerms: vStat.totalTerms,
-        fullyTranslatedTerms: vStat.fullyTranslatedTerms,
-        progress
-      };
+      return { id: vStat.id, name: vStat.name, totalTerms: vStat.totalTerms, fullyTranslatedTerms: vStat.fullyTranslatedTerms, progress };
     });
 
     const globalCoverage = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
@@ -1401,6 +1396,7 @@ app.delete('/api/glossary-tables/:tableId/terms/:termId', authenticateToken, asy
 
 // Start Server
 initDatabase().then(() => {
+  ensureIndexes();
   app.listen(PORT, () => {
     console.log(`🌐 GlossaHub 协同数据日志服务已启动，监听端口: ${PORT}`);
     console.log(`📡 数据库引擎: [${dbType.toUpperCase()}]`);
