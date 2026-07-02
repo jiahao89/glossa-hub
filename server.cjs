@@ -10,12 +10,16 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = 3001;
 
-// JWT_SECRET: 必须通过环境变量设置，不再使用硬编码兜底值
+// JWT_SECRET: 生产环境必须通过环境变量设置；开发环境给默认值但打警告
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  console.error('❌ 必须设置 JWT_SECRET 环境变量！例如: JWT_SECRET=your-secret node server.cjs');
-  process.exit(1);
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ 生产环境必须设置 JWT_SECRET 环境变量！');
+    process.exit(1);
+  }
+  console.warn('⚠️  警告: 未设置 JWT_SECRET，使用开发默认值。生产环境务必设置 JWT_SECRET 环境变量！');
 }
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'glossahub-dev-secret-do-not-use-in-prod';
 
 // CORS 白名单限制
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
@@ -357,7 +361,7 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ error: '未登录或登录已过期，请重新登录。' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, EFFECTIVE_JWT_SECRET, (err, user) => {
     if (err) {
       return res.status(403).json({ error: '无访问权限或登录已过期，请重新登录。' });
     }
@@ -402,7 +406,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role, name: user.name },
-      JWT_SECRET,
+      EFFECTIVE_JWT_SECRET,
       { expiresIn: '7d' }
     );
 
