@@ -235,7 +235,7 @@ export default function TranslationTab({
     try {
       const activeTableMeta = tables.find(t => t.id === tableId);
       const tableName = activeTableMeta ? activeTableMeta.name : 'Unknown';
-      await fetch('/api/sync-table', {
+      await apiFetch('/api/sync-table', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tableId, tableName, records: recordsList })
@@ -250,7 +250,7 @@ export default function TranslationTab({
     async function loadTables() {
       try {
         setLoading(true);
-        const res = await fetch('/api/tables');
+        const res = await apiFetch('/api/tables');
         if (res.ok) {
           const syncedTables = await res.json();
           if (syncedTables.length > 0) {
@@ -275,7 +275,7 @@ export default function TranslationTab({
 
   const mergeTimestamps = useCallback(async (allRecords, tableId) => {
     try {
-      const res = await fetch(`/api/tables/${tableId}/records`);
+      const res = await apiFetch(`/api/tables/${tableId}/records`);
       if (res.ok) {
         const dbRecords = await res.json();
         const dbMap = {};
@@ -327,7 +327,7 @@ export default function TranslationTab({
         };
       });
 
-      await fetch('/api/sync-table', {
+      await apiFetch('/api/sync-table', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -344,7 +344,7 @@ export default function TranslationTab({
   const loadTableData = useCallback(async (tableId) => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/tables/${tableId}/records`);
+      const res = await apiFetch(`/api/tables/${tableId}/records`);
       if (res.ok) {
         const dbRecords = await res.json();
         
@@ -686,7 +686,7 @@ export default function TranslationTab({
   // Helper to fetch target table's KW and Chinese fields for duplicates checking
   const fetchTargetTableKWAndChinese = async (targetTableId) => {
     try {
-      const res = await fetch(`/api/tables/${targetTableId}/records`);
+      const res = await apiFetch(`/api/tables/${targetTableId}/records`);
       if (res.ok) {
         const synced = await res.json();
         return synced.map(r => ({
@@ -778,7 +778,7 @@ export default function TranslationTab({
           return updatedRecordsList;
         });
       } else {
-        const res = await fetch(`/api/tables/${addTargetTableId}/records`);
+        const res = await apiFetch(`/api/tables/${addTargetTableId}/records`);
         let currentTerms = [];
         if (res.ok) {
           currentTerms = await res.json();
@@ -818,7 +818,7 @@ export default function TranslationTab({
         });
       } else {
         try {
-          const res = await fetch(`/api/tables/${tableId}/records`);
+          const res = await apiFetch(`/api/tables/${tableId}/records`);
           if (res.ok) {
             targetRecordsList = await res.json();
             targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
@@ -1027,7 +1027,7 @@ export default function TranslationTab({
           return updatedRecordsList;
         });
       } else {
-        const res = await fetch(`/api/tables/${batchTargetTableId}/records`);
+        const res = await apiFetch(`/api/tables/${batchTargetTableId}/records`);
         let currentTerms = [];
         if (res.ok) {
           currentTerms = await res.json();
@@ -1702,7 +1702,7 @@ export default function TranslationTab({
           };
         });
 
-        const syncRes = await fetch('/api/sync-table', {
+        const syncRes = await apiFetch('/api/sync-table', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1723,7 +1723,7 @@ export default function TranslationTab({
       // Clean up local SQLite tables that are no longer present in Bitable
       const activeTableIds = tableMetaList.map(t => t.id);
       try {
-        await fetch('/api/sync-cleanup', {
+        await apiFetch('/api/sync-cleanup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ activeTableIds })
