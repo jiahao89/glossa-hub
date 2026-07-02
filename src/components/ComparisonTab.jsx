@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { bitable } from '@lark-base-open/js-sdk';
 import { parseCSV } from '../utils/csvHelper';
 import { Search, Loader2, ArrowLeftRight, FileInput, AlertCircle, HelpCircle } from 'lucide-react';
 
-const TARGET_LANGUAGES = [
+const DEFAULT_TARGET_LANGUAGES = [
   'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
   'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
   'CZ(捷克)', '瑞典', '挪威', '荷兰'
@@ -26,6 +25,30 @@ const normalizeText = (text) => {
 };
 
 export default function ComparisonTab() {
+  const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
+  const TARGET_LANGUAGES = targetLanguagesList;
+
+  useEffect(() => {
+    async function loadProjLanguages() {
+      try {
+        const res = await fetch('/api/projects/proj-default/languages', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0) {
+            setTargetLanguagesList(data.map(item => item.lang_name));
+          }
+        }
+      } catch (err) {
+        console.error('加载语种列表失败:', err);
+      }
+    }
+    loadProjLanguages();
+  }, []);
+
   const [tables, setTables] = useState([]); // [{ id, name }]
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);

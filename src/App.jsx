@@ -1,387 +1,384 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import DashboardTab from './components/DashboardTab';
 import TranslationTab from './components/TranslationTab';
 import ComparisonTab from './components/ComparisonTab';
+import LanguagesTab from './components/LanguagesTab';
+import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
-import { Languages, History, Globe } from 'lucide-react';
+import { 
+  LayoutDashboard, 
+  Languages, 
+  ArrowLeftRight, 
+  Globe, 
+  History, 
+  Settings, 
+  LogOut, 
+  ChevronLeft, 
+  ChevronRight,
+  User,
+  ShieldCheck
+} from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('translate');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
-  // Dify Settings (initialized from localStorage)
-  const [difyUrl, setDifyUrl] = useState(() => {
-    return localStorage.getItem('glossahub_dify_url') || 'https://api.dify.ai/v1';
-  });
-  const [difyKey, setDifyKey] = useState(() => {
-    return localStorage.getItem('glossahub_dify_key') || '';
-  });
-  const [difyConnected, setDifyConnected] = useState(() => {
-    const url = localStorage.getItem('glossahub_dify_url') || 'https://api.dify.ai/v1';
-    const key = localStorage.getItem('glossahub_dify_key') || '';
-    return !!(url && key);
+  // Auth state
+  const [token, setToken] = useState(() => localStorage.getItem('token') || '');
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('user');
+    return saved ? JSON.parse(saved) : null;
   });
 
-  // Modification Logs in current session (synced with local Express SQLite server)
-  const [sessionLogs, setSessionLogs] = useState([]);
+  // Login form state
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
 
-  // Log filter states
-  const [filterVersion, setFilterVersion] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Dify connection status
+  const [difyConnected, setDifyConnected] = useState(false);
 
-  // Track modified cells in session to highlight: { [recordId]: { [fieldName]: true } }
+  // Cell highlight modified state
   const [modifiedCells, setModifiedCells] = useState(() => {
     const saved = localStorage.getItem('glossahub_modified_cells');
     return saved ? JSON.parse(saved) : {};
   });
-
-  // Drawer / Panel state for modification logs
-  const [logsOpen, setLogsOpen] = useState(false);
-
-
-
-  // Load logs from SQLite on mount
-  useEffect(() => {
-    async function loadLogs() {
-      try {
-        const response = await fetch('/api/logs');
-        if (response.ok) {
-          const data = await response.json();
-          setSessionLogs(data);
-        }
-      } catch (err) {
-        console.error('无法从 SQLite 获取日志:', err);
-      }
-    }
-    loadLogs();
-  }, []);
 
   useEffect(() => {
     localStorage.setItem('glossahub_modified_cells', JSON.stringify(modifiedCells));
   }, [modifiedCells]);
 
   const handleAddLog = async (action, kw = '', chinese = '', details = '', version = '') => {
+    if (!token) return;
     try {
-      const response = await fetch('/api/logs', {
+      await fetch('/api/logs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ action, kw, chinese, details, version })
+      });
+    } catch (err) {
+      console.error('写入协同日志失败:', err);
+    }
+  };
+
+  // Fetch dify configurations
+  useEffect(() => {
+    if (!token) return;
+    async function loadDifyState() {
+      try {
+        const res = await fetch('/api/projects/proj-default/dify', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDifyConnected(data.apiKeyConfigured);
+        }
+      } catch (err) {
+        console.error('加载 Dify 状态失败:', err);
+      }
+    }
+    loadDifyState();
+  }, [token]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!usernameInput.trim() || !passwordInput.trim()) {
+      setLoginError('请输入账号和密码');
+      return;
+    }
+
+    setLoggingIn(true);
+    setLoginError('');
+
+    try {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ action, kw, chinese, details, version })
+        body: JSON.stringify({
+          username: usernameInput.trim(),
+          password: passwordInput.trim()
+        })
       });
-      if (response.ok) {
-        const newLog = await response.json();
-        setSessionLogs(prev => [newLog, ...prev]);
+
+      const data = await res.json();
+      if (res.ok && data.token) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        setToken(data.token);
+        setUser(data.user);
+      } else {
+        setLoginError(data.error || '登录验证失败，请核对凭证！');
       }
     } catch (err) {
-      console.error('写入日志到 SQLite 失败:', err);
-      const now = new Date();
-      const timeStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-      setSessionLogs(prev => [{
-        id: Date.now(),
-        timestamp: timeStr,
-        kw,
-        chinese,
-        action,
-        details,
-        version
-      }, ...prev]);
+      setLoginError(`网络连接失败: ${err.message}`);
+    } finally {
+      setLoggingIn(false);
     }
   };
 
-  // Derive unique versions from logs for selection
-  const uniqueVersions = useMemo(() => {
-    const set = new Set();
-    sessionLogs.forEach(log => {
-      if (log.version) {
-        set.add(log.version);
-      }
-    });
-    return Array.from(set).sort();
-  }, [sessionLogs]);
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken('');
+    setUser(null);
+    window.location.reload();
+  };
 
-  // Filtered logs list by version and date range
-  const filteredLogs = useMemo(() => {
-    return sessionLogs.filter(log => {
-      // 1. Version filter
-      if (filterVersion && log.version !== filterVersion) {
-        return false;
-      }
-      
-      // 2. Date range filter
-      if (log.timestamp) {
-        const logDateStr = log.timestamp.split(' ')[0]; // Extract YYYY-MM-DD
-        if (startDate && logDateStr < startDate) {
-          return false;
-        }
-        if (endDate && logDateStr > endDate) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [sessionLogs, filterVersion, startDate, endDate]);
-
-  const handleClearLogs = async () => {
-    if (window.confirm('确认清空所有协作修改日志与高亮标记吗？')) {
-      try {
-        await fetch('/api/logs', { method: 'DELETE' });
-      } catch (err) {
-        console.error('清空 SQLite 日志失败:', err);
-      }
-      setSessionLogs([]);
-      setModifiedCells({});
+  // Breadcrumbs text helper
+  const getBreadcrumbTitle = () => {
+    switch (activeTab) {
+      case 'dashboard': return '仪表盘看板';
+      case 'translate': return '智能翻译矩阵';
+      case 'compare': return '固件版本对比';
+      case 'languages': return '语种字典管理';
+      case 'logs': return '词条修改日志';
+      case 'settings': return '翻译引擎设置';
+      default: return '词条管理平台';
     }
   };
+
+  // If token is missing, render glossy cyberpunk Login card
+  if (!token) {
+    return (
+      <div className="login-screen flex-center" style={{ height: '100vh', background: 'var(--bg-primary)' }}>
+        <div className="login-card" style={{ width: '380px', padding: '2.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <div className="flex-center" style={{ background: 'var(--bg-primary)', width: '48px', height: '48px', borderRadius: 'var(--radius-md)', margin: '0 auto 0.75rem auto', color: 'var(--accent)', filter: 'drop-shadow(0 0 8px var(--accent-glow))' }}>
+              <Languages size={24} />
+            </div>
+            <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.4rem', fontWeight: '700', background: 'linear-gradient(135deg, #ffffff 40%, var(--accent) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              GlossaHub 控制台
+            </h2>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>迈金词条智能管理系统</p>
+          </div>
+
+          {loginError && (
+            <div className="alert-box alert-box-danger" style={{ marginBottom: '1.25rem', padding: '0.5rem 0.75rem', fontSize: '0.78rem', background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)' }}>
+              ⚠️ {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div className="form-group">
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>登录账号</label>
+              <input 
+                type="text" 
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                placeholder="请输入用户名 (如: wangzhaoyun)"
+                className="text-input"
+                required
+              />
+            </div>
+            
+            <div className="form-group">
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>安全密码</label>
+              <input 
+                type="password" 
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="请输入登录密码"
+                className="text-input"
+                required
+              />
+            </div>
+
+            <button type="submit" disabled={loggingIn} className="btn btn-primary" style={{ width: '100%', height: '38px', marginTop: '0.5rem' }}>
+              {loggingIn ? '正在验证...' : '进入 GlossaHub'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="app-container">
-      {/* Top Header */}
-      <header className="header">
-        <div className="header-brand" style={{ gap: '0.5rem' }}>
-          <div className="header-logo">
-            <Languages size={20} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
-            <h2 className="header-title" style={{ fontSize: '1.05rem', margin: 0 }}>GlossaHub</h2>
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>迈金词条智能助手</span>
-          </div>
+    <div className="app-container" style={{ display: 'flex', flexDirection: 'row', height: '100vh', overflow: 'hidden' }}>
+      
+      {/* 1. Left Sidebar navigation */}
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} style={{ width: sidebarCollapsed ? '64px' : '230px', transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        
+        {/* Sidebar Header Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', borderBottom: '1px solid var(--border-color)', height: '60px' }}>
+          {!sidebarCollapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ color: 'var(--accent)' }}>
+                <Languages size={18} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
+                <span style={{ fontWeight: '700', fontSize: '1rem', background: 'linear-gradient(135deg, #ffffff 40%, var(--accent) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>GlossaHub</span>
+                <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>迈金词条管理平台</span>
+              </div>
+            </div>
+          )}
+          
+          <button 
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="icon-btn"
+            style={{ margin: sidebarCollapsed ? '0 auto' : '0', padding: '4px' }}
+            title={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}
+          >
+            {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </button>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="header-tabs">
+        {/* Sidebar Navigation links */}
+        <nav style={{ padding: '0.75rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
+          
+          {/* Dashboard */}
+          <button 
+            onClick={() => setActiveTab('dashboard')}
+            className={`nav-item-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+            title="仪表盘看板"
+          >
+            <LayoutDashboard size={16} />
+            {!sidebarCollapsed && <span>仪表盘看板</span>}
+          </button>
+
+          {/* Translation Matrix */}
           <button 
             onClick={() => setActiveTab('translate')}
-            className={`tab-btn ${activeTab === 'translate' ? 'active' : ''}`}
+            className={`nav-item-btn ${activeTab === 'translate' ? 'active' : ''}`}
+            title="智能翻译矩阵"
           >
-            智能翻译
+            <Languages size={16} />
+            {!sidebarCollapsed && <span>智能翻译矩阵</span>}
           </button>
+
+          {/* Version Comparison */}
           <button 
             onClick={() => setActiveTab('compare')}
-            className={`tab-btn ${activeTab === 'compare' ? 'active' : ''}`}
+            className={`nav-item-btn ${activeTab === 'compare' ? 'active' : ''}`}
+            title="固件版本对比"
           >
-            版本对比
+            <ArrowLeftRight size={16} />
+            {!sidebarCollapsed && <span>固件版本对比</span>}
           </button>
+
+          {/* Languages Manager */}
+          <button 
+            onClick={() => setActiveTab('languages')}
+            className={`nav-item-btn ${activeTab === 'languages' ? 'active' : ''}`}
+            title="语种字典管理"
+          >
+            <Globe size={16} />
+            {!sidebarCollapsed && <span>语种字典管理</span>}
+          </button>
+
+          {/* Logs */}
+          <button 
+            onClick={() => setActiveTab('logs')}
+            className={`nav-item-btn ${activeTab === 'logs' ? 'active' : ''}`}
+            title="词条修改日志"
+          >
+            <History size={16} />
+            {!sidebarCollapsed && <span>词条修改日志</span>}
+          </button>
+
+          {/* Settings */}
           <button 
             onClick={() => setActiveTab('settings')}
-            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            className={`nav-item-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            title="翻译引擎设置"
           >
-            引擎设置
+            <Settings size={16} />
+            {!sidebarCollapsed && <span>翻译引擎设置</span>}
           </button>
-        </div>
 
-        {/* Sidebar Trigger (Logs) */}
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button 
-            onClick={() => setLogsOpen(!logsOpen)}
-            className={`btn btn-secondary ${sessionLogs.length > 0 ? 'active' : ''}`}
-            style={{ 
-              borderColor: sessionLogs.length > 0 ? 'var(--yellow)' : 'var(--border-color)',
-              height: '28px',
-              padding: '0 0.5rem',
-              fontSize: '0.72rem',
-              whiteSpace: 'nowrap',
-              gap: '0.2rem'
-            }}
-          >
-            <History size={13} style={{ color: sessionLogs.length > 0 ? 'var(--yellow)' : 'inherit' }} />
-            <span>修改日志 ({sessionLogs.length})</span>
-          </button>
-        </div>
-      </header>
+        </nav>
 
-
-
-      {/* Main Tab Render Panel */}
-      <main className="main-content">
-        {activeTab === 'translate' && (
-          <TranslationTab 
-            difyUrl={difyUrl}
-            difyKey={difyKey}
-            onAddLog={handleAddLog}
-            modifiedCells={modifiedCells}
-            setModifiedCells={setModifiedCells}
-          />
-        )}
-        {activeTab === 'compare' && (
-          <ComparisonTab />
-        )}
-        {activeTab === 'settings' && (
-          <SettingsTab 
-            difyUrl={difyUrl}
-            setDifyUrl={setDifyUrl}
-            difyKey={difyKey}
-            setDifyKey={setDifyKey}
-            onConnectionStatusChange={setDifyConnected}
-          />
-        )}
-
-        {/* Session Modification Logs Drawer */}
-        {logsOpen && (
-          <div 
-            style={{ 
-              position: 'absolute', 
-              top: 0, 
-              right: 0, 
-              width: '320px', 
-              height: '100%', 
-              backgroundColor: 'var(--bg-secondary)', 
-              borderLeft: '1px solid var(--border-color)',
-              boxShadow: '-4px 0 10px rgba(0,0,0,0.5)',
-              zIndex: 200,
-              display: 'flex',
-              flexDirection: 'column',
-              animation: 'fadeIn 0.15s ease-out'
-            }}
-          >
-            <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <History size={16} /> 本次协作修改日志
-              </h4>
-              <button onClick={() => setLogsOpen(false)} className="modal-close">✕</button>
-            </div>
-
-            {/* Filters Area */}
-            {sessionLogs.length > 0 && (
-              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {/* Version filter */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>筛选版本:</span>
-                  <select 
-                    value={filterVersion}
-                    onChange={(e) => setFilterVersion(e.target.value)}
-                    className="select-input"
-                    style={{ height: '24px', fontSize: '0.72rem', padding: '0 0.2rem', width: '130px' }}
-                  >
-                    <option value="">全部</option>
-                    {uniqueVersions.map(v => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
-                  </select>
+        {/* Sidebar Footer Userbadge */}
+        <div style={{ padding: '0.75rem', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {!sidebarCollapsed ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                <div style={{ background: 'var(--bg-tertiary)', borderRadius: '50%', padding: '4px', color: 'var(--text-secondary)' }}>
+                  <User size={14} />
                 </div>
-                
-                {/* Date range filter */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>日期区间:</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <input 
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      onClick={(e) => {
-                        try {
-                          e.target.showPicker();
-                        } catch (err) {
-                          console.warn('Native picker not supported:', err);
-                        }
-                      }}
-                      className="text-input"
-                      style={{ height: '24px', fontSize: '0.7rem', padding: '0 0.2rem', flex: 1, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>至</span>
-                    <input 
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      onClick={(e) => {
-                        try {
-                          e.target.showPicker();
-                        } catch (err) {
-                          console.warn('Native picker not supported:', err);
-                        }
-                      }}
-                      className="text-input"
-                      style={{ height: '24px', fontSize: '0.7rem', padding: '0 0.2rem', flex: 1, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', cursor: 'pointer' }}
-                    />
-                    {(startDate || endDate) && (
-                      <button 
-                        onClick={() => { setStartDate(''); setEndDate(''); }}
-                        style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: '0.7rem', cursor: 'pointer', fontWeight: '500' }}
-                      >
-                        清空
-                      </button>
-                    )}
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: '600' }}>{user?.name || '协作成员'}</span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '1px' }}>
+                    <ShieldCheck size={10} style={{ color: 'var(--green)' }} /> 管理员
+                  </span>
                 </div>
               </div>
-            )}
-            
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {sessionLogs.length === 0 ? (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '2rem' }}>
-                  暂无修改记录，单元格高亮会在修改词条后触发。
-                </div>
-              ) : filteredLogs.length === 0 ? (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '2rem' }}>
-                  没有找到符合筛选条件的日志记录。
-                </div>
-              ) : (
-                filteredLogs.map((log, idx) => (
-                  <div 
-                    key={log.id || idx} 
-                    style={{ 
-                      fontSize: '0.75rem', 
-                      lineHeight: '1.4', 
-                      padding: '0.5rem', 
-                      backgroundColor: 'var(--bg-primary)', 
-                      borderRadius: 'var(--radius-sm)', 
-                      borderLeft: '2px solid var(--yellow)',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.65rem', marginBottom: '0.2rem' }}>
-                      <span>⏱️ {log.timestamp}</span>
-                      {log.version && (
-                        <span style={{ background: 'var(--bg-tertiary)', padding: '0.1rem 0.3rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', color: 'var(--accent)', fontWeight: '500' }}>
-                          {log.version}
-                        </span>
-                      )}
-                    </div>
-                    <div>
-                      <strong>{log.action}</strong>
-                      {log.kw && <span className="mono" style={{ marginLeft: '0.4rem', color: 'var(--accent)' }}>[{log.kw}]</span>}
-                    </div>
-                    {log.chinese && (
-                      <div style={{ color: 'var(--text-secondary)', marginTop: '0.1rem', fontSize: '0.7rem' }}>
-                        原文: {log.chinese}
-                      </div>
-                    )}
-                    {log.details && (
-                      <div style={{ color: 'var(--text-muted)', marginTop: '0.2rem', fontStyle: 'italic' }}>
-                        {log.details}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+              <button 
+                onClick={handleLogout}
+                className="btn btn-secondary" 
+                style={{ width: '100%', display: 'flex', gap: '0.4rem', justifyContent: 'center', alignItems: 'center', height: '28px', fontSize: '0.75rem' }}
+              >
+                <LogOut size={12} />
+                <span>退出登录</span>
+              </button>
+            </>
+          ) : (
+            <button 
+              onClick={handleLogout}
+              className="icon-btn" 
+              style={{ margin: '0 auto', padding: '6px', color: 'var(--red)', background: 'var(--bg-primary)' }}
+              title="退出登录"
+            >
+              <LogOut size={14} />
+            </button>
+          )}
+        </div>
 
-            {sessionLogs.length > 0 && (
-              <div style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', display: 'flex' }}>
-                <button 
-                  onClick={handleClearLogs} 
-                  className="btn btn-danger"
-                  style={{ flex: 1 }}
-                >
-                  清除日志与高亮
-                </button>
-              </div>
-            )}
+      </aside>
+
+      {/* 2. Right 主内容区 */}
+      <div className="main-viewport" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+        
+        {/* Top bar header */}
+        <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 1.5rem', height: '60px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+          {/* Breadcrumbs */}
+          <div className="breadcrumbs" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            <span style={{ color: 'var(--text-muted)' }}>词条管理平台</span>
+            <span style={{ margin: '0 0.5rem', color: 'var(--text-muted)' }}>/</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{getBreadcrumbTitle()}</span>
           </div>
-        )}
-      </main>
 
-      {/* Footer Status Bar */}
-      <footer className="footer">
-        <div>GlossaHub v1.1.0 © Magene</div>
-        <div className="status-indicator">
-          <Globe size={13} />
-          <span>Dify 翻译引擎状态:</span>
-          <div className={`status-dot ${difyConnected ? 'active' : 'inactive'}`} />
-          <span style={{ color: difyConnected ? 'var(--green)' : 'var(--red)' }}>
-            {difyConnected ? '已联通 (绿色)' : '未配置 (红色)'}
-          </span>
+          {/* Dify state indicator */}
+          <div className="status-indicator" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem' }}>
+            <Globe size={13} style={{ color: 'var(--text-muted)' }} />
+            <span style={{ color: 'var(--text-secondary)' }}>Dify 翻译引擎状态:</span>
+            <div className={`status-dot ${difyConnected ? 'active' : 'inactive'}`} />
+            <span style={{ color: difyConnected ? 'var(--green)' : 'var(--red)', fontWeight: '500' }}>
+              {difyConnected ? '已联通' : '未配置'}
+            </span>
+          </div>
+        </header>
+
+        {/* Dynamic page container */}
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
+          {activeTab === 'translate' && (
+            <TranslationTab 
+              onAddLog={handleAddLog}
+              modifiedCells={modifiedCells}
+              setModifiedCells={setModifiedCells}
+            />
+          )}
+          {activeTab === 'compare' && <ComparisonTab />}
+          {activeTab === 'languages' && <LanguagesTab />}
+          {activeTab === 'logs' && <LogsTab />}
+          {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} />}
         </div>
-      </footer>
+
+        {/* Footer */}
+        <footer className="footer" style={{ height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0, fontSize: '0.72rem' }}>
+          <div>GlossaHub v1.2.0 © Magene translation platform</div>
+        </footer>
+
+      </div>
+
     </div>
   );
 }

@@ -1,43 +1,105 @@
-import React, { useState } from 'react';
-import { testDifyConnection } from '../utils/difyHelper';
+import React, { useState, useEffect } from 'react';
 
 export default function SettingsTab({ 
-  difyUrl, 
-  setDifyUrl, 
-  difyKey, 
-  setDifyKey, 
   onConnectionStatusChange 
 }) {
+  const [difyUrl, setDifyUrl] = useState('https://api.dify.ai/v1');
+  const [difyKey, setDifyKey] = useState('');
+  const [keyConfigured, setKeyConfigured] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null); // { type: 'success' | 'error', text: string }
 
-  const handleSave = () => {
-    localStorage.setItem('glossahub_dify_url', difyUrl);
-    localStorage.setItem('glossahub_dify_key', difyKey);
-    setMessage({ type: 'success', text: '配置已成功保存！' });
-    setTimeout(() => setMessage(null), 3000);
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/projects/proj-default/dify', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.baseUrl) {
+            setDifyUrl(data.baseUrl);
+          }
+          setKeyConfigured(data.apiKeyConfigured);
+        }
+      } catch (err) {
+        console.error('加载 Dify 配置状态失败:', err);
+      }
+    }
+    loadConfig();
+  }, []);
+
+  const handleSave = async () => {
+    if (!difyUrl) {
+      setMessage({ type: 'error', text: '接口地址不能为空！' });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch('/api/projects/proj-default/dify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ baseUrl: dififyUrlClean(difyUrl), apiKey: difyKey || undefined })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: 'success', text: '配置已成功加密存入数据库！' });
+        setKeyConfigured(true);
+        setDifyKey(''); // Clear password field on success
+        setTimeout(() => setMessage(null), 3000);
+      } else {
+        setMessage({ type: 'error', text: `保存失败: ${data.error}` });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: `保存异常: ${err.message}` });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dififyUrlClean = (url) => {
+    return (url || '').replace(/\/$/, '').trim();
   };
 
   const handleTest = async () => {
-    if (!difyUrl || !difyKey) {
-      setMessage({ type: 'error', text: '请先填写接口地址和 API 密钥！' });
+    if (!difyUrl) {
+      setMessage({ type: 'error', text: '请填写接口地址！' });
       return;
     }
 
     setTesting(true);
     setMessage(null);
 
-    const result = await testDifyConnection(difyUrl, difyKey);
-    setTesting(false);
+    try {
+      const res = await fetch('/api/projects/proj-default/dify-test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ baseUrl: dififyUrlClean(difyUrl), apiKey: difyKey || undefined })
+      });
+      const data = await res.json();
+      setTesting(false);
 
-    if (result.success) {
-      setMessage({ type: 'success', text: '连接成功！Dify 工作流对接正常。' });
-      onConnectionStatusChange(true);
-      // Auto save on successful test
-      localStorage.setItem('glossahub_dify_url', difyUrl);
-      localStorage.setItem('glossahub_dify_key', difyKey);
-    } else {
-      setMessage({ type: 'error', text: `连接失败: ${result.error}` });
+      if (res.ok) {
+        setMessage({ type: 'success', text: '连接测试成功！Dify 工作流对接正常。' });
+        onConnectionStatusChange(true);
+      } else {
+        setMessage({ type: 'error', text: `连接测试失败: ${data.error}` });
+        onConnectionStatusChange(false);
+      }
+    } catch (err) {
+      setTesting(false);
+      setMessage({ type: 'error', text: `请求异常: ${err.message}` });
       onConnectionStatusChange(false);
     }
   };
@@ -67,12 +129,19 @@ export default function SettingsTab({
       </div>
 
       <div className="form-group">
-        <label>Dify API 密钥 (API Key)</label>
+        <label>
+          Dify API 密钥 (API Key) 
+          {keyConfigured && (
+            <span style={{ marginLeft: '0.5rem', color: 'var(--accent)', fontSize: '0.75rem', fontWeight: 'bold' }}>
+              ● 数据库中已配置有效密钥
+            </span>
+          )}
+        </label>
         <input 
           type="password" 
           value={difyKey} 
           onChange={(e) => setDifyKey(e.target.value)} 
-          placeholder="app-xxxxxxxxxxxx"
+          placeholder={keyConfigured ? "留空保持原配置，输入新密钥覆盖更新" : "app-xxxxxxxxxxxx"}
           className="text-input"
         />
         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -92,18 +161,19 @@ export default function SettingsTab({
         
         <button 
           onClick={handleSave}
+          disabled={saving}
           className="btn btn-primary"
           style={{ flex: 1 }}
         >
-          保存配置
+          {saving ? '正在保存...' : '保存配置'}
         </button>
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', marginTop: '0.5rem' }}>
         <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>配置安全提示</h4>
-        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-          * 所有 API 凭证均安全地加密/存储在您的**浏览器本地 (localStorage)** 中，绝不会上传给任何第三方非 Dify 服务器。<br />
-          * 如果多人协作使用此多维表格，建议各人配置属于自己的 Dify 密钥，或者在成功连接后将密钥保存在本地浏览器即可。
+        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+          * **后端中转安全防护**：所有的 API 凭证现在均以加密形态存储在您私有的 **SQLite/Postgres 数据库** 中。<br />
+          * 前端所有的 AI 翻译和测试连通请求均通过本地后端中转代理，绝不会将您的明文 API Key 泄露给浏览器或第三方。
         </p>
       </div>
     </div>

@@ -697,3 +697,155 @@ html, body {
   font-family: 'JetBrains Mono', 'Courier New', monospace;
   font-size: 0.8rem;
 }
+
+/* ====================================================
+   Cyber Layout & UI Panel Style Upgrades (Phase 2)
+   ==================================================== */
+
+/* Login Portal */
+.login-screen {
+  background: radial-gradient(circle at center, #1b2030 0%, #0e0e10 100%);
+}
+
+.login-card {
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 242, 255, 0.05) !important;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Sidebar Nav Items */
+.sidebar .nav-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.sidebar .nav-item-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+  transform: translateX(2px);
+}
+
+.sidebar .nav-item-btn.active {
+  color: var(--bg-primary);
+  background-color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(0, 242, 255, 0.4);
+}
+
+/* Collapsed Sidebar overrides */
+.sidebar.collapsed .nav-item-btn {
+  justify-content: center;
+  padding: 0.65rem 0;
+}
+
+.sidebar.collapsed .nav-item-btn:hover {
+  transform: none;
+}
+
+/* Bento Cards (Dashboard Stats Grid) */
+.stats-bento .bento-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stats-bento .bento-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-focus);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 12px rgba(0, 242, 255, 0.05);
+}
+
+.bento-icon-wrapper {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bento-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.bento-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.bento-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Custom Scrollbar override for main content viewports */
+.main-viewport {
+  overflow: hidden;
+}
+
+/* Global utility for spin loader */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Table responsiveness support */
+.table-wrapper table tbody tr:hover {
+  background-color: var(--bg-hover) !important;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.icon-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.icon-btn:disabled {
+  cursor: not-allowed;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

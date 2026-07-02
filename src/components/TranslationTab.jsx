@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { bitable } from '@lark-base-open/js-sdk';
 import { runDifyWorkflow } from '../utils/difyHelper';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2 } from 'lucide-react';
 
-const TARGET_LANGUAGES = [
+const DEFAULT_TARGET_LANGUAGES = [
   'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
   'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
   'CZ(捷克)', '瑞典', '挪威', '荷兰'
@@ -17,6 +16,51 @@ export default function TranslationTab({
   modifiedCells, 
   setModifiedCells 
 }) {
+
+  // Dynamic languages dictionary shadowing (Approved Spec)
+  const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
+  const TARGET_LANGUAGES = targetLanguagesList;
+
+  const [difyConfigured, setDifyConfigured] = useState(false);
+
+  useEffect(() => {
+    const loadProjLanguages = async () => {
+      try {
+        const res = await fetch('/api/projects/proj-default/languages', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0) {
+            setTargetLanguagesList(data.map(item => item.lang_name));
+          }
+        }
+      } catch (err) {
+        console.error('加载语种列表失败:', err);
+      }
+    };
+
+    const loadDifyState = async () => {
+      try {
+        const res = await fetch('/api/projects/proj-default/dify', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDifyConfigured(data.apiKeyConfigured);
+        }
+      } catch (err) {
+        console.error('加载 Dify 配置状态失败:', err);
+      }
+    };
+
+    loadProjLanguages();
+    loadDifyState();
+  }, []);
 
   // Bitable State
   const [tables, setTables] = useState([]);
@@ -206,57 +250,27 @@ export default function TranslationTab({
     }
   }, [tables]);
 
-  // Load Bitable Tables
+  // Load Version Tables
   useEffect(() => {
     async function loadTables() {
       try {
         setLoading(true);
-        // Create a timeout race to prevent hanging outside Feishu iframe
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('SDK 连接超时，可能未运行在飞书环境中')), 1500)
-        );
-        const tableMetaList = await Promise.race([
-          bitable.base.getTableMetaList(),
-          timeoutPromise
-        ]);
-        setTables(tableMetaList);
-        if (tableMetaList.length > 0) {
-          setSelectedTableId(tableMetaList[0].id);
+        const res = await fetch('/api/tables');
+        if (res.ok) {
+          const syncedTables = await res.json();
+          if (syncedTables.length > 0) {
+            setTables(syncedTables);
+            setSelectedTableId(syncedTables[0].id);
+            showStatus('success', `已载入云端协同数据 (${syncedTables.length} 个固件版本)`);
+          } else {
+            setTables([]);
+          }
+        } else {
+          showStatus('error', '无法获取云端固件版本列表');
         }
       } catch (err) {
-        console.warn('⚠️ 无法加载飞书 Bitable 数据表，切换为离线演示模式:', err.message);
-        setIsDemoMode(true);
-        
-        // Try fetching synced tables from SQLite/JSON database
-        try {
-          const res = await fetch('/api/tables');
-          if (res.ok) {
-            const syncedTables = await res.json();
-            if (syncedTables.length > 0) {
-              // Also include mock demo tables as fallback
-              const mockTables = [
-                { id: 'tbl_3_1', name: '3.1 (演示)' },
-                { id: 'tbl_3_2', name: '3.2 (演示)' }
-              ];
-              const allTables = [...syncedTables, ...mockTables];
-              setTables(allTables);
-              setSelectedTableId(syncedTables[0].id);
-              showStatus('success', `已载入本地历史同步数据 (${syncedTables.length} 个版本表) + 演示数据`);
-              setLoading(false);
-              return;
-            }
-          }
-        } catch (dbErr) {
-          console.warn('⚠️ 无法从本地 SQLite 读取历史表格:', dbErr.message);
-        }
-
-        const mockTables = [
-          { id: 'tbl_3_1', name: '3.1' },
-          { id: 'tbl_3_2', name: '3.2' }
-        ];
-        setTables(mockTables);
-        setSelectedTableId('tbl_3_1');
-        showStatus('success', '已启用本地演示模式 (数据在内存中保存)');
+        console.warn('⚠️ 无法从本地读取历史表格:', err.message);
+        showStatus('error', '数据库连接失败，请确认后端已启动。');
       } finally {
         setLoading(false);
       }
@@ -335,133 +349,38 @@ export default function TranslationTab({
   const loadTableData = useCallback(async (tableId) => {
     try {
       setLoading(true);
-
-      if (isDemoMode) {
-        const mockTable = mockDatabaseRef.current[tableId];
-        if (mockTable) {
-          const fMap = {};
-          const revFMap = {};
-          mockTable.fields.forEach(f => {
-            fMap[f.name] = f.id;
-            revFMap[f.id] = f.name;
-          });
-          setFieldMap(fMap);
-          setRevFieldMap(revFMap);
-          setRecords(mockTable.records);
-          return;
-        } else {
-          // Sync database table load!
-          try {
-            const res = await fetch(`/api/tables/${tableId}/records`);
-            if (res.ok) {
-              const dbRecords = await res.json();
-              
-              const fMap = {
-                'KW': 'KW',
-                'CN（中文）': 'CN（中文）',
-                '所在页面': '所在页面',
-                '字号类别': '字号类别'
-              };
-              TARGET_LANGUAGES.forEach(lang => {
-                fMap[lang] = lang;
-              });
-              
-              const revFMap = {};
-              Object.keys(fMap).forEach(key => {
-                revFMap[key] = key;
-              });
-
-              setFieldMap(fMap);
-              setRevFieldMap(revFMap);
-              setRecords(dbRecords);
-              return;
-            }
-          } catch (dbErr) {
-            console.error('⚠️ 无法从本地 SQLite 读取词条数据:', dbErr.message);
-          }
-        }
-        return;
-      }
-
-      const table = await bitable.base.getTableById(tableId);
-      
-      // Load Field Metas
-      const fieldMetaList = await table.getFieldMetaList();
-      setFields(fieldMetaList);
-      
-      const fMap = {};
-      const revFMap = {};
-      fieldMetaList.forEach(f => {
-        fMap[f.name] = f.id;
-        revFMap[f.id] = f.name;
-      });
-      setFieldMap(fMap);
-      setRevFieldMap(revFMap);
-
-      // Load Records
-      let pageToken = undefined;
-      let hasMore = true;
-      let allRecords = [];
-
-      while (hasMore) {
-        const result = await table.getRecordsByPage({ pageToken, pageSize: 200 });
-        allRecords = [...allRecords, ...result.records];
-        hasMore = result.hasMore;
-        pageToken = result.pageToken;
-      }
-      
-      const enrichedRecords = await mergeTimestamps(allRecords, tableId);
-      setRecords(enrichedRecords);
-
-      // Auto sync to SQLite backend in background
-      try {
-        const activeTableMeta = tables.find(t => t.id === tableId);
-        const tableName = activeTableMeta ? activeTableMeta.name : 'Unknown';
+      const res = await fetch(`/api/tables/${tableId}/records`);
+      if (res.ok) {
+        const dbRecords = await res.json();
         
-        const formattedRecords = allRecords.map(rec => {
-          const fields = {};
-          Object.keys(rec.fields).forEach(fId => {
-            const fName = revFMap[fId] || fId;
-            let val = rec.fields[fId];
-            if (Array.isArray(val)) {
-              val = val.map(s => s.text || '').join('');
-            } else if (typeof val === 'object' && val !== null && val.text) {
-              val = val.text;
-            }
-            fields[fName] = val;
-          });
-
-          const localRec = enrichedRecords.find(r => r.recordId === rec.recordId);
-          return {
-            recordId: rec.recordId,
-            fields,
-            createdAt: localRec?.createdAt || rec.createdAt || '',
-            updatedAt: localRec?.updatedAt || rec.updatedAt || ''
-          };
+        const fMap = {
+          'KW': 'KW',
+          'CN（中文）': 'CN（中文）',
+          '所在页面': '所在页面',
+          '字号类别': '字号类别'
+        };
+        TARGET_LANGUAGES.forEach(lang => {
+          fMap[lang] = lang;
+        });
+        
+        const revFMap = {};
+        Object.keys(fMap).forEach(key => {
+          revFMap[key] = key;
         });
 
-        fetch('/api/sync-table', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            tableId,
-            tableName,
-            records: formattedRecords
-          })
-        }).catch(err => {
-          console.warn('⚠️ 自动同步数据表到本地失败:', err.message);
-        });
-      } catch (syncErr) {
-        console.warn('⚠️ 构造同步数据负载失败:', syncErr.message);
+        setFieldMap(fMap);
+        setRevFieldMap(revFMap);
+        setRecords(dbRecords);
+      } else {
+        showStatus('error', '获取固件词条数据失败');
       }
     } catch (err) {
-      showStatus('danger', `读取数据表失败: ${err.message}`);
+      console.error('⚠️ 无法读取词条数据:', err.message);
+      showStatus('error', '数据库连接失败，请确认后端已启动。');
     } finally {
       setLoading(false);
     }
-  }, [isDemoMode, tables, setModifiedCells, mergeTimestamps]);
+  }, []);
 
   // Load Fields and Records when selected table changes
   useEffect(() => {
@@ -474,110 +393,7 @@ export default function TranslationTab({
     setSelectedRecordIds(new Set());
   }, [selectedTableId]);
 
-  // Real-time Bitable Event Listeners for Client-side Sync (Option A)
-  useEffect(() => {
-    if (isDemoMode || !selectedTableId) return;
 
-    let unsubscribes = [];
-    let timeoutId = null;
-
-    const setupListeners = async () => {
-      try {
-        const table = await bitable.base.getTableById(selectedTableId);
-        
-        // Debounced synchronization callback
-        const triggerSilentSync = () => {
-          if (timeoutId) clearTimeout(timeoutId);
-          timeoutId = setTimeout(async () => {
-            try {
-              // Silently fetch and sync records
-              const fieldMetaList = await table.getFieldMetaList();
-              const revFMap = {};
-              fieldMetaList.forEach(f => {
-                revFMap[f.id] = f.name;
-              });
-
-              let hasMore = true;
-              let pageToken = undefined;
-              const allRecords = [];
-              while (hasMore) {
-                const result = await table.getRecordsByPage({ pageToken, pageSize: 200 });
-                allRecords.push(...(result.records || []));
-                hasMore = result.hasMore;
-                pageToken = result.pageToken;
-              }
-
-              const formattedRecords = allRecords.map(rec => {
-                const fields = {};
-                Object.keys(rec.fields).forEach(fId => {
-                  const fName = revFMap[fId] || fId;
-                  let val = rec.fields[fId];
-                  if (Array.isArray(val)) {
-                    val = val.map(s => s.text || '').join('');
-                  } else if (typeof val === 'object' && val !== null && val.text) {
-                    val = val.text;
-                  }
-                  fields[fName] = val;
-                });
-
-                const localRec = records.find(r => r.recordId === rec.recordId);
-                return {
-                  recordId: rec.recordId,
-                  fields,
-                  createdAt: localRec?.createdAt || rec.createdAt || '',
-                  updatedAt: localRec?.updatedAt || rec.updatedAt || ''
-                };
-              });
-
-              await fetch('/api/sync-table', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  tableId: selectedTableId,
-                  tableName: tables.find(t => t.id === selectedTableId)?.name || '未名',
-                  records: formattedRecords
-                })
-              });
-              
-              // Update local state without showing a blocking loading spinner
-              const enrichedRecords = await mergeTimestamps(allRecords, selectedTableId);
-              setRecords(enrichedRecords);
-            } catch (err) {
-              console.warn('❌ Silent synchronization failed:', err);
-            }
-          }, 1500); // 1.5s debounce to group consecutive typing/edits
-        };
-
-        const unsubAdd = table.onRecordAdd(() => {
-          triggerSilentSync();
-        });
-        const unsubMod = table.onRecordModify(() => {
-          triggerSilentSync();
-        });
-        const unsubDel = table.onRecordDelete(() => {
-          triggerSilentSync();
-        });
-
-        unsubscribes.push(unsubAdd, unsubMod, unsubDel);
-      } catch (err) {
-        console.warn('⚠️ Registering Bitable event listeners failed:', err);
-      }
-    };
-
-    setupListeners();
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      // Unsubscribe all listeners on table change or unmount
-      unsubscribes.forEach(unsub => {
-        try {
-          if (typeof unsub === 'function') unsub();
-        } catch (e) {
-          console.warn('Unsubscribing Bitable listener failed:', e);
-        }
-      });
-    };
-  }, [selectedTableId, isDemoMode, tables, mergeTimestamps]);
 
   const showStatus = (type, text) => {
     setStatusMessage({ type, text });
@@ -737,145 +553,37 @@ export default function TranslationTab({
         }
       });
 
-
-
-      if (isDemoMode) {
-        if (mockDatabaseRef.current[selectedTableId]) {
-          setMockDatabase(prev => {
-            const currentTable = prev[selectedTableId];
-            const updatedRecords = currentTable.records.map(rec => {
-              if (rec.recordId === editModalRecord.recordId) {
-                const updatedFields = { ...rec.fields };
-                TARGET_LANGUAGES.forEach(lang => {
-                  const fId = fieldMap[lang];
-                  if (fId) {
-                    updatedFields[fId] = editModalRecord.translations[lang] || '';
-                  }
-                });
-                const kwId = getFieldIdByName('KW');
-                const cnId = getFieldIdByName('CN（中文）');
-                const pageId = getFieldIdByName('所在页面');
-                const categoryId = getFieldIdByName('字号类别');
-
-                if (kwId) updatedFields[kwId] = editModalRecord.KW;
-                if (cnId) updatedFields[cnId] = editModalRecord.中文;
-                if (pageId) updatedFields[pageId] = editModalRecord.所在页面;
-                if (categoryId) updatedFields[categoryId] = editModalRecord.字号类别;
-                
-                return { 
-                  ...rec, 
-                  fields: updatedFields,
-                  updatedAt: new Date().toISOString()
-                };
-              }
-              return rec;
+      let updatedRecordsList = [];
+      setRecords(prev => {
+        updatedRecordsList = prev.map(rec => {
+          if (rec.recordId === editModalRecord.recordId) {
+            const updatedFields = { ...rec.fields };
+            TARGET_LANGUAGES.forEach(lang => {
+              updatedFields[lang] = editModalRecord.translations[lang] || '';
             });
-            return {
-              ...prev,
-              [selectedTableId]: {
-                ...currentTable,
-                records: updatedRecords
-              }
+            updatedFields['KW'] = editModalRecord.KW;
+            updatedFields['CN（中文）'] = editModalRecord.中文;
+            updatedFields['所在页面'] = editModalRecord.所在页面;
+            updatedFields['字号类别'] = editModalRecord.字号类别;
+            
+            return { 
+              ...rec, 
+              fields: updatedFields,
+              updatedAt: new Date().toISOString()
             };
-          });
-        }
-
-        let updatedRecordsList = [];
-        setRecords(prev => {
-          updatedRecordsList = prev.map(rec => {
-            if (rec.recordId === editModalRecord.recordId) {
-              const updatedFields = { ...rec.fields };
-              TARGET_LANGUAGES.forEach(lang => {
-                const fId = fieldMap[lang];
-                if (fId) {
-                  updatedFields[fId] = editModalRecord.translations[lang] || '';
-                }
-              });
-              const kwId = getFieldIdByName('KW');
-              const cnId = getFieldIdByName('CN（中文）');
-              const pageId = getFieldIdByName('所在页面');
-              const categoryId = getFieldIdByName('字号类别');
-
-              if (kwId) updatedFields[kwId] = editModalRecord.KW;
-              if (cnId) updatedFields[cnId] = editModalRecord.中文;
-              if (pageId) updatedFields[pageId] = editModalRecord.所在页面;
-              if (categoryId) updatedFields[categoryId] = editModalRecord.字号类别;
-              
-              return { 
-                ...rec, 
-                fields: updatedFields,
-                updatedAt: new Date().toISOString()
-              };
-            }
-            return rec;
-          });
-          return updatedRecordsList;
+          }
+          return rec;
         });
-
-        // Sync changes to SQLite in background
-        saveOfflineRecords(selectedTableId, updatedRecordsList);
-
-        logsList.forEach(log => {
-          onAddLog('修改翻译 (离线)', editModalRecord.KW, editModalRecord.中文, `【${log.lang}】从 "${log.oldVal || '空'}" 修改为 "${log.newVal}"`);
-        });
-
-        setModifiedCells(prev => ({
-          ...prev,
-          [editModalRecord.recordId]: currentCellSessionModified
-        }));
-
-        showStatus('success', '词条修改成功 (离线模式)！');
-        setEditModalRecord(null);
-        return;
-      }
-
-      const table = await bitable.base.getTableById(selectedTableId);
-      const fieldsToUpdate = {};
-      
-      const kwId = getFieldIdByName('KW');
-      const cnId = getFieldIdByName('CN（中文）');
-      const pageId = getFieldIdByName('所在页面');
-      const categoryId = getFieldIdByName('字号类别');
-
-      if (kwId) fieldsToUpdate[kwId] = editModalRecord.KW;
-      if (cnId) fieldsToUpdate[cnId] = editModalRecord.中文;
-      if (pageId) fieldsToUpdate[pageId] = editModalRecord.所在页面;
-      if (categoryId) fieldsToUpdate[categoryId] = editModalRecord.字号类别;
-      
-      TARGET_LANGUAGES.forEach(lang => {
-        const fieldId = fieldMap[lang];
-        if (fieldId) {
-          fieldsToUpdate[fieldId] = editModalRecord.translations[lang] || '';
-        }
+        return updatedRecordsList;
       });
 
-      await table.setRecord(editModalRecord.recordId, { fields: fieldsToUpdate });
-      
+      // Sync changes to SQLite in background
+      await saveOfflineRecords(selectedTableId, updatedRecordsList);
+
       logsList.forEach(log => {
-        onAddLog('修改翻译', editModalRecord.KW, editModalRecord.中文, `【${log.lang}】从 "${log.oldVal || '空'}" 修改为 "${log.newVal}"`);
+        onAddLog('修改翻译', editModalRecord.KW, editModalRecord.中文, JSON.stringify({ field: log.lang, oldVal: log.oldVal, newVal: log.newVal }));
       });
 
-      // Update local records state with new values & new updatedAt timestamp
-      const nowStr = new Date().toISOString();
-      let updatedRecObj = null;
-      setRecords(prev => prev.map(rec => {
-        if (rec.recordId === editModalRecord.recordId) {
-          const newFields = { ...rec.fields, ...fieldsToUpdate };
-          updatedRecObj = {
-            ...rec,
-            fields: newFields,
-            updatedAt: nowStr
-          };
-          return updatedRecObj;
-        }
-        return rec;
-      }));
-
-      if (updatedRecObj) {
-        await syncRecordsToSqlite(selectedTableId, [updatedRecObj]);
-      }
-
-      // Update local highlights
       setModifiedCells(prev => ({
         ...prev,
         [editModalRecord.recordId]: currentCellSessionModified
@@ -978,83 +686,19 @@ export default function TranslationTab({
 
   // Helper to fetch target table's KW and Chinese fields for duplicates checking
   const fetchTargetTableKWAndChinese = async (targetTableId) => {
-    if (isDemoMode) {
-      const dbRecords = mockDatabase[targetTableId]?.records || [];
-      if (dbRecords.length > 0) {
-        return dbRecords.map(r => {
-          let kwVal = '';
-          let cnVal = '';
-          Object.keys(r.fields).forEach(key => {
-            if (key === 'KW') kwVal = r.fields[key];
-            if (key === 'CN（中文）') cnVal = r.fields[key];
-          });
-          return { kw: (kwVal || '').toString().trim(), chinese: (cnVal || '').toString().trim() };
-        });
-      } else {
-        try {
-          const res = await fetch(`/api/tables/${targetTableId}/records`);
-          if (res.ok) {
-            const synced = await res.json();
-            return synced.map(r => ({
-              kw: (r.fields.KW || '').toString().trim(),
-              chinese: (r.fields.中文 || '').toString().trim()
-            }));
-          }
-        } catch (err) {
-          console.warn('读取本地数据表记录失败:', err);
-        }
-      }
-      return [];
-    }
-
     try {
-      const table = await bitable.base.getTableById(targetTableId);
-      const fieldMetaList = await table.getFieldMetaList();
-      const fieldMap = {};
-      fieldMetaList.forEach(f => {
-        fieldMap[f.name] = f.id;
-      });
-      const kwId = fieldMap['KW'];
-      const cnId = fieldMap['CN（中文）'];
-      if (!kwId || !cnId) return [];
-
-      let hasMore = true;
-      let pageToken = undefined;
-      const list = [];
-      while (hasMore) {
-        const result = await table.getRecordsByPage({ pageToken, pageSize: 200 });
-        (result.records || []).forEach(rec => {
-          const kwVal = rec.fields[kwId];
-          const cnVal = rec.fields[cnId];
-          
-          let kwText = '';
-          let cnText = '';
-          if (Array.isArray(kwVal)) {
-            kwText = kwVal.map(s => s.text || '').join('');
-          } else if (typeof kwVal === 'object' && kwVal !== null) {
-            kwText = kwVal.text || '';
-          } else {
-            kwText = kwVal || '';
-          }
-
-          if (Array.isArray(cnVal)) {
-            cnText = cnVal.map(s => s.text || '').join('');
-          } else if (typeof cnVal === 'object' && cnVal !== null) {
-            cnText = cnVal.text || '';
-          } else {
-            cnText = cnVal || '';
-          }
-
-          list.push({ kw: kwText.toString().trim(), chinese: cnText.toString().trim() });
-        });
-        hasMore = result.hasMore;
-        pageToken = result.pageToken;
+      const res = await fetch(`/api/tables/${targetTableId}/records`);
+      if (res.ok) {
+        const synced = await res.json();
+        return synced.map(r => ({
+          kw: (r.fields.KW || '').toString().trim(),
+          chinese: (r.fields['CN（中文）'] || r.fields.中文 || '').toString().trim()
+        }));
       }
-      return list;
     } catch (err) {
-      console.error('获取 Bitable 数据表记录失败:', err);
-      return [];
+      console.error('读取云端数据表记录失败:', err);
     }
+    return [];
   };
 
   // Add Term Save
@@ -1109,118 +753,51 @@ export default function TranslationTab({
         }
       });
 
-      if (isDemoMode) {
-        const newRecordId = `rec_${Date.now()}`;
-        
-        const targetFieldMap = {
-          'KW': 'KW',
-          'CN（中文）': 'CN（中文）',
-          '所在页面': '所在页面',
-          '字号类别': '字号类别'
-        };
-        TARGET_LANGUAGES.forEach(lang => {
-          targetFieldMap[lang] = lang;
+      const newRecordId = crypto.randomUUID();
+      const newFields = {
+        'KW': newTerm.KW,
+        'CN（中文）': newTerm.中文,
+        '所在页面': newTerm.所在页面 || '',
+        '字号类别': newTerm.字号类别 || ''
+      };
+
+      TARGET_LANGUAGES.forEach(lang => {
+        newFields[lang] = newTerm.translations[lang] || '';
+      });
+
+      const newRecObj = { 
+        recordId: newRecordId, 
+        fields: newFields,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      let updatedRecordsList = [];
+      if (addTargetTableId === selectedTableId) {
+        setRecords(prev => {
+          updatedRecordsList = [...prev, newRecObj];
+          return updatedRecordsList;
         });
-
-        const newFields = {
-          [targetFieldMap['KW']]: newTerm.KW,
-          [targetFieldMap['CN（中文）']]: newTerm.中文,
-          [targetFieldMap['所在页面']]: newTerm.所在页面 || '',
-          [targetFieldMap['字号类别']]: newTerm.字号类别 || ''
-        };
-
-        TARGET_LANGUAGES.forEach(lang => {
-          newFields[lang] = newTerm.translations[lang] || '';
-        });
-
-        const newRecObj = { 
-          recordId: newRecordId, 
-          fields: newFields,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-
-        if (mockDatabaseRef.current[addTargetTableId]) {
-          setMockDatabase(prev => {
-            const targetTable = prev[addTargetTableId];
-            return {
-              ...prev,
-              [addTargetTableId]: {
-                ...targetTable,
-                records: [...(targetTable?.records || []), newRecObj]
-              }
-            };
-          });
+      } else {
+        const res = await fetch(`/api/tables/${addTargetTableId}/records`);
+        let currentTerms = [];
+        if (res.ok) {
+          currentTerms = await res.json();
         }
-
-        let updatedRecordsList = [];
-        if (addTargetTableId === selectedTableId) {
-          setRecords(prev => {
-            updatedRecordsList = [...prev, newRecObj];
-            return updatedRecordsList;
-          });
-        } else {
-          updatedRecordsList = [...(mockDatabaseRef.current[addTargetTableId]?.records || []), newRecObj];
-        }
-
-        saveOfflineRecords(addTargetTableId, updatedRecordsList);
-
-        onAddLog('新增词条 (离线)', newTerm.KW, newTerm.中文);
-        setModifiedCells(prev => ({
-          ...prev,
-          [newRecordId]: { ...addedLangs, isAdded: true }
-        }));
-
-        showStatus('success', `成功新增词条 (目标版本: ${tables.find(t => t.id === addTargetTableId)?.name || '未名'})！`);
-        setAddModalOpen(false);
-        setNewTerm({ KW: '', 中文: '', 所在页面: '', 字号类别: '', translations: {} });
-        return;
+        updatedRecordsList = [...currentTerms, newRecObj];
       }
 
-      const targetTable = await bitable.base.getTableById(addTargetTableId);
-      const fieldMetaList = await targetTable.getFieldMetaList();
-      const targetFieldMap = {};
-      fieldMetaList.forEach(f => {
-        targetFieldMap[f.name] = f.id;
-      });
+      await saveOfflineRecords(addTargetTableId, updatedRecordsList);
 
-      const newFields = {};
-      if (targetFieldMap['KW']) newFields[targetFieldMap['KW']] = newTerm.KW;
-      if (targetFieldMap['CN（中文）']) newFields[targetFieldMap['CN（中文）']] = newTerm.中文;
-      if (targetFieldMap['所在页面']) newFields[targetFieldMap['所在页面']] = newTerm.所在页面;
-      if (targetFieldMap['字号类别']) newFields[targetFieldMap['字号类别']] = newTerm.字号类别;
-      
-      TARGET_LANGUAGES.forEach(lang => {
-        const fieldId = targetFieldMap[lang];
-        if (fieldId) {
-          newFields[fieldId] = newTerm.translations[lang] || '';
-        }
-      });
-
-      const newRecordId = await targetTable.addRecord({ fields: newFields });
-      
-      const nowStr = new Date().toISOString();
-      const newRecObj = {
-        recordId: newRecordId,
-        fields: newFields,
-        createdAt: nowStr,
-        updatedAt: nowStr
-      };
-      await syncRecordsToSqlite(addTargetTableId, [newRecObj]);
-
+      onAddLog('新增词条', newTerm.KW, newTerm.中文);
       setModifiedCells(prev => ({
         ...prev,
         [newRecordId]: { ...addedLangs, isAdded: true }
       }));
 
-      onAddLog('新增词条', newTerm.KW, newTerm.中文);
       showStatus('success', `成功新增词条 (目标版本: ${tables.find(t => t.id === addTargetTableId)?.name || '未名'})！`);
       setAddModalOpen(false);
-      setNewTerm({ KW: '', 中文: '', 所在页面: '', 负责人: '', translations: {} });
-      
-      if (addTargetTableId === selectedTableId) {
-        await loadTableData(selectedTableId);
-      }
+      setNewTerm({ KW: '', 中文: '', 所在页面: '', 字号类别: '', translations: {} });
     } catch (err) {
       showStatus('danger', `新增词条失败: ${err.message}`);
     } finally {
@@ -1308,9 +885,8 @@ export default function TranslationTab({
     });
   };
 
-  // Batch Translation Flow
   const handleOpenBatchTranslate = async () => {
-    if (!difyUrl || !difyKey) {
+    if (!difyConfigured) {
       alert('请先在“引擎设置”页签中配置 Dify 的 API 地址与密钥！');
       return;
     }
@@ -1363,7 +939,19 @@ export default function TranslationTab({
           target_languages: item.missingLangs.join(',')
         };
 
-        const result = await runDifyWorkflow(difyUrl, difyKey, inputs);
+        const res = await fetch('/api/projects/proj-default/ai-translate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({ inputs })
+        });
+        if (!res.ok) {
+          const errJson = await res.json();
+          throw new Error(errJson.error || 'AI 翻译失败');
+        }
+        const result = await res.json();
         
         // Merge translations
         const trans = {};
@@ -1396,20 +984,10 @@ export default function TranslationTab({
       const updatedCellsDict = { ...modifiedCells };
       const recordsToUpdate = [];
 
-      // Fetch or define target field mappings
-      let targetFieldMap = {};
-      if (isDemoMode) {
-        targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
-        TARGET_LANGUAGES.forEach(lang => {
-          targetFieldMap[lang] = lang;
-        });
-      } else {
-        const table = await bitable.base.getTableById(batchTargetTableId);
-        const fieldMetaList = await table.getFieldMetaList();
-        fieldMetaList.forEach(f => {
-          targetFieldMap[f.name] = f.id;
-        });
-      }
+      const targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
+      TARGET_LANGUAGES.forEach(lang => {
+        targetFieldMap[lang] = lang;
+      });
 
       batchPreviewList.forEach(item => {
         const fields = {};
@@ -1434,55 +1012,10 @@ export default function TranslationTab({
         }
       });
 
-      if (isDemoMode) {
-        if (mockDatabaseRef.current[batchTargetTableId]) {
-          setMockDatabase(prev => {
-            const currentTable = prev[batchTargetTableId];
-            const updatedRecords = (currentTable?.records || []).map(rec => {
-              const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
-              if (updateItem) {
-                return {
-                  ...rec,
-                  fields: {
-                    ...rec.fields,
-                    ...updateItem.fields
-                  },
-                  updatedAt: new Date().toISOString()
-                };
-              }
-              return rec;
-            });
-            return {
-              ...prev,
-              [batchTargetTableId]: {
-                ...currentTable,
-                records: updatedRecords
-              }
-            };
-          });
-        }
-
-        let updatedRecordsList = [];
-        if (batchTargetTableId === selectedTableId) {
-          setRecords(prev => {
-            updatedRecordsList = prev.map(rec => {
-              const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
-              if (updateItem) {
-                return {
-                  ...rec,
-                  fields: {
-                    ...rec.fields,
-                    ...updateItem.fields
-                  },
-                  updatedAt: new Date().toISOString()
-                };
-              }
-              return rec;
-            });
-            return updatedRecordsList;
-          });
-        } else {
-          updatedRecordsList = (mockDatabaseRef.current[batchTargetTableId]?.records || []).map(rec => {
+      let updatedRecordsList = [];
+      if (batchTargetTableId === selectedTableId) {
+        setRecords(prev => {
+          updatedRecordsList = prev.map(rec => {
             const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
             if (updateItem) {
               return {
@@ -1496,65 +1029,43 @@ export default function TranslationTab({
             }
             return rec;
           });
-        }
-
-        saveOfflineRecords(batchTargetTableId, updatedRecordsList);
-
-        batchPreviewList.forEach(item => {
-          const transCount = Object.keys(item.translations).length;
-          if (transCount > 0) {
-            onAddLog('批量翻译 (离线)', item.KW, item.中文, `自动回写了 ${transCount} 个语种的翻译`);
-          }
+          return updatedRecordsList;
         });
-
-        setModifiedCells(updatedCellsDict);
-        showStatus('success', `批量翻译写入成功 (离线模式)！共回写 ${recordsToUpdate.length} 条记录。`);
-        setBatchTranslateOpen(false);
-        setBatchPreviewList([]);
-        return;
+      } else {
+        const res = await fetch(`/api/tables/${batchTargetTableId}/records`);
+        let currentTerms = [];
+        if (res.ok) {
+          currentTerms = await res.json();
+        }
+        updatedRecordsList = currentTerms.map(rec => {
+          const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
+          if (updateItem) {
+            return {
+              ...rec,
+              fields: {
+                ...rec.fields,
+                ...updateItem.fields
+              },
+              updatedAt: new Date().toISOString()
+            };
+          }
+          return rec;
+        });
       }
 
-      const table = await bitable.base.getTableById(batchTargetTableId);
+      await saveOfflineRecords(batchTargetTableId, updatedRecordsList);
 
       batchPreviewList.forEach(item => {
-        let hasNewTrans = false;
-        Object.keys(item.translations).forEach(lang => {
-          const fieldId = targetFieldMap[lang];
-          if (fieldId && item.translations[lang]) {
-            hasNewTrans = true;
-          }
-        });
-        if (hasNewTrans) {
-          onAddLog('批量翻译', item.KW, item.中文, `自动回写了 ${Object.keys(item.translations).length} 个语种的翻译`);
+        const transCount = Object.keys(item.translations).length;
+        if (transCount > 0) {
+          onAddLog('批量翻译', item.KW, item.中文, `自动回写了 ${transCount} 个语种的翻译`);
         }
       });
-
-      // Write in chunks of 200
-      const chunkSize = 200;
-      for (let i = 0; i < recordsToUpdate.length; i += chunkSize) {
-        const chunk = recordsToUpdate.slice(i, i + chunkSize);
-        await table.setRecords(chunk);
-      }
-
-      // Sync to SQLite immediately
-      const nowStr = new Date().toISOString();
-      const updatedLocalRecords = recordsToUpdate.map(item => {
-        const localRec = records.find(r => r.recordId === item.recordId);
-        return {
-          recordId: item.recordId,
-          fields: { ...localRec?.fields, ...item.fields },
-          updatedAt: nowStr
-        };
-      });
-      await syncRecordsToSqlite(batchTargetTableId, updatedLocalRecords);
 
       setModifiedCells(updatedCellsDict);
       showStatus('success', `批量翻译写入成功！共回写 ${recordsToUpdate.length} 条记录。`);
       setBatchTranslateOpen(false);
-      
-      if (batchTargetTableId === selectedTableId) {
-        await loadTableData(selectedTableId);
-      }
+      setBatchPreviewList([]);
     } catch (err) {
       showStatus('danger', `批量回写数据失败: ${err.message}`);
     } finally {
@@ -1841,7 +1352,7 @@ export default function TranslationTab({
       alert('请先输入中文源词！');
       return;
     }
-    if (!difyUrl || !difyKey) {
+    if (!difyConfigured) {
       alert('请先在“引擎设置”页签配置 Dify API 接口地址与密钥！');
       return;
     }
@@ -1855,7 +1366,19 @@ export default function TranslationTab({
         target_languages: TARGET_LANGUAGES.join(',')
       };
 
-      const result = await runDifyWorkflow(difyUrl, difyKey, inputs);
+      const res = await fetch('/api/projects/proj-default/ai-translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ inputs })
+      });
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.error || 'AI 翻译失败');
+      }
+      const result = await res.json();
       
       const updatedTrans = { ...editModalRecord.translations };
       TARGET_LANGUAGES.forEach(lang => {
@@ -1884,54 +1407,21 @@ export default function TranslationTab({
     try {
       const idsToDelete = Array.from(selectedRecordIds);
 
-      if (isDemoMode) {
-        if (mockDatabaseRef.current[selectedTableId]) {
-          setMockDatabase(prev => {
-            const currentTable = prev[selectedTableId];
-            const updatedRecords = (currentTable?.records || []).filter(rec => !selectedRecordIds.has(rec.recordId));
-            return {
-              ...prev,
-              [selectedTableId]: {
-                ...currentTable,
-                records: updatedRecords
-              }
-            };
-          });
-        }
-
-        let updatedRecordsList = [];
-        setRecords(prev => {
-          updatedRecordsList = prev.filter(rec => !selectedRecordIds.has(rec.recordId));
-          return updatedRecordsList;
-        });
-        
-        // Sync deletions to SQLite in background
-        saveOfflineRecords(selectedTableId, updatedRecordsList);
-        
-        idsToDelete.forEach(id => {
-          onAddLog('删除词条 (离线)', `ID: ${id}`, '无');
-        });
-
-        setSelectedRecordIds(new Set());
-        showStatus('success', `成功删除 ${idsToDelete.length} 个词条 (离线模式)`);
-        return;
-      }
-
-      const table = await bitable.base.getTableById(selectedTableId);
+      let updatedRecordsList = [];
+      setRecords(prev => {
+        updatedRecordsList = prev.filter(rec => !selectedRecordIds.has(rec.recordId));
+        return updatedRecordsList;
+      });
       
-      const chunkSize = 200;
-      for (let i = 0; i < idsToDelete.length; i += chunkSize) {
-        const chunk = idsToDelete.slice(i, i + chunkSize);
-        await table.deleteRecords(chunk);
-      }
-
+      // Sync deletions to SQLite in background
+      await saveOfflineRecords(selectedTableId, updatedRecordsList);
+      
       idsToDelete.forEach(id => {
         onAddLog('删除词条', `ID: ${id}`, '无');
       });
 
       setSelectedRecordIds(new Set());
       showStatus('success', `成功删除 ${idsToDelete.length} 个词条`);
-      await loadTableData(selectedTableId);
     } catch (err) {
       showStatus('danger', `删除词条失败: ${err.message}`);
     } finally {
@@ -1961,60 +1451,23 @@ export default function TranslationTab({
     try {
       const idsToDelete = emptyRecords.map(r => r.recordId);
 
-      if (isDemoMode) {
-        // Offline Mock mode
-        if (mockDatabaseRef.current[selectedTableId]) {
-          setMockDatabase(prev => {
-            const currentTable = prev[selectedTableId];
-            const updatedRecords = (currentTable?.records || []).filter(rec => !idsToDelete.includes(rec.recordId));
-            return {
-              ...prev,
-              [selectedTableId]: {
-                ...currentTable,
-                records: updatedRecords
-              }
-            };
-          });
-        }
+      let updatedRecordsList = [];
+      setRecords(prev => {
+        updatedRecordsList = prev.filter(rec => !idsToDelete.includes(rec.recordId));
+        return updatedRecordsList;
+      });
 
-        let updatedRecordsList = [];
-        setRecords(prev => {
-          updatedRecordsList = prev.filter(rec => !idsToDelete.includes(rec.recordId));
-          return updatedRecordsList;
-        });
+      // Sync cleanup to SQLite in background
+      await saveOfflineRecords(selectedTableId, updatedRecordsList);
 
-        // Sync cleanup to SQLite in background
-        saveOfflineRecords(selectedTableId, updatedRecordsList);
-
-        setSelectedRecordIds(prev => {
-          const updated = new Set(prev);
-          idsToDelete.forEach(id => updated.delete(id));
-          return updated;
-        });
-
-        onAddLog('数据清理 (离线)', `${emptyRecords.length}条空数据`, '无');
-        showStatus('success', `数据清理成功！已清理 ${emptyRecords.length} 条空数据。`);
-        return;
-      }
-
-      // Online Bitable mode
-      const table = await bitable.base.getTableById(selectedTableId);
-      const chunkSize = 200;
-      for (let i = 0; i < idsToDelete.length; i += chunkSize) {
-        const chunk = idsToDelete.slice(i, i + chunkSize);
-        await table.deleteRecords(chunk);
-      }
-
-      onAddLog('数据清理', `${emptyRecords.length}条空数据`, '无');
-      
       setSelectedRecordIds(prev => {
         const updated = new Set(prev);
         idsToDelete.forEach(id => updated.delete(id));
         return updated;
       });
 
+      onAddLog('数据清理', `${emptyRecords.length}条空数据`, '无');
       showStatus('success', `数据清理成功！已清理 ${emptyRecords.length} 条空数据。`);
-      await loadTableData(selectedTableId);
     } catch (err) {
       showStatus('danger', `数据清理失败: ${err.message}`);
     } finally {
@@ -2063,110 +1516,10 @@ export default function TranslationTab({
           return;
         }
 
-        if (isDemoMode) {
-          const updatedRecords = [...records];
-          let localUpdateCount = 0;
-          let localAddCount = 0;
-          const updatedCellsDict = { ...modifiedCells };
-
-          rows.forEach((row) => {
-            const kw = row[kwIdx]?.trim();
-            const zh = row[zhIdx]?.trim();
-            if (!kw || !zh) return;
-
-            const fields = {};
-            const kwId = getFieldIdByName('KW');
-            const cnId = getFieldIdByName('CN（中文）');
-            const pageId = getFieldIdByName('所在页面');
-            const categoryId = getFieldIdByName('字号类别');
-
-            if (kwId) fields[kwId] = kw;
-            if (cnId) fields[cnId] = zh;
-            if (pageId && pageIdx !== -1) fields[pageId] = row[pageIdx] || '';
-            if (categoryId && ownerIdx !== -1) fields[categoryId] = row[ownerIdx] || '';
-
-            TARGET_LANGUAGES.forEach(lang => {
-              const fieldId = fieldMap[lang];
-              if (fieldId) {
-                const csvLangIdx = headers.findIndex(h => h.trim() === lang);
-                if (csvLangIdx !== -1) {
-                  fields[fieldId] = row[csvLangIdx] || '';
-                }
-              }
-            });
-
-            const kwIdVal = getFieldIdByName('KW');
-            const existingIdx = updatedRecords.findIndex(r => r.fields[kwIdVal] === kw);
-            if (existingIdx !== -1) {
-              const existingRecordObj = updatedRecords[existingIdx];
-              TARGET_LANGUAGES.forEach(lang => {
-                const fieldId = fieldMap[lang];
-                const csvLangIdx = headers.findIndex(h => h.trim() === lang);
-                if (csvLangIdx !== -1) {
-                  const csvVal = row[csvLangIdx] || '';
-                  const oldVal = existingRecordObj.fields[fieldId] || '';
-                  if (csvVal !== oldVal) {
-                    if (!updatedCellsDict[existingRecordObj.recordId]) {
-                      updatedCellsDict[existingRecordObj.recordId] = {};
-                    }
-                    updatedCellsDict[existingRecordObj.recordId][lang] = true;
-                  }
-                }
-              });
-              updatedRecords[existingIdx] = {
-                ...updatedRecords[existingIdx],
-                fields: {
-                  ...updatedRecords[existingIdx].fields,
-                  ...fields
-                }
-              };
-              localUpdateCount++;
-            } else {
-              const newRecordId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-              updatedCellsDict[newRecordId] = { isAdded: true };
-              updatedRecords.push({
-                recordId: newRecordId,
-                fields
-              });
-              localAddCount++;
-            }
-          });
-
-          if (mockDatabaseRef.current[selectedTableId]) {
-            setMockDatabase(prev => ({
-              ...prev,
-              [selectedTableId]: {
-                ...prev[selectedTableId],
-                records: updatedRecords
-              }
-            }));
-          }
-          setRecords(updatedRecords);
-          
-          // Sync imported CSV data to SQLite in background
-          saveOfflineRecords(selectedTableId, updatedRecords);
-          setModifiedCells(updatedCellsDict);
-
-          onAddLog('导入 CSV (离线)', '', '', `更新了 ${localUpdateCount} 条，新增了 ${localAddCount} 条词条`);
-          showStatus('success', `导入成功 (离线模式)！更新 ${localUpdateCount} 条，新增 ${localAddCount} 条。`);
-          e.target.value = '';
-          return;
-        }
-
-        const table = await bitable.base.getTableById(selectedTableId);
-        
-        const existingKwsMap = {}; // { kw: recordId }
-        records.forEach(rec => {
-          const kw = getRecordValueByName(rec, 'KW');
-          if (kw) {
-            existingKwsMap[kw] = rec.recordId;
-          }
-        });
-
-        const recordsToUpdate = [];
-        const recordsToAdd = [];
-        let updateCount = 0;
-        let addCount = 0;
+        const updatedRecords = [...records];
+        let localUpdateCount = 0;
+        let localAddCount = 0;
+        const updatedCellsDict = { ...modifiedCells };
 
         rows.forEach((row) => {
           const kw = row[kwIdx]?.trim();
@@ -2174,83 +1527,66 @@ export default function TranslationTab({
           if (!kw || !zh) return;
 
           const fields = {};
-          const kwId = getFieldIdByName('KW');
-          const cnId = getFieldIdByName('CN（中文）');
-          const pageId = getFieldIdByName('所在页面');
-          const categoryId = getFieldIdByName('字号类别');
-
-          if (kwId) fields[kwId] = kw;
-          if (cnId) fields[cnId] = zh;
-          if (pageId && pageIdx !== -1) fields[pageId] = row[pageIdx] || '';
-          if (categoryId && ownerIdx !== -1) fields[categoryId] = row[ownerIdx] || '';
+          fields['KW'] = kw;
+          fields['CN（中文）'] = zh;
+          fields['所在页面'] = (pageIdx !== -1 && row[pageIdx]) ? row[pageIdx] : '';
+          fields['字号类别'] = (ownerIdx !== -1 && row[ownerIdx]) ? row[ownerIdx] : '';
 
           TARGET_LANGUAGES.forEach(lang => {
-            const fieldId = fieldMap[lang];
-            if (fieldId) {
-              const csvLangIdx = headers.findIndex(h => h.trim() === lang);
-              if (csvLangIdx !== -1) {
-                fields[fieldId] = row[csvLangIdx] || '';
-              }
+            const csvLangIdx = headers.findIndex(h => h.trim() === lang);
+            if (csvLangIdx !== -1) {
+              fields[lang] = row[csvLangIdx] || '';
+            } else {
+              fields[lang] = '';
             }
           });
 
-          if (existingKwsMap[kw]) {
-            recordsToUpdate.push({
-              recordId: existingKwsMap[kw],
-              fields
-            });
-            updateCount++;
-          } else {
-            recordsToAdd.push({
-              fields
-            });
-            addCount++;
-          }
-        });
-
-        const updatedCellsDict = { ...modifiedCells };
-
-        recordsToUpdate.forEach(item => {
-          const existingRec = records.find(r => r.recordId === item.recordId);
-          if (existingRec) {
+          const existingIdx = updatedRecords.findIndex(r => r.fields.KW === kw);
+          if (existingIdx !== -1) {
+            const existingRecordObj = updatedRecords[existingIdx];
             TARGET_LANGUAGES.forEach(lang => {
-              const fieldId = fieldMap[lang];
-              if (fieldId && item.fields[fieldId] !== undefined) {
-                const csvVal = item.fields[fieldId];
-                const oldVal = getRecordValueByName(existingRec, lang);
+              const csvLangIdx = headers.findIndex(h => h.trim() === lang);
+              if (csvLangIdx !== -1) {
+                const csvVal = row[csvLangIdx] || '';
+                const oldVal = existingRecordObj.fields[lang] || '';
                 if (csvVal !== oldVal) {
-                  if (!updatedCellsDict[item.recordId]) {
-                    updatedCellsDict[item.recordId] = {};
+                  if (!updatedCellsDict[existingRecordObj.recordId]) {
+                    updatedCellsDict[existingRecordObj.recordId] = {};
                   }
-                  updatedCellsDict[item.recordId][lang] = true;
+                  updatedCellsDict[existingRecordObj.recordId][lang] = true;
                 }
               }
             });
+            updatedRecords[existingIdx] = {
+              ...updatedRecords[existingIdx],
+              fields: {
+                ...updatedRecords[existingIdx].fields,
+                ...fields
+              },
+              updatedAt: new Date().toISOString()
+            };
+            localUpdateCount++;
+          } else {
+            const newRecordId = crypto.randomUUID();
+            updatedCellsDict[newRecordId] = { isAdded: true };
+            updatedRecords.push({
+              recordId: newRecordId,
+              fields,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            });
+            localAddCount++;
           }
         });
 
-        const chunkSize = 200;
+        setRecords(updatedRecords);
         
-        for (let i = 0; i < recordsToUpdate.length; i += chunkSize) {
-          const chunk = recordsToUpdate.slice(i, i + chunkSize);
-          await table.setRecords(chunk);
-        }
-
-        for (let i = 0; i < recordsToAdd.length; i += chunkSize) {
-          const chunk = recordsToAdd.slice(i, i + chunkSize);
-          const chunkIds = await table.addRecords(chunk);
-          if (Array.isArray(chunkIds)) {
-            chunkIds.forEach(id => {
-              updatedCellsDict[id] = { isAdded: true };
-            });
-          }
-        }
-
+        // Sync imported CSV data to SQLite in background
+        await saveOfflineRecords(selectedTableId, updatedRecords);
         setModifiedCells(updatedCellsDict);
 
-        onAddLog('导入 CSV', '', '', `更新了 ${updateCount} 条，新增了 ${addCount} 条词条`);
-        showStatus('success', `导入成功！更新 ${updateCount} 条，新增 ${addCount} 条。`);
-        await loadTableData(selectedTableId);
+        onAddLog('导入 CSV', '', '', `更新了 ${localUpdateCount} 条，新增了 ${localAddCount} 条词条`);
+        showStatus('success', `导入成功！更新 ${localUpdateCount} 条，新增 ${localAddCount} 条。`);
       } catch (err) {
         showStatus('danger', `解析并导入 CSV 失败: ${err.message}`);
       } finally {
@@ -2422,24 +1758,7 @@ export default function TranslationTab({
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
-            
-            {!isDemoMode ? (
-              <button 
-                onClick={handleSyncAllTables} 
-                className="btn btn-secondary" 
-                style={{ height: '34px', fontSize: '0.8rem', padding: '0 0.6rem', color: 'var(--accent)', borderColor: 'var(--accent)', gap: '0.2rem' }}
-                title="一键同步当前飞书多维表格中所有词条数据表到本地 SQLite"
-              >
-                🔄 一键同步
-              </button>
-            ) : (
-              <span 
-                style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'var(--bg-tertiary)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)', whiteSpace: 'nowrap' }}
-                title="提示：离线状态下数据可能有延迟。要在本地获取最新数据，请在飞书多维表格插件里打开本插件并执行自动同步。"
-              >
-                ℹ️ 离线模式
-              </span>
-            )}
+
           </div>
 
           {/* Search bar */}
