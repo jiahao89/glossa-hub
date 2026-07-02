@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Search, Filter, History, Trash2, Eye, ArrowRight, User } from 'lucide-react';
+import { apiFetch } from '../utils/api';
 
 export default function LogsTab() {
   const [logs, setLogs] = useState([]);
@@ -18,11 +19,7 @@ export default function LogsTab() {
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch('/api/logs', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const res = await apiFetch('/api/logs');
       if (!res.ok) throw new Error('获取日志失败');
       const data = await res.json();
       setLogs(data);
@@ -44,11 +41,8 @@ export default function LogsTab() {
     if (!confirmClear) return;
 
     try {
-      const res = await fetch('/api/logs', {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      const res = await apiFetch('/api/logs', {
+        method: 'DELETE'
       });
       if (res.ok) {
         setLogs([]);

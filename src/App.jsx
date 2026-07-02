@@ -361,6 +361,7 @@ export default function App() {
           {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
           {activeTab === 'translate' && (
             <TranslationTab 
+              difyConnected={difyConnected}
               onAddLog={handleAddLog}
               modifiedCells={modifiedCells}
               setModifiedCells={setModifiedCells}

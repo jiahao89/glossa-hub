@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Database, FileText, CheckCircle, BarChart3, Activity, Clock, User } from 'lucide-react';
+import { apiFetch } from '../utils/api';
 
 export default function DashboardTab({ onNavigate }) {
   const [stats, setStats] = useState(null);
@@ -8,11 +9,7 @@ export default function DashboardTab({ onNavigate }) {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch('/api/dashboard/stats', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const res = await apiFetch('/api/dashboard/stats');
       if (!res.ok) {
         throw new Error('拉取看板数据失败');
       }

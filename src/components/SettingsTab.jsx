@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../utils/api';
 
 export default function SettingsTab({ 
   onConnectionStatusChange 
@@ -13,11 +14,7 @@ export default function SettingsTab({
   useEffect(() => {
     async function loadConfig() {
       try {
-        const res = await fetch('/api/projects/proj-default/dify', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
+        const res = await apiFetch('/api/projects/proj-default/dify');
         if (res.ok) {
           const data = await res.json();
           if (data.baseUrl) {
@@ -41,11 +38,10 @@ export default function SettingsTab({
     setMessage(null);
 
     try {
-      const res = await fetch('/api/projects/proj-default/dify', {
+      const res = await apiFetch('/api/projects/proj-default/dify', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ baseUrl: dififyUrlClean(difyUrl), apiKey: difyKey || undefined })
       });
@@ -79,11 +75,10 @@ export default function SettingsTab({
     setMessage(null);
 
     try {
-      const res = await fetch('/api/projects/proj-default/dify-test', {
+      const res = await apiFetch('/api/projects/proj-default/dify-test', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ baseUrl: dififyUrlClean(difyUrl), apiKey: difyKey || undefined })
       });

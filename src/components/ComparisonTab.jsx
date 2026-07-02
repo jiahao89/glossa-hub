@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { parseCSV } from '../utils/csvHelper';
 import { Search, Loader2, ArrowLeftRight, FileInput, AlertCircle, HelpCircle } from 'lucide-react';
+import { apiFetch } from '../utils/api';
 
 const DEFAULT_TARGET_LANGUAGES = [
   'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
@@ -31,11 +32,7 @@ export default function ComparisonTab() {
   useEffect(() => {
     async function loadProjLanguages() {
       try {
-        const res = await fetch('/api/projects/proj-default/languages', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
+        const res = await apiFetch('/api/projects/proj-default/languages');
         if (res.ok) {
           const data = await res.json();
           if (data && data.length > 0) {

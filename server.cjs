@@ -4,12 +4,30 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'magene-glossa-hub-secret-key-2026';
 
-app.use(cors());
+// JWT_SECRET: 必须通过环境变量设置，不再使用硬编码兜底值
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('❌ 必须设置 JWT_SECRET 环境变量！例如: JWT_SECRET=your-secret node server.cjs');
+  process.exit(1);
+}
+
+// CORS 白名单限制
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS: ' + origin));
+    }
+  }
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -20,9 +38,23 @@ let dbType = 'sqlite';
 let sqliteDb = null;
 let pgPool = null;
 
-// SHA256 hashing helper for password verification
+// SHA256 hashing helper for legacy password compatibility
 function sha256(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+// bcrypt hashing helper (new standard)
+const BCRYPT_ROUNDS = 10;
+function hashPassword(plain) {
+  return bcrypt.hashSync(plain, BCRYPT_ROUNDS);
+}
+function verifyPassword(plain, hash) {
+  // 兼容旧 SHA256 哈希（64 位 hex = SHA256）
+  if (hash.length === 64) {
+    const sha256Match = sha256(plain) === hash;
+    return sha256Match;
+  }
+  return bcrypt.compareSync(plain, hash);
 }
 
 // ----------------------------------------------------
@@ -154,7 +186,7 @@ function initSqliteTables() {
         if (err) return reject(err);
 
         // Pre-populate Magene internal users (王赵云 & 史东升)
-        const passHash = sha256('magene123');
+        const passHash = hashPassword('magene123');
         sqliteDb.run(`
           INSERT OR IGNORE INTO users (id, username, password_hash, name, role, created_at)
           VALUES 
@@ -315,22 +347,14 @@ const db = {
 };
 
 // ----------------------------------------------------
-// Authentication Middleware (With Mock Fallback)
+// Authentication Middleware
 // ----------------------------------------------------
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    // Graceful backward compatibility fallback:
-    // If frontend hasn't implemented token headers yet, fallback to "王赵云"
-    req.user = {
-      id: 'user-wangzhaoyun',
-      username: 'wangzhaoyun',
-      name: '王赵云',
-      role: 'admin'
-    };
-    return next();
+    return res.status(401).json({ error: '未登录或登录已过期，请重新登录。' });
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
@@ -347,7 +371,14 @@ function authenticateToken(req, res, next) {
 // ----------------------------------------------------
 
 // 1. Auth Endpoint: POST /api/auth/login
-app.post('/api/auth/login', async (req, res) => {
+// 登录限流: 每分钟最多 5 次尝试
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { error: '尝试过于频繁，请 1 分钟后再试。' }
+});
+
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: '请输入用户名和密码！' });
@@ -359,9 +390,14 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: '用户名或密码不正确！' });
     }
 
-    const calculatedHash = sha256(password);
-    if (user.password_hash !== calculatedHash) {
+    if (!verifyPassword(password, user.password_hash)) {
       return res.status(401).json({ error: '用户名或密码不正确！' });
+    }
+
+    // 自动升级旧 SHA256 哈希为 bcrypt
+    if (user.password_hash.length === 64) {
+      const newHash = hashPassword(password);
+      await db.run('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
     }
 
     const token = jwt.sign(
@@ -380,7 +416,8 @@ app.post('/api/auth/login', async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ error: `数据库查询出错: ${err.message}` });
+    console.error('登录出错:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -393,7 +430,7 @@ app.get('/api/tables', authenticateToken, async (req, res) => {
     );
     res.json(versions);
   } catch (err) {
-    res.status(500).json({ error: `获取版本列表失败: ${err.message}` });
+    console.error('获取版本列表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -431,7 +468,7 @@ app.get('/api/tables/:tableId/records', authenticateToken, async (req, res) => {
     
     res.json(formatted);
   } catch (err) {
-    res.status(500).json({ error: `获取词条数据失败: ${err.message}` });
+    console.error('获取词条数据失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -556,7 +593,7 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
 
     res.json({ message: `同步成功！共同步 ${records.length} 条词条。` });
   } catch (err) {
-    res.status(500).json({ error: `数据同步处理失败: ${err.message}` });
+    console.error('数据同步处理失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -579,7 +616,7 @@ app.post('/api/sync-cleanup', authenticateToken, async (req, res) => {
       res.json({ message: '缓存清理成功' });
     }
   } catch (err) {
-    res.status(500).json({ error: `清理缓存失败: ${err.message}` });
+    console.error('清理缓存失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -606,7 +643,7 @@ app.get('/api/logs', authenticateToken, async (req, res) => {
     
     res.json(formatted);
   } catch (err) {
-    res.status(500).json({ error: `读取修改记录日志失败: ${err.message}` });
+    console.error('读取修改记录日志失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -637,7 +674,7 @@ app.post('/api/logs', authenticateToken, async (req, res) => {
       operator: req.user.name
     });
   } catch (err) {
-    res.status(500).json({ error: `记录日志失败: ${err.message}` });
+    console.error('记录日志失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -648,7 +685,7 @@ app.delete('/api/logs', authenticateToken, async (req, res) => {
     await db.run(`DELETE FROM ${logsTable}`);
     res.json({ message: '修改记录清空成功' });
   } catch (err) {
-    res.status(500).json({ error: `清空日志失败: ${err.message}` });
+    console.error('清空日志失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -684,7 +721,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, async (req, res
 
     res.status(201).json({ id: versionId, versionName });
   } catch (err) {
-    res.status(500).json({ error: `新建固件版本失败: ${err.message}` });
+    console.error('新建固件版本失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -735,7 +772,7 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
     const newTerm = await db.queryOne('SELECT * FROM terms WHERE id = $1', [termId]);
     res.json(newTerm);
   } catch (err) {
-    res.status(500).json({ error: `修改词条失败: ${err.message}` });
+    console.error('修改词条失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -766,7 +803,7 @@ app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) =>
 
     res.json({ message: 'Dify 配置已成功加密存入数据库！' });
   } catch (err) {
-    res.status(500).json({ error: `保存 Dify 配置失败: ${err.message}` });
+    console.error('保存 Dify 配置失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -791,7 +828,7 @@ app.get('/api/projects/:projectId/dify', authenticateToken, async (req, res) => 
       apiKeyConfigured: !!config.apiKey
     });
   } catch (err) {
-    res.status(500).json({ error: `读取 Dify 配置失败: ${err.message}` });
+    console.error('读取 Dify 配置失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -874,7 +911,7 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req,
       res.status(500).json({ error: `解析 Dify 输出 JSON 失败: ${parseErr.message}` });
     }
   } catch (err) {
-    res.status(500).json({ error: `中转 AI 翻译失败: ${err.message}` });
+    console.error('中转 AI 翻译失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -921,7 +958,7 @@ app.post('/api/projects/:projectId/dify-test', authenticateToken, async (req, re
 
     res.json({ success: true, message: 'Dify 引擎连接测试成功！' });
   } catch (err) {
-    res.status(500).json({ error: `连接测试失败: ${err.message}` });
+    console.error('连接测试失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -940,7 +977,7 @@ app.get('/api/projects/:projectId/languages', authenticateToken, async (req, res
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: `获取项目语言列表失败: ${err.message}` });
+    console.error('获取项目语言列表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -985,7 +1022,7 @@ app.post('/api/projects/:projectId/languages', authenticateToken, async (req, re
 
     res.status(201).json({ id: langId, langCode, langName, displayOrder: nextOrder });
   } catch (err) {
-    res.status(500).json({ error: `添加语种失败: ${err.message}` });
+    console.error('添加语种失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1044,7 +1081,7 @@ app.put('/api/projects/:projectId/languages/:langId', authenticateToken, async (
 
     res.json({ message: '语种修改及词条映射同步成功！' });
   } catch (err) {
-    res.status(500).json({ error: `修改语种失败: ${err.message}` });
+    console.error('修改语种失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1091,7 +1128,7 @@ app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, asyn
     await db.run('DELETE FROM languages WHERE id = $1', [langId]);
     res.json({ message: '语种及关联词条翻译成功清除！' });
   } catch (err) {
-    res.status(500).json({ error: `删除语种失败: ${err.message}` });
+    console.error('删除语种失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1204,7 +1241,7 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
       recentLogs
     });
   } catch (err) {
-    res.status(500).json({ error: `获取看板统计数据失败: ${err.message}` });
+    console.error('获取看板统计数据失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1224,7 +1261,7 @@ app.delete('/api/projects/:projectId/versions/:versionId', authenticateToken, as
     await db.run('DELETE FROM versions WHERE id = $1', [versionId]);
     res.json({ message: `固件数据表 [${ver.version_name}] 已成功删除，其下的词条翻译数据已被清除。` });
   } catch (err) {
-    res.status(500).json({ error: `删除固件版本失败: ${err.message}` });
+    console.error('删除固件版本失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1235,7 +1272,7 @@ app.get('/api/projects/:projectId/glossary-tables', authenticateToken, async (re
     const tables = await db.query('SELECT * FROM glossary_tables WHERE project_id = $1 ORDER BY table_name ASC', [projectId]);
     res.json(tables);
   } catch (err) {
-    res.status(500).json({ error: `加载词汇表失败: ${err.message}` });
+    console.error('加载词汇表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1264,7 +1301,7 @@ app.post('/api/projects/:projectId/glossary-tables', authenticateToken, async (r
     );
     res.status(201).json({ id: tableId, table_name: tableName, created_at: createdTime });
   } catch (err) {
-    res.status(500).json({ error: `创建词汇大表失败: ${err.message}` });
+    console.error('创建词汇大表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1280,7 +1317,7 @@ app.delete('/api/projects/:projectId/glossary-tables/:tableId', authenticateToke
     await db.run('DELETE FROM glossary_tables WHERE id = $1', [tableId]);
     res.json({ message: `专业词汇表 [${tbl.table_name}] 及其内所有术语已被彻底清除。` });
   } catch (err) {
-    res.status(500).json({ error: `删除词汇表失败: ${err.message}` });
+    console.error('删除词汇表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1291,7 +1328,7 @@ app.get('/api/glossary-tables/:tableId/terms', authenticateToken, async (req, re
     const terms = await db.query('SELECT * FROM glossary_terms WHERE table_id = $1 ORDER BY cn_term ASC', [tableId]);
     res.json(terms);
   } catch (err) {
-    res.status(500).json({ error: `加载专业术语列表失败: ${err.message}` });
+    console.error('加载专业术语列表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1338,7 +1375,7 @@ app.post('/api/glossary-tables/:tableId/terms', authenticateToken, async (req, r
 
     res.status(201).json({ id: termId, cn_term: cnTerm, en_term: enTerm, description });
   } catch (err) {
-    res.status(500).json({ error: `添加专业术语失败: ${err.message}` });
+    console.error('添加专业术语失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
@@ -1354,7 +1391,7 @@ app.delete('/api/glossary-tables/:tableId/terms/:termId', authenticateToken, asy
     await db.run('DELETE FROM glossary_terms WHERE id = $1', [termId]);
     res.json({ message: '术语已成功删除' });
   } catch (err) {
-    res.status(500).json({ error: `删除术语失败: ${err.message}` });
+    console.error('删除术语失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 

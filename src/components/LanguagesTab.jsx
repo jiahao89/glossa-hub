@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, ArrowUp, ArrowDown, HelpCircle, Globe, AlertTriangle } from 'lucide-react';
+import { apiFetch } from '../utils/api';
 
 export default function LanguagesTab() {
   const [languages, setLanguages] = useState([]);
@@ -20,11 +21,7 @@ export default function LanguagesTab() {
 
   const fetchLanguages = async () => {
     try {
-      const res = await fetch('/api/projects/proj-default/languages', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const res = await apiFetch('/api/projects/proj-default/languages');
       if (!res.ok) throw new Error('加载语种失败');
       const data = await res.json();
       setLanguages(data);
@@ -48,12 +45,8 @@ export default function LanguagesTab() {
 
     setAdding(true);
     try {
-      const res = await fetch('/api/projects/proj-default/languages', {
+      const res = await apiFetch('/api/projects/proj-default/languages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({
           langCode: newLangCode.trim().toUpperCase(),
           langName: newLangName.trim()
@@ -96,12 +89,8 @@ export default function LanguagesTab() {
 
     setRenaming(true);
     try {
-      const res = await fetch(`/api/projects/proj-default/languages/${activeLang.id}`, {
+      const res = await apiFetch(`/api/projects/proj-default/languages/${activeLang.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({
           langName: newLangNameInput.trim()
         })
@@ -128,11 +117,8 @@ export default function LanguagesTab() {
     if (!confirmDelete) return;
 
     try {
-      const res = await fetch(`/api/projects/proj-default/languages/${lang.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      const res = await apiFetch(`/api/projects/proj-default/languages/${lang.id}`, {
+        method: 'DELETE'
       });
       const data = await res.json();
       if (res.ok) {
@@ -155,21 +141,13 @@ export default function LanguagesTab() {
 
     try {
       // Swapping orders by PUT api
-      await fetch(`/api/projects/proj-default/languages/${lang.id}`, {
+      await apiFetch(`/api/projects/proj-default/languages/${lang.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({ displayOrder: targetLang.display_order })
       });
 
-      await fetch(`/api/projects/proj-default/languages/${targetLang.id}`, {
+      await apiFetch(`/api/projects/proj-default/languages/${targetLang.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({ displayOrder: lang.display_order })
       });
 

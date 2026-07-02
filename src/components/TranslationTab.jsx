@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { runDifyWorkflow } from '../utils/difyHelper';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
+import { apiFetch } from '../utils/api';
 import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2 } from 'lucide-react';
 
 const DEFAULT_TARGET_LANGUAGES = [
@@ -10,8 +10,7 @@ const DEFAULT_TARGET_LANGUAGES = [
 ];
 
 export default function TranslationTab({ 
-  difyUrl, 
-  difyKey, 
+  difyConnected = false,
   onAddLog: onAddLogOriginal, 
   modifiedCells, 
   setModifiedCells 
@@ -21,16 +20,16 @@ export default function TranslationTab({
   const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
   const TARGET_LANGUAGES = targetLanguagesList;
 
-  const [difyConfigured, setDifyConfigured] = useState(false);
+  const [difyConfigured, setDifyConfigured] = useState(difyConnected);
+
+  useEffect(() => {
+    setDifyConfigured(difyConnected);
+  }, [difyConnected]);
 
   useEffect(() => {
     const loadProjLanguages = async () => {
       try {
-        const res = await fetch('/api/projects/proj-default/languages', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
+        const res = await apiFetch('/api/projects/proj-default/languages');
         if (res.ok) {
           const data = await res.json();
           if (data && data.length > 0) {
@@ -44,11 +43,7 @@ export default function TranslationTab({
 
     const loadDifyState = async () => {
       try {
-        const res = await fetch('/api/projects/proj-default/dify', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
+        const res = await apiFetch('/api/projects/proj-default/dify');
         if (res.ok) {
           const data = await res.json();
           setDifyConfigured(data.apiKeyConfigured);
@@ -651,10 +646,6 @@ export default function TranslationTab({
       alert('请先输入中文源词！');
       return;
     }
-    if (!difyUrl || !difyKey) {
-      alert('请先在“引擎设置”页签配置 Dify API 接口地址与密钥！');
-      return;
-    }
 
     setAiTranslatingSingle(true);
     try {
@@ -665,7 +656,15 @@ export default function TranslationTab({
         target_languages: TARGET_LANGUAGES.join(',')
       };
 
-      const result = await runDifyWorkflow(difyUrl, difyKey, inputs);
+      const resp = await apiFetch('/api/projects/proj-default/ai-translate', {
+        method: 'POST',
+        body: JSON.stringify({ inputs })
+      });
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${resp.status}`);
+      }
+      const result = await resp.json();
       
       // Merge results
       const updatedTrans = { ...newTerm.translations };
@@ -939,12 +938,8 @@ export default function TranslationTab({
           target_languages: item.missingLangs.join(',')
         };
 
-        const res = await fetch('/api/projects/proj-default/ai-translate', {
+        const res = await apiFetch('/api/projects/proj-default/ai-translate', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
           body: JSON.stringify({ inputs })
         });
         if (!res.ok) {
@@ -1107,7 +1102,7 @@ export default function TranslationTab({
       return;
     }
 
-    if (!difyUrl || !difyKey) {
+    if (!difyConfigured) {
       alert('请先在“引擎设置”页签中配置 Dify 的 API 地址与密钥！');
       return;
     }
@@ -1133,7 +1128,15 @@ export default function TranslationTab({
           target_languages: TARGET_LANGUAGES.join(',')
         };
 
-        const result = await runDifyWorkflow(difyUrl, difyKey, inputs);
+        const resp = await apiFetch('/api/projects/proj-default/ai-translate', {
+          method: 'POST',
+          body: JSON.stringify({ inputs })
+        });
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP ${resp.status}`);
+        }
+        const result = await resp.json();
         
         const trans = {};
         TARGET_LANGUAGES.forEach(lang => {
@@ -1366,12 +1369,8 @@ export default function TranslationTab({
         target_languages: TARGET_LANGUAGES.join(',')
       };
 
-      const res = await fetch('/api/projects/proj-default/ai-translate', {
+      const res = await apiFetch('/api/projects/proj-default/ai-translate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({ inputs })
       });
       if (!res.ok) {
