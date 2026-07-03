@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Search, Filter, History, Trash2, Eye, ArrowRight, User } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import { useToast } from './Toast';
+import EmptyState from './EmptyState';
 
 export default function LogsTab() {
+  const toast = useToast();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -10,6 +13,8 @@ export default function LogsTab() {
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [filterVersion, setFilterVersion] = useState('');
+  const [filterOperator, setFilterOperator] = useState('');
+  const [filterAction, setFilterAction] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -47,10 +52,10 @@ export default function LogsTab() {
       if (res.ok) {
         setLogs([]);
       } else {
-        alert('清空日志失败');
+        toast.error('清空日志失败');
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     }
   };
 
@@ -60,6 +65,25 @@ export default function LogsTab() {
     logs.forEach(log => {
       if (log.version_name) set.add(log.version_name);
       else if (log.version) set.add(log.version);
+    });
+    return Array.from(set).sort();
+  }, [logs]);
+
+  // 操作人去重列表
+  const operatorsList = React.useMemo(() => {
+    const set = new Set();
+    logs.forEach(log => {
+      const op = log.operator_name || log.operator || '';
+      if (op) set.add(op);
+    });
+    return Array.from(set).sort();
+  }, [logs]);
+
+  // 操作类型去重列表（基于 action 字段）
+  const actionsList = React.useMemo(() => {
+    const set = new Set();
+    logs.forEach(log => {
+      if (log.action) set.add(log.action);
     });
     return Array.from(set).sort();
   }, [logs]);
@@ -74,7 +98,7 @@ export default function LogsTab() {
         const chinese = (log.chinese || '').toLowerCase();
         const operator = (log.operator_name || log.operator || '王赵云').toLowerCase();
         const details = (log.details || '').toLowerCase();
-        
+
         if (!kw.includes(query) && !chinese.includes(query) && !operator.includes(query) && !details.includes(query)) {
           return false;
         }
@@ -83,6 +107,17 @@ export default function LogsTab() {
       // 2. Version Filter
       const logVer = log.version_name || log.version;
       if (filterVersion && logVer !== filterVersion) {
+        return false;
+      }
+
+      // 2b. Operator Filter
+      const logOp = log.operator_name || log.operator || '';
+      if (filterOperator && logOp !== filterOperator) {
+        return false;
+      }
+
+      // 2c. Action Filter
+      if (filterAction && log.action !== filterAction) {
         return false;
       }
 
@@ -99,7 +134,7 @@ export default function LogsTab() {
 
       return true;
     });
-  }, [logs, searchQuery, filterVersion, startDate, endDate]);
+  }, [logs, searchQuery, filterVersion, filterOperator, filterAction, startDate, endDate]);
 
   const handleOpenDiff = (log) => {
     setActiveLog(log);
@@ -172,8 +207,8 @@ export default function LogsTab() {
 
         {/* Version Selector */}
         <div style={{ flex: 1, minWidth: '120px' }}>
-          <select 
-            value={filterVersion} 
+          <select
+            value={filterVersion}
             onChange={(e) => setFilterVersion(e.target.value)}
             className="text-input"
             style={{ height: '34px', padding: '0 0.5rem', fontSize: '0.82rem' }}
@@ -181,6 +216,38 @@ export default function LogsTab() {
             <option value="">所有版本大表</option>
             {versionsList.map(v => (
               <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Operator Selector */}
+        <div style={{ flex: 1, minWidth: '120px' }}>
+          <select
+            value={filterOperator}
+            onChange={(e) => setFilterOperator(e.target.value)}
+            className="text-input"
+            style={{ height: '34px', padding: '0 0.5rem', fontSize: '0.82rem' }}
+            title="按操作人筛选"
+          >
+            <option value="">所有操作人</option>
+            {operatorsList.map(op => (
+              <option key={op} value={op}>{op}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Action Selector */}
+        <div style={{ flex: 1, minWidth: '140px' }}>
+          <select
+            value={filterAction}
+            onChange={(e) => setFilterAction(e.target.value)}
+            className="text-input"
+            style={{ height: '34px', padding: '0 0.5rem', fontSize: '0.82rem' }}
+            title="按操作类型筛选"
+          >
+            <option value="">所有操作类型</option>
+            {actionsList.map(act => (
+              <option key={act} value={act}>{act}</option>
             ))}
           </select>
         </div>
@@ -223,8 +290,16 @@ export default function LogsTab() {
           <tbody>
             {filteredLogs.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  没有找到符合过滤条件的日志轨迹
+                <td colSpan="7" style={{ padding: '0' }}>
+                  <EmptyState
+                    icon={History}
+                    title={logs.length === 0 ? '暂无任何操作日志' : '没有找到符合筛选条件的日志'}
+                    description={
+                      logs.length === 0
+                        ? '在“词条管理”页面编辑、审核或同步词条后，操作记录会自动显示在这里。'
+                        : '试试清除部分筛选条件（操作人/操作类型/版本/日期范围）扩大查询范围。'
+                    }
+                  />
                 </td>
               </tr>
             ) : (

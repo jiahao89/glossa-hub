@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useToast } from './Toast';
 import { Plus, Trash2, Download, Upload, BookOpen, AlertTriangle, FileSpreadsheet, Search } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 
 export default function GlossaryTab() {
+  const toast = useToast();
   const [tables, setTables] = useState([]);
   const [selectedTableId, setSelectedTableId] = useState('');
   const [terms, setTerms] = useState([]);
@@ -92,10 +94,10 @@ export default function GlossaryTab() {
         setTables(prev => [...prev, data]);
         setSelectedTableId(data.id);
       } else {
-        alert(`创建失败: ${data.error}`);
+        toast.error(`创建失败: ${data.error}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     } finally {
       setCreatingTable(false);
     }
@@ -116,20 +118,20 @@ export default function GlossaryTab() {
         const remaining = tables.filter(t => t.id !== selectedTableId);
         setTables(remaining);
         setSelectedTableId(remaining.length > 0 ? remaining[0].id : '');
-        alert('删除词汇表成功！');
+        toast.success('删除词汇表成功！');
       } else {
         const data = await res.json();
-        alert(`删除失败: ${data.error}`);
+        toast.error(`删除失败: ${data.error}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     }
   };
 
   const handleAddTerm = async (e) => {
     e.preventDefault();
     if (!newCnTerm.trim() || !newEnTerm.trim()) {
-      alert('中文术语和英文翻译为必填项！');
+      toast.error('中文术语和英文翻译为必填项！');
       return;
     }
 
@@ -152,10 +154,10 @@ export default function GlossaryTab() {
         setAddTermModal(false);
         fetchTerms(selectedTableId);
       } else {
-        alert(`添加失败: ${data.error}`);
+        toast.error(`添加失败: ${data.error}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     } finally {
       setAddingTerm(false);
     }
@@ -172,17 +174,17 @@ export default function GlossaryTab() {
         setTerms(prev => prev.filter(t => t.id !== term.id));
       } else {
         const data = await res.json();
-        alert(`删除失败: ${data.error}`);
+        toast.error(`删除失败: ${data.error}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     }
   };
 
   // CSV Export
   const handleExportCSV = () => {
     if (terms.length === 0) {
-      alert('当前词汇表无数据，无法导出！');
+      toast.error('当前词汇表无数据，无法导出！');
       return;
     }
     const displayHeaders = activeTable?.headers || ['中文专业术语', '英文翻译对应', '说明 / 定义'];
@@ -220,7 +222,7 @@ export default function GlossaryTab() {
         const text = evt.target.result;
         const csvRows = parseCSV(text);
         if (csvRows.length === 0) {
-          alert('CSV 文件为空！');
+          toast.error('CSV 文件为空！');
           return;
         }
 
@@ -275,7 +277,7 @@ export default function GlossaryTab() {
         }
 
         if (parsedTerms.length === 0) {
-          alert('未解析到任何有效的术语行！');
+          toast.error('未解析到任何有效的术语行！');
           return;
         }
 
@@ -293,13 +295,13 @@ export default function GlossaryTab() {
         });
         const data = await res.json();
         if (res.ok) {
-          alert(data.message || '导入成功！');
+          toast.success(data.message || '导入成功！');
           fetchTerms(selectedTableId);
         } else {
-          alert(`导入失败: ${data.error}`);
+          toast.error(`导入失败: ${data.error}`);
         }
       } catch (err) {
-        alert(`导入发生错误: ${err.message}`);
+        toast.error(`导入发生错误: ${err.message}`);
       }
     };
     reader.readAsText(file, 'utf-8');

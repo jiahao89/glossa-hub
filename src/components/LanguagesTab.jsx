@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from './Toast';
+import EmptyState from './EmptyState';
 import { Plus, Edit2, Trash2, ArrowUp, ArrowDown, HelpCircle, Globe, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
 export default function LanguagesTab() {
+  const toast = useToast();
   const [languages, setLanguages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,7 +42,7 @@ export default function LanguagesTab() {
   const handleAddLanguage = async (e) => {
     e.preventDefault();
     if (!newLangCode.trim() || !newLangName.trim()) {
-      alert('请填写完整的语种代码与名称！');
+      toast.error('请填写完整的语种代码与名称！');
       return;
     }
 
@@ -60,10 +63,10 @@ export default function LanguagesTab() {
         setAddModalOpen(false);
         fetchLanguages();
       } else {
-        alert(`添加失败: ${data.error}`);
+        toast.error(`添加失败: ${data.error}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     } finally {
       setAdding(false);
     }
@@ -78,7 +81,7 @@ export default function LanguagesTab() {
   const handleRenameLanguage = async (e) => {
     e.preventDefault();
     if (!newLangNameInput.trim()) {
-      alert('重命名显示名称不能为空！');
+      toast.error('重命名显示名称不能为空！');
       return;
     }
 
@@ -101,10 +104,10 @@ export default function LanguagesTab() {
         setRenameModalOpen(false);
         fetchLanguages();
       } else {
-        alert(`重命名失败: ${data.error}`);
+        toast.error(`重命名失败: ${data.error}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     } finally {
       setRenaming(false);
     }
@@ -124,10 +127,10 @@ export default function LanguagesTab() {
       if (res.ok) {
         fetchLanguages();
       } else {
-        alert(`删除语种失败: ${data.error}`);
+        toast.error(`删除语种失败: ${data.error}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     }
   };
 
@@ -207,7 +210,13 @@ export default function LanguagesTab() {
           <tbody>
             {languages.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>暂无语言配置</td>
+                <td colSpan="5" style={{ padding: '0' }}>
+                  <EmptyState
+                    icon={Globe}
+                    title="当前项目还没有任何语种配置"
+                    description="在上方表单中添加第一批语种（如 EN、FR、DE），系统会据此生成翻译表格的列。"
+                  />
+                </td>
               </tr>
             ) : (
               languages.map((lang, idx) => (

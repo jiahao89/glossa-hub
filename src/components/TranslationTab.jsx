@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 import { apiFetch } from '../utils/api';
+import { useToast } from './Toast';
+import EmptyState from './EmptyState';
 import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock } from 'lucide-react';
 
 const DEFAULT_TARGET_LANGUAGES = [
@@ -17,6 +19,8 @@ export default function TranslationTab({
   selectedTableId: propSelectedTableId,
   setSelectedTableId: propSetSelectedTableId
 }) {
+  // 全局 Toast 通知（替代 alert 弹窗）
+  const toast = useToast();
 
   // Dynamic languages dictionary shadowing (Approved Spec)
   const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
@@ -88,6 +92,7 @@ export default function TranslationTab({
   // Filter/Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [filterUntranslated, setFilterUntranslated] = useState(false);
+  const [filterStatus, setFilterStatus] = useState(''); // '' | DRAFT | TRANSLATING | PENDING_REVIEW | APPROVED | REJECTED | PUBLISHED
   const [sortBy, setSortBy] = useState('changeFirst'); // 'changeFirst' | 'default' | 'createdTime' | 'modifiedTime'
 
   // Field mappings
@@ -233,17 +238,17 @@ export default function TranslationTab({
       });
       if (res.ok) {
         const data = await res.json();
-        alert(data.message || '回退成功！');
+        toast.success(data.message || '回退成功！');
         await loadSnapshots(termId);
         await loadTableData(selectedTableId);
         setEditModalRecord(null); // 关闭弹窗刷新
       } else {
         const err = await res.json();
-        alert(`回退失败: ${err.error || '未知原因'}`);
+        toast.error(`回退失败: ${err.error || '未知原因'}`);
       }
     } catch (e) {
       console.error(e);
-      alert('回退网络或服务器异常。');
+      toast.error('回退网络或服务器异常。');
     } finally {
       setRollingBackId('');
     }
@@ -265,17 +270,17 @@ export default function TranslationTab({
       });
       if (res.ok) {
         const data = await res.json();
-        alert(data.message || '批量审核设置成功！');
+        toast.success(data.message || '批量审核设置成功！');
         setBatchApproveOpen(false);
         setSelectedRecordIds(new Set());
         await loadTableData(selectedTableId);
       } else {
         const err = await res.json();
-        alert(`审核操作失败: ${err.error || '未知原因'}`);
+        toast.error(`审核操作失败: ${err.error || '未知原因'}`);
       }
     } catch (e) {
       console.error(e);
-      alert('批量审核提交时发生异常。');
+      toast.error('批量审核提交时发生异常。');
     } finally {
       setLoading(false);
     }
@@ -283,7 +288,7 @@ export default function TranslationTab({
 
   const handleToggleRowLock = async (recId, currentLockState) => {
     if (currentUser?.role !== 'admin') {
-      alert('只有管理员有权锁定/解锁词条！');
+      toast.error('只有管理员有权锁定/解锁词条！');
       return;
     }
     try {
@@ -299,11 +304,11 @@ export default function TranslationTab({
         showStatus('success', data.message || '操作成功！');
       } else {
         const errData = await res.json();
-        alert(`锁定操作失败: ${errData.error || '未知错误'}`);
+        toast.error(`锁定操作失败: ${errData.error || '未知错误'}`);
       }
     } catch (e) {
       console.error('锁定操作失败:', e);
-      alert('网络连接错误，锁定失败');
+      toast.error('网络连接错误，锁定失败');
     } finally {
       setLockLoadingId('');
     }
@@ -313,6 +318,7 @@ export default function TranslationTab({
   const [batchProgress, setBatchProgress] = useState({ total: 0, current: 0, status: '' });
   const [batchPreviewList, setBatchPreviewList] = useState([]); // [{ recordId, KW, 中文, 所在页面, translations: { langName: value } }]
   const [isTranslatingBatch, setIsTranslatingBatch] = useState(false);
+  const [isSavingBatch, setIsSavingBatch] = useState(false);
 
   // Local wrapper to automatically append table name (version) to logs
   const onAddLog = useCallback((action, kw = '', chinese = '', details = '') => {
@@ -320,6 +326,24 @@ export default function TranslationTab({
     const tableName = activeTableMeta ? activeTableMeta.name : '';
     onAddLogOriginal(action, kw, chinese, details, tableName);
   }, [onAddLogOriginal, tables, selectedTableId]);
+
+  // Sync the latest records list to backend SQLite via /api/sync-table (full replace)
+  const saveOfflineRecords = useCallback(async (tableId, recordsList) => {
+    if (!tableId || !recordsList || recordsList.length === 0) return;
+    const activeTableMeta = tables.find(t => t.id === tableId);
+    const tableName = activeTableMeta ? activeTableMeta.name : 'Unknown';
+    const formatted = recordsList.map(rec => ({
+      recordId: rec.recordId,
+      fields: rec.fields || {},
+      createdAt: rec.createdAt || new Date().toISOString(),
+      updatedAt: rec.updatedAt || new Date().toISOString()
+    }));
+    await apiFetch('/api/sync-table', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tableId, tableName, records: formatted })
+    });
+  }, [tables]);
 
   // File Input Ref
   const fileInputRef = useRef(null);
@@ -478,7 +502,13 @@ export default function TranslationTab({
         zh.toLowerCase().includes(searchQuery.toLowerCase());
       
       if (!matchesSearch) return false;
-      
+
+      // 按状态筛选（DRAFT/TRANSLATING/PENDING_REVIEW/APPROVED/REJECTED/PUBLISHED）
+      if (filterStatus) {
+        const recStatus = rec.status || 'DRAFT';
+        if (recStatus !== filterStatus) return false;
+      }
+
       if (filterUntranslated) {
         // 只要中文之外的任一目标语种为空，就属于“未翻译完”
         return TARGET_LANGUAGES.some(lang => {
@@ -521,7 +551,7 @@ export default function TranslationTab({
     }
 
     return list; // fallback default sorting
-  }, [records, searchQuery, filterUntranslated, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, visibleLanguages]);
+  }, [records, searchQuery, filterUntranslated, filterStatus, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, visibleLanguages]);
 
   // Open Edit Modal
   const handleRowDoubleClick = (record) => {
@@ -560,7 +590,7 @@ export default function TranslationTab({
     }
 
     if (Object.keys(payloadUpdates).length === 0) {
-      alert('请至少填写一个需要批量设置的分类字段！');
+      toast.error('请至少填写一个需要批量设置的分类字段！');
       return;
     }
 
@@ -573,17 +603,17 @@ export default function TranslationTab({
       });
       if (res.ok) {
         const data = await res.json();
-        alert(data.message || '批量更新分类字段成功！');
+        toast.success(data.message || '批量更新分类字段成功！');
         setBatchUpdateOpen(false);
         setSelectedRecordIds(new Set());
         await loadTableData(selectedTableId);
       } else {
         const err = await res.json();
-        alert(`修改失败: ${err.error || '未知原因'}`);
+        toast.error(`修改失败: ${err.error || '未知原因'}`);
       }
     } catch (e) {
       console.error(e);
-      alert('批量修改发生异常错误。');
+      toast.error('批量修改发生异常错误。');
     } finally {
       setLoading(false);
     }
@@ -605,16 +635,16 @@ export default function TranslationTab({
       });
       if (res.ok) {
         const data = await res.json();
-        alert(`批量复制完成！\n- 新增: ${data.addedCount} 条\n- 覆盖: ${data.overwrittenCount} 条\n- 跳过(重复/被锁定): ${data.skippedCount} 条`);
+        toast.success(`批量复制完成！\n- 新增: ${data.addedCount} 条\n- 覆盖: ${data.overwrittenCount} 条\n- 跳过(重复/被锁定): ${data.skippedCount} 条`);
         setBatchCopyOpen(false);
         setSelectedRecordIds(new Set());
       } else {
         const err = await res.json();
-        alert(`复制失败: ${err.error || '未知原因'}`);
+        toast.error(`复制失败: ${err.error || '未知原因'}`);
       }
     } catch (e) {
       console.error(e);
-      alert('批量复制发送网络异常。');
+      toast.error('批量复制发送网络异常。');
     } finally {
       setLoading(false);
     }
@@ -622,7 +652,7 @@ export default function TranslationTab({
 
   const handleInheritTranslationsSubmit = async () => {
     if (!syncInheritSourceId) {
-      alert('请先选择继承的源大表版本！');
+      toast.error('请先选择继承的源大表版本！');
       return;
     }
     try {
@@ -634,16 +664,16 @@ export default function TranslationTab({
       });
       if (res.ok) {
         const data = await res.json();
-        alert(data.message || '继承补全成功！');
+        toast.success(data.message || '继承补全成功！');
         setSyncInheritOpen(false);
         await loadTableData(selectedTableId);
       } else {
         const err = await res.json();
-        alert(`继承失败: ${err.error || '未知错误'}`);
+        toast.error(`继承失败: ${err.error || '未知错误'}`);
       }
     } catch (e) {
       console.error(e);
-      alert('继承失败，网络或后端异常。');
+      toast.error('继承失败，网络或后端异常。');
     } finally {
       setInheriting(false);
     }
@@ -785,7 +815,7 @@ export default function TranslationTab({
   // AI pre-translate single term in Add Modal
   const handleSingleAiTranslate = async () => {
     if (!newTerm.中文) {
-      alert('请先输入中文源词！');
+      toast.error('请先输入中文源词！');
       return;
     }
 
@@ -845,7 +875,7 @@ export default function TranslationTab({
   // Add Term Save
   const handleSaveAdd = async () => {
     if (!newTerm.KW || !newTerm.中文) {
-      alert('KW 唯一标识和中文源词为必填项！');
+      toast.error('KW 唯一标识和中文源词为必填项！');
       return;
     }
 
@@ -858,7 +888,7 @@ export default function TranslationTab({
       // 1. Check exact KW duplicate
       const duplicateKWItem = existingList.find(item => item.kw.toLowerCase() === newTerm.KW.trim().toLowerCase());
       if (duplicateKWItem) {
-        alert(`无法保存！已维护相同KW词条：\n- KW: ${newTerm.KW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
+        toast.error(`无法保存！已维护相同KW词条：\n- KW: ${newTerm.KW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
         setLoading(false);
         return;
       }
@@ -999,7 +1029,7 @@ export default function TranslationTab({
 
   const handleOpenBatchTranslate = async () => {
     if (!difyConfigured) {
-      alert('请先在“引擎设置”页签中配置 Dify 的 API 地址与密钥！');
+      toast.error('请先在“引擎设置”页签中配置 Dify 的 API 地址与密钥！');
       return;
     }
     
@@ -1087,7 +1117,7 @@ export default function TranslationTab({
 
   const handleConfirmBatchWrite = async () => {
     try {
-      setLoading(true);
+      setIsSavingBatch(true);
       
       const updatedCellsDict = { ...modifiedCells };
       const recordsToUpdate = [];
@@ -1177,7 +1207,7 @@ export default function TranslationTab({
     } catch (err) {
       showStatus('danger', `批量回写数据失败: ${err.message}`);
     } finally {
-      setLoading(false);
+      setIsSavingBatch(false);
     }
   };
 
@@ -1191,7 +1221,7 @@ export default function TranslationTab({
 
   const handleAddBatchAddRow = () => {
     if (batchAddRows.length >= 15) {
-      alert('一次最多批量新增 15 条词条！');
+      toast.error('一次最多批量新增 15 条词条！');
       return;
     }
     setBatchAddRows([...batchAddRows, { KW: '', 中文: '', 所在页面: '', translations: {} }]);
@@ -1205,18 +1235,18 @@ export default function TranslationTab({
   const handleStartBatchAddTranslate = async () => {
     const activeRows = batchAddRows.filter(r => r.KW || r.中文 || r.所在页面);
     if (activeRows.length === 0) {
-      alert('请至少填写一行词条信息！');
+      toast.error('请至少填写一行词条信息！');
       return;
     }
 
     const invalidRow = activeRows.find(r => !r.KW || !r.中文 || !r.所在页面);
     if (invalidRow) {
-      alert('KW、中文、所在页面为必填项，请补全内容！');
+      toast.error('KW、中文、所在页面为必填项，请补全内容！');
       return;
     }
 
     if (!difyConfigured) {
-      alert('请先在“引擎设置”页签中配置 Dify 的 API 地址与密钥！');
+      toast.error('请先在“引擎设置”页签中配置 Dify 的 API 地址与密钥！');
       return;
     }
 
@@ -1279,7 +1309,7 @@ export default function TranslationTab({
     });
 
     if (completedRows.length === 0) {
-      alert('没有已完成翻译的词条！请先执行“AI 批量翻译”并确认翻译结果不为空。');
+      toast.error('没有已完成翻译的词条！请先执行“AI 批量翻译”并确认翻译结果不为空。');
       return;
     }
 
@@ -1293,12 +1323,12 @@ export default function TranslationTab({
       for (const row of completedRows) {
         const duplicateKWItem = existingList.find(item => item.kw.toLowerCase() === row.KW.trim().toLowerCase());
         if (duplicateKWItem) {
-          alert(`无法保存！批处理中发现已维护相同KW词条：\n- KW: ${row.KW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
+          toast.error(`无法保存！批处理中发现已维护相同KW词条：\n- KW: ${row.KW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
           setLoading(false);
           return;
         }
         if (batchKWSet.has(row.KW.trim().toLowerCase())) {
-          alert(`无法保存！批量列表中含有重复的KW：${row.KW}`);
+          toast.error(`无法保存！批量列表中含有重复的KW：${row.KW}`);
           setLoading(false);
           return;
         }
@@ -1391,11 +1421,11 @@ export default function TranslationTab({
   // AI Translate inside Edit Modal
   const handleEditModalAiTranslate = async () => {
     if (!editModalRecord.中文) {
-      alert('请先输入中文源词！');
+      toast.error('请先输入中文源词！');
       return;
     }
     if (!difyConfigured) {
-      alert('请先在“引擎设置”页签配置 Dify API 接口地址与密钥！');
+      toast.error('请先在“引擎设置”页签配置 Dify API 接口地址与密钥！');
       return;
     }
 
@@ -1476,7 +1506,7 @@ export default function TranslationTab({
     });
 
     if (emptyRecords.length === 0) {
-      alert('当前数据表中未发现空词条（KW 或 CN（中文） 为空的词条）！');
+      toast.error('当前数据表中未发现空词条（KW 或 CN（中文） 为空的词条）！');
       return;
     }
 
@@ -1530,7 +1560,7 @@ export default function TranslationTab({
         const parsedRows = parseCSV(text);
 
         if (parsedRows.length < 2) {
-          alert('CSV 文件数据不足（缺少表头或数据）');
+          toast.error('CSV 文件数据不足（缺少表头或数据）');
           return;
         }
 
@@ -1550,7 +1580,7 @@ export default function TranslationTab({
         const ownerIdx = findHeaderIndex(['字号类别', '字号', '类别', '负责人']);
 
         if (kwIdx === -1 || zhIdx === -1) {
-          alert('CSV 结构非法：必须包含 "KW" 和 "CN（中文）" 列！');
+          toast.error('CSV 结构非法：必须包含 "KW" 和 "CN（中文）" 列！');
           return;
         }
 
@@ -1720,13 +1750,30 @@ export default function TranslationTab({
           </div>
 
           {/* Filter Switch */}
-          <div 
+          <div
             onClick={() => setFilterUntranslated(!filterUntranslated)}
             className={`toggle-wrapper ${filterUntranslated ? 'active' : ''}`}
           >
             <div className="toggle-switch"></div>
             <span>只看未翻译 ({filteredRecords.length})</span>
           </div>
+
+          {/* Status Filter Dropdown */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="text-input"
+            style={{ height: '34px', padding: '0 0.5rem', fontSize: '0.82rem', minWidth: '120px' }}
+            title="按状态筛选"
+          >
+            <option value="">全部状态</option>
+            <option value="DRAFT">待翻译</option>
+            <option value="TRANSLATING">翻译中</option>
+            <option value="PENDING_REVIEW">待审核</option>
+            <option value="APPROVED">已审核</option>
+            <option value="REJECTED">被驳回</option>
+            <option value="PUBLISHED">已发布</option>
+          </select>
 
           {/* Column Filter Dropdown */}
           <div style={{ position: 'relative' }}>
@@ -1904,17 +1951,34 @@ export default function TranslationTab({
         {loading ? (
           <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', gap: '0.8rem' }}>
             <Loader2 className="animate-spin" size={24} color="var(--accent)" />
-            <span style={{ color: 'var(--text-secondary)' }}>正在读取多维表格数据...</span>
+            <span style={{ color: 'var(--text-secondary)' }}>正在读取词条数据...</span>
           </div>
         ) : tables.length === 0 ? (
-          <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexDirection: 'column', gap: '0.8rem' }}>
-            <AlertCircle size={32} style={{ opacity: 0.5, color: 'var(--accent)' }} />
-            <span>暂无数据表。请先前往左侧“数据表管理”新建大表！</span>
-          </div>
+          <EmptyState
+            icon={AlertCircle}
+            title="当前项目还没有任何版本数据表"
+            description="请先到“数据表管理”页面新建第一个固件版本，作为翻译工作的起点。"
+          />
         ) : filteredRecords.length === 0 ? (
-          <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-            没有匹配的词条数据
-          </div>
+          <EmptyState
+            icon={Search}
+            title={searchQuery || filterStatus || filterUntranslated ? '没有匹配的词条' : '当前版本暂无词条'}
+            description={
+              searchQuery || filterStatus || filterUntranslated
+                ? '当前筛选条件下没有词条，试试清除筛选条件或调整搜索关键字。'
+                : '点击右上角“新增词条”按钮，或导入 CSV 创建第一批词条。'
+            }
+            actionLabel={searchQuery || filterStatus || filterUntranslated ? '清除筛选' : '新增第一条词条'}
+            onAction={() => {
+              if (searchQuery || filterStatus || filterUntranslated) {
+                setSearchQuery('');
+                setFilterStatus('');
+                setFilterUntranslated(false);
+              } else {
+                setAddModalOpen(true);
+              }
+            }}
+          />
         ) : (
           <table className="data-table">
             <thead>
@@ -1937,6 +2001,7 @@ export default function TranslationTab({
                 <th className="sticky-col-2" style={{ width: '180px' }}>CN（中文）</th>
                 <th style={{ width: '150px' }}>所在页面</th>
                 <th style={{ width: '100px' }}>字号类别</th>
+                <th style={{ width: '90px', textAlign: 'center' }} title="已翻译语种数 / 总语种数">翻译进度</th>
                 {TARGET_LANGUAGES.map(lang => {
                   if (!visibleLanguages.includes(lang)) return null;
                   return <th key={lang} style={{ width: '160px' }}>{lang}</th>;
@@ -2024,6 +2089,32 @@ export default function TranslationTab({
                     <td className={`sticky-col-2 ${rowModified.isAdded ? 'cell-added' : ''}`} title={zh} style={{ fontWeight: '500' }}>{zh}</td>
                     <td className={rowModified.isAdded ? 'cell-added' : ''} title={page}>{page || <span className="cell-empty">未填</span>}</td>
                     <td className={rowModified.isAdded ? 'cell-added' : ''} title={owner}>{owner || <span className="cell-empty">未填</span>}</td>
+                    {/* 翻译进度微指示：已翻译语种数 / 当前可见语种数 */}
+                    {(() => {
+                      const totalLangs = TARGET_LANGUAGES.length;
+                      const translatedCount = TARGET_LANGUAGES.reduce((count, lang) => {
+                        const val = getRecordValueByName(rec, lang);
+                        return val && String(val).trim() ? count + 1 : count;
+                      }, 0);
+                      const pct = totalLangs > 0 ? Math.round((translatedCount / totalLangs) * 100) : 0;
+                      // 颜色：0% 红、<50% 橙、<100% 蓝、100% 绿
+                      const color = translatedCount === 0 ? '#ef4444'
+                        : pct < 50 ? '#f59e0b'
+                        : pct < 100 ? '#3b82f6'
+                        : '#10b981';
+                      return (
+                        <td style={{ textAlign: 'center', padding: '0 0.5rem' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ width: '36px', height: '4px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '2px', overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', backgroundColor: color }} />
+                            </div>
+                            <span style={{ fontVariantNumeric: 'tabular-nums', color }}>
+                              {translatedCount}/{totalLangs}
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    })()}
                     {TARGET_LANGUAGES.map(lang => {
                       if (!visibleLanguages.includes(lang)) return null;
                       const val = getRecordValueByName(rec, lang);
@@ -2113,13 +2204,13 @@ export default function TranslationTab({
                         className="text-input"
                         style={{ flex: 1 }}
                       />
-                      <button 
-                        onClick={handleEditModalAiTranslate} 
+                      <button
+                        onClick={handleEditModalAiTranslate}
                         disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
                         className="btn btn-secondary"
                         title="调用 Dify 进行 AI 自动预翻译"
                       >
-                        {aiTranslatingSingle ? <Loader2 className="animate-spin" size={14} /> : 'AI 智能翻译'}
+                        {aiTranslatingSingle ? <><Loader2 className="animate-spin" size={14} /> 翻译中...</> : 'AI 智能翻译'}
                       </button>
                     </div>
                   </div>
@@ -2350,13 +2441,13 @@ export default function TranslationTab({
                       placeholder="例如: 平均踏频"
                       style={{ flex: 1 }}
                     />
-                    <button 
-                      onClick={handleSingleAiTranslate} 
+                    <button
+                      onClick={handleSingleAiTranslate}
                       disabled={aiTranslatingSingle}
                       className="btn btn-secondary"
                       title="调用 Dify 进行 AI 自动预翻译"
                     >
-                      {aiTranslatingSingle ? <Loader2 className="animate-spin" size={14} /> : 'AI 预翻译'}
+                      {aiTranslatingSingle ? <><Loader2 className="animate-spin" size={14} /> 翻译中...</> : 'AI 预翻译'}
                     </button>
                   </div>
                 </div>
@@ -2516,20 +2607,28 @@ export default function TranslationTab({
                 取消
               </button>
               
-              <button 
-                onClick={handleStartBatchTranslate} 
-                className="btn btn-secondary" 
-                disabled={isTranslatingBatch}
+              <button
+                onClick={handleStartBatchTranslate}
+                className="btn btn-secondary"
+                disabled={isTranslatingBatch || isSavingBatch}
               >
-                {isTranslatingBatch ? '正在自动翻中...' : '开始 Dify 翻译'}
+                {isTranslatingBatch ? (
+                  <><Loader2 size={14} className="animate-spin" /> 正在调用 Dify 翻译...</>
+                ) : (
+                  '开始 Dify 翻译'
+                )}
               </button>
 
-              <button 
-                onClick={handleConfirmBatchWrite} 
+              <button
+                onClick={handleConfirmBatchWrite}
                 className="btn btn-primary"
-                disabled={isTranslatingBatch || batchPreviewList.every(i => Object.keys(i.translations).length === 0)}
+                disabled={isTranslatingBatch || isSavingBatch || batchPreviewList.every(i => Object.keys(i.translations).length === 0)}
               >
-                <Check size={14} /> 确认并写入多维表格
+                {isSavingBatch ? (
+                  <><Loader2 size={14} className="animate-spin" /> 正在保存到本地数据库...</>
+                ) : (
+                  <><Check size={14} /> 确认并保存到本地数据库</>
+                )}
               </button>
             </div>
           </div>
@@ -2707,15 +2806,19 @@ export default function TranslationTab({
               >
                 取消
               </button>
-              <button 
-                onClick={handleStartBatchAddTranslate} 
+              <button
+                onClick={handleStartBatchAddTranslate}
                 className="btn btn-secondary"
                 disabled={isTranslatingBatchAdd}
               >
-                {isTranslatingBatchAdd ? '正在翻译...' : 'AI 批量翻译'}
+                {isTranslatingBatchAdd ? (
+                  <><Loader2 size={14} className="animate-spin" /> 正在调用 Dify 翻译...</>
+                ) : (
+                  'AI 批量翻译'
+                )}
               </button>
-              <button 
-                onClick={handleConfirmBatchAddWrite} 
+              <button
+                onClick={handleConfirmBatchAddWrite}
                 className="btn btn-primary"
                 disabled={isTranslatingBatchAdd}
               >

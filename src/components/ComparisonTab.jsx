@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useToast } from './Toast';
 import { parseCSV } from '../utils/csvHelper';
 import { Search, Loader2, ArrowLeftRight, FileInput, AlertCircle, HelpCircle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
@@ -26,6 +27,7 @@ const normalizeText = (text) => {
 };
 
 export default function ComparisonTab() {
+  const toast = useToast();
   const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
   const TARGET_LANGUAGES = targetLanguagesList;
 
@@ -146,7 +148,7 @@ export default function ComparisonTab() {
         const text = event.target.result;
         const parsed = parseCSV(text);
         if (parsed.length < 2) {
-          alert('CSV 结构不合规，缺少表头或数据行');
+          toast.error('CSV 结构不合规，缺少表头或数据行');
           return;
         }
 
@@ -158,7 +160,7 @@ export default function ComparisonTab() {
         const pageIdx = headers.findIndex(h => h === '所在页面' || h === '词条所在界面（注意是界面不是模块！！）');
 
         if (kwIdx === -1 || zhIdx === -1) {
-          alert('CSV 必须包含 "KW" 和 "CN（中文）" 列！');
+          toast.error('CSV 必须包含 "KW" 和 "CN（中文）" 列！');
           return;
         }
 
@@ -186,7 +188,7 @@ export default function ComparisonTab() {
         setSourceTableId('');
         setErrorMsg(null);
       } catch (err) {
-        alert(`加载 CSV 失败: ${err.message}`);
+        toast.error(`加载 CSV 失败: ${err.message}`);
       }
     };
     reader.readAsText(file, 'utf-8');
@@ -195,11 +197,11 @@ export default function ComparisonTab() {
   // Compare Logic
   const handleCompare = async () => {
     if (!targetTableId) {
-      alert('请选择目标版本 B (历史基准)！');
+      toast.error('请选择目标版本 B (历史基准)！');
       return;
     }
     if (!sourceTableId && !fallbackCsvData) {
-      alert('请选择源版本 A (比对版本)，或上传本地 CSV 进行比对！');
+      toast.error('请选择源版本 A (比对版本)，或上传本地 CSV 进行比对！');
       return;
     }
 
@@ -414,7 +416,7 @@ export default function ComparisonTab() {
     }
 
     if (actions.length === 0) {
-      alert('没有需要同步的变动词条！');
+      toast.error('没有需要同步的变动词条！');
       return;
     }
 
@@ -438,16 +440,16 @@ export default function ComparisonTab() {
 
       if (res.ok) {
         const result = await res.json();
-        alert(result.message || '合并同步成功！');
+        toast.success(result.message || '合并同步成功！');
         setSelectedIndexes(new Set());
         await handleCompare(); // Re-trigger compare to refresh diff list
       } else {
         const errorData = await res.json();
-        alert(`同步失败: ${errorData.error || '服务器未知错误'}`);
+        toast.error(`同步失败: ${errorData.error || '服务器未知错误'}`);
       }
     } catch (e) {
       console.error('同步失败:', e);
-      alert(`网络或后端服务异常，同步失败: ${e.message}`);
+      toast.error(`网络或后端服务异常，同步失败: ${e.message}`);
     } finally {
       setSyncing(false);
     }

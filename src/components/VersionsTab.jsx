@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from './Toast';
 import { Plus, Trash2, Calendar, FileText, LayoutGrid, AlertOctagon, ArrowRight, Clock, User, Edit2 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
 export default function VersionsTab({ onNavigate }) {
+  const toast = useToast();
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,7 +41,7 @@ export default function VersionsTab({ onNavigate }) {
   const handleAddTable = async (e) => {
     e.preventDefault();
     if (!newVersionName.trim()) {
-      alert('请输入数据表名称！');
+      toast.error('请输入数据表名称！');
       return;
     }
 
@@ -61,10 +63,10 @@ export default function VersionsTab({ onNavigate }) {
         setAddModalOpen(false);
         fetchTables();
       } else {
-        alert(`创建失败: ${data.error || '未知错误'}`);
+        toast.error(`创建失败: ${data.error || '未知错误'}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     } finally {
       setAdding(false);
     }
@@ -73,7 +75,7 @@ export default function VersionsTab({ onNavigate }) {
   const handleEditTable = async (e) => {
     e.preventDefault();
     if (!editVersionName.trim()) {
-      alert('请输入数据表名称！');
+      toast.error('请输入数据表名称！');
       return;
     }
 
@@ -94,10 +96,10 @@ export default function VersionsTab({ onNavigate }) {
         setEditModalOpen(false);
         fetchTables();
       } else {
-        alert(`修改失败: ${data.error || '未知错误'}`);
+        toast.error(`修改失败: ${data.error || '未知错误'}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     } finally {
       setUpdating(false);
     }
@@ -122,13 +124,13 @@ export default function VersionsTab({ onNavigate }) {
 
       const data = await res.json();
       if (res.ok) {
-        alert(data.message || '数据表删除成功！');
+        toast.success(data.message || '数据表删除成功！');
         fetchTables();
       } else {
-        alert(`删除失败: ${data.error || '未知错误'}`);
+        toast.error(`删除失败: ${data.error || '未知错误'}`);
       }
     } catch (err) {
-      alert(`网络错误: ${err.message}`);
+      toast.error(`网络错误: ${err.message}`);
     }
   };
 
