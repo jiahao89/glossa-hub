@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 import { apiFetch } from '../utils/api';
-import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2 } from 'lucide-react';
+import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock } from 'lucide-react';
 
 const DEFAULT_TARGET_LANGUAGES = [
   'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
@@ -118,6 +118,196 @@ export default function TranslationTab({
     translations: {} // { langName: value }
   });
   const [aiTranslatingSingle, setAiTranslatingSingle] = useState(false);
+
+  // v1.2 state hooks
+  const [tmReferences, setTmReferences] = useState([]);
+  const [loadingTm, setLoadingTm] = useState(false);
+  const [batchUpdateOpen, setBatchUpdateOpen] = useState(false);
+  const [batchCopyOpen, setBatchCopyOpen] = useState(false);
+  const [batchUpdateFields, setBatchUpdateFields] = useState({ context: '', owner: '' });
+  const [batchCopyTargetTableId, setBatchCopyTargetTableId] = useState('');
+  const [batchCopyDuplicateStrategy, setBatchCopyDuplicateStrategy] = useState('skip');
+  const [syncInheritOpen, setSyncInheritOpen] = useState(false);
+  const [syncInheritSourceId, setSyncInheritSourceId] = useState('');
+  const [inheriting, setInheriting] = useState(false);
+  const [lockLoadingId, setLockLoadingId] = useState('');
+
+  // v1.3 state hooks
+  const [activeRightTab, setActiveRightTab] = useState('tm'); // 'tm' | 'history'
+  const [snapshots, setSnapshots] = useState([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  const [batchApproveOpen, setBatchApproveOpen] = useState(false);
+  const [batchApproveStatus, setBatchApproveStatus] = useState('APPROVED');
+  const [batchApproveRejectReason, setBatchApproveRejectReason] = useState('');
+  const [rollingBackId, setRollingBackId] = useState('');
+
+  const currentUser = useMemo(() => {
+    try {
+      const uStr = localStorage.getItem('user');
+      return uStr ? JSON.parse(uStr) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const loadTmReferences = useCallback(async (kw) => {
+    if (!kw || !selectedTableId) return;
+    try {
+      setLoadingTm(true);
+      const res = await apiFetch(`/api/versions/${selectedTableId}/terms/${encodeURIComponent(kw)}/references`);
+      if (res.ok) {
+        const data = await res.json();
+        setTmReferences(data);
+      } else {
+        setTmReferences([]);
+      }
+    } catch (e) {
+      console.error('加载跨版本翻译参考失败:', e);
+      setTmReferences([]);
+    } finally {
+      setLoadingTm(false);
+    }
+  }, [selectedTableId]);
+
+  useEffect(() => {
+    if (editModalRecord && editModalRecord.fields && editModalRecord.fields.KW) {
+      loadTmReferences(editModalRecord.fields.KW);
+    } else {
+      setTmReferences([]);
+    }
+  }, [editModalRecord, loadTmReferences]);
+
+  const handleApplyTmReference = (refTrans) => {
+    if (!editModalRecord) return;
+    const mergedTrans = { ...editModalRecord.translations };
+    Object.keys(refTrans).forEach(lang => {
+      if (refTrans[lang] && refTrans[lang].trim() !== '') {
+        mergedTrans[lang] = refTrans[lang];
+      }
+    });
+    setEditModalRecord({
+      ...editModalRecord,
+      translations: mergedTrans
+    });
+  };
+
+  const loadSnapshots = useCallback(async (termId) => {
+    if (!termId) return;
+    try {
+      setLoadingSnapshots(true);
+      const res = await apiFetch(`/api/terms/${termId}/snapshots`);
+      if (res.ok) {
+        const data = await res.json();
+        setSnapshots(data);
+      } else {
+        setSnapshots([]);
+      }
+    } catch (e) {
+      console.error('加载历史快照失败:', e);
+      setSnapshots([]);
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (editModalRecord && editModalRecord.recordId) {
+      loadSnapshots(editModalRecord.recordId);
+    } else {
+      setSnapshots([]);
+    }
+  }, [editModalRecord, loadSnapshots]);
+
+  const handleRollbackSnapshot = async (snapshotId) => {
+    if (!editModalRecord) return;
+    const termId = editModalRecord.recordId;
+    const confirmRollback = window.confirm('您确定要将当前词条的翻译回退到该快照版本吗？\n当前版本的最新数据会被保存为一个新快照，您可以通过相同方式撤回。');
+    if (!confirmRollback) return;
+
+    try {
+      setRollingBackId(snapshotId);
+      const res = await apiFetch(`/api/terms/${termId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snapshotId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message || '回退成功！');
+        await loadSnapshots(termId);
+        await loadTableData(selectedTableId);
+        setEditModalRecord(null); // 关闭弹窗刷新
+      } else {
+        const err = await res.json();
+        alert(`回退失败: ${err.error || '未知原因'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('回退网络或服务器异常。');
+    } finally {
+      setRollingBackId('');
+    }
+  };
+
+  const handleBatchApproveSubmit = async () => {
+    if (selectedRecordIds.size === 0) return;
+    const termIds = Array.from(selectedRecordIds);
+    try {
+      setLoading(true);
+      const res = await apiFetch('/api/terms/batch-approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          termIds,
+          status: batchApproveStatus,
+          rejectReason: batchApproveStatus === 'REJECTED' ? batchApproveRejectReason : undefined
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message || '批量审核设置成功！');
+        setBatchApproveOpen(false);
+        setSelectedRecordIds(new Set());
+        await loadTableData(selectedTableId);
+      } else {
+        const err = await res.json();
+        alert(`审核操作失败: ${err.error || '未知原因'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('批量审核提交时发生异常。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleRowLock = async (recId, currentLockState) => {
+    if (currentUser?.role !== 'admin') {
+      alert('只有管理员有权锁定/解锁词条！');
+      return;
+    }
+    try {
+      setLockLoadingId(recId);
+      const res = await apiFetch(`/api/terms/${recId}/lock`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isLocked: !currentLockState })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRecords(prev => prev.map(r => r.recordId === recId ? { ...r, isLocked: data.is_locked } : r));
+        showStatus('success', data.message || '操作成功！');
+      } else {
+        const errData = await res.json();
+        alert(`锁定操作失败: ${errData.error || '未知错误'}`);
+      }
+    } catch (e) {
+      console.error('锁定操作失败:', e);
+      alert('网络连接错误，锁定失败');
+    } finally {
+      setLockLoadingId('');
+    }
+  };
 
   // Batch Translate State
   const [batchProgress, setBatchProgress] = useState({ total: 0, current: 0, status: '' });
@@ -348,12 +538,115 @@ export default function TranslationTab({
       中文: getRecordValueByName(record, 'CN（中文）'),
       所在页面: getRecordValueByName(record, '所在页面'),
       字号类别: getRecordValueByName(record, '字号类别'),
+      isLocked: record.isLocked || 0,
       translations: {}
     };
     TARGET_LANGUAGES.forEach(lang => {
       data.translations[lang] = getRecordValueByName(record, lang);
     });
     setEditModalRecord(data);
+  };
+
+  const handleBatchUpdateFields = async () => {
+    if (selectedRecordIds.size === 0) return;
+    const termIds = Array.from(selectedRecordIds);
+
+    const payloadUpdates = {};
+    if (batchUpdateFields.context && batchUpdateFields.context.trim() !== '') {
+      payloadUpdates.context = batchUpdateFields.context.trim();
+    }
+    if (batchUpdateFields.owner && batchUpdateFields.owner.trim() !== '') {
+      payloadUpdates.owner = batchUpdateFields.owner.trim();
+    }
+
+    if (Object.keys(payloadUpdates).length === 0) {
+      alert('请至少填写一个需要批量设置的分类字段！');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const res = await apiFetch('/api/terms/batch-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ termIds, updates: payloadUpdates })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message || '批量更新分类字段成功！');
+        setBatchUpdateOpen(false);
+        setSelectedRecordIds(new Set());
+        await loadTableData(selectedTableId);
+      } else {
+        const err = await res.json();
+        alert(`修改失败: ${err.error || '未知原因'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('批量修改发生异常错误。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBatchCopyVersions = async () => {
+    if (selectedRecordIds.size === 0 || !batchCopyTargetTableId) return;
+    const termIds = Array.from(selectedRecordIds);
+    try {
+      setLoading(true);
+      const res = await apiFetch('/api/terms/batch-copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          termIds,
+          targetVersionId: batchCopyTargetTableId,
+          duplicateStrategy: batchCopyDuplicateStrategy
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`批量复制完成！\n- 新增: ${data.addedCount} 条\n- 覆盖: ${data.overwrittenCount} 条\n- 跳过(重复/被锁定): ${data.skippedCount} 条`);
+        setBatchCopyOpen(false);
+        setSelectedRecordIds(new Set());
+      } else {
+        const err = await res.json();
+        alert(`复制失败: ${err.error || '未知原因'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('批量复制发送网络异常。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInheritTranslationsSubmit = async () => {
+    if (!syncInheritSourceId) {
+      alert('请先选择继承的源大表版本！');
+      return;
+    }
+    try {
+      setInheriting(true);
+      const res = await apiFetch(`/api/versions/${selectedTableId}/inherit-translations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceVersionId: syncInheritSourceId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message || '继承补全成功！');
+        setSyncInheritOpen(false);
+        await loadTableData(selectedTableId);
+      } else {
+        const err = await res.json();
+        alert(`继承失败: ${err.error || '未知错误'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('继承失败，网络或后端异常。');
+    } finally {
+      setInheriting(false);
+    }
   };
 
   // Save Edit Term
@@ -1537,13 +1830,41 @@ export default function TranslationTab({
           </button>
 
           {selectedRecordIds.size > 0 && (
-            <button 
-              onClick={handleDeleteSelected} 
-              className="btn btn-danger" 
-              style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem' }}
-            >
-              删除选中 ({selectedRecordIds.size})
-            </button>
+            <>
+              {currentUser?.role === 'admin' && (
+                <button 
+                  onClick={() => { setBatchApproveStatus('APPROVED'); setBatchApproveRejectReason(''); setBatchApproveOpen(true); }}
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem', borderColor: 'var(--green)', color: 'var(--green)', background: 'transparent' }}
+                >
+                  批量审核 ({selectedRecordIds.size})
+                </button>
+              )}
+
+              <button 
+                onClick={() => { setBatchUpdateFields({ context: '', owner: '' }); setBatchUpdateOpen(true); }}
+                className="btn btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem', borderColor: 'var(--yellow)', color: 'var(--yellow)', background: 'transparent' }}
+              >
+                批量设置 ({selectedRecordIds.size})
+              </button>
+              
+              <button 
+                onClick={() => { setBatchCopyTargetTableId(tables.find(t => t.id !== selectedTableId)?.id || ''); setBatchCopyDuplicateStrategy('skip'); setBatchCopyOpen(true); }}
+                className="btn btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem', borderColor: 'var(--accent)', color: 'var(--accent)', background: 'transparent' }}
+              >
+                复制到其他版本 ({selectedRecordIds.size})
+              </button>
+
+              <button 
+                onClick={handleDeleteSelected} 
+                className="btn btn-danger" 
+                style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem' }}
+              >
+                删除选中 ({selectedRecordIds.size})
+              </button>
+            </>
           )}
 
           <input 
@@ -1553,6 +1874,10 @@ export default function TranslationTab({
             accept=".csv" 
             style={{ display: 'none' }} 
           />
+
+          <button onClick={() => { setSyncInheritSourceId(''); setSyncInheritOpen(true); }} className="btn btn-secondary" title="从其他大表继承补全缺失翻译">
+            <Layers size={13} /> 继承翻译
+          </button>
           
           <button onClick={handleTriggerImport} className="btn btn-secondary" title="导入 CSV">
             <FileInput size={13} /> 导入
@@ -1607,6 +1932,7 @@ export default function TranslationTab({
                     }}
                   />
                 </th>
+                <th style={{ width: '120px', textAlign: 'center' }}>状态</th>
                 <th className="sticky-col-1" style={{ width: '150px' }}>KW (Key)</th>
                 <th className="sticky-col-2" style={{ width: '180px' }}>CN（中文）</th>
                 <th style={{ width: '150px' }}>所在页面</th>
@@ -1626,9 +1952,15 @@ export default function TranslationTab({
                 const page = getRecordValueByName(rec, '所在页面');
                 const owner = getRecordValueByName(rec, '字号类别');
                 const rowModified = modifiedCells[recId] || {};
+                const isLocked = rec.isLocked === 1 || rec.isLocked === true;
 
                 return (
-                  <tr key={recId} onDoubleClick={() => handleRowDoubleClick(rec)} className={selectedRecordIds.has(recId) ? 'row-selected' : ''}>
+                  <tr 
+                    key={recId} 
+                    onDoubleClick={() => handleRowDoubleClick(rec)} 
+                    className={`${selectedRecordIds.has(recId) ? 'row-selected' : ''} ${isLocked ? 'row-locked' : ''}`}
+                    style={isLocked ? { backgroundColor: 'var(--bg-tertiary)', opacity: 0.8 } : undefined}
+                  >
                     <td style={{ textAlign: 'center' }}>
                       <input 
                         type="checkbox" 
@@ -1643,6 +1975,50 @@ export default function TranslationTab({
                           setSelectedRecordIds(updated);
                         }}
                       />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                        {lockLoadingId === recId ? (
+                          <Loader2 className="animate-spin" size={12} color="var(--accent)" />
+                        ) : isLocked ? (
+                          <Lock 
+                            size={12} 
+                            style={{ color: 'var(--red)', cursor: currentUser?.role === 'admin' ? 'pointer' : 'not-allowed' }} 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (currentUser?.role === 'admin') handleToggleRowLock(recId, true);
+                            }}
+                            title="已被管理员锁定只读"
+                          />
+                        ) : (
+                          <Unlock 
+                            size={12} 
+                            className="unlock-icon-hover"
+                            style={{ color: 'var(--text-muted)', opacity: 0.25, cursor: currentUser?.role === 'admin' ? 'pointer' : 'default' }} 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (currentUser?.role === 'admin') handleToggleRowLock(recId, false);
+                            }}
+                            title={currentUser?.role === 'admin' ? "点击锁定此行" : "未锁定"}
+                          />
+                        )}
+                        
+                        {(() => {
+                          const recStatus = rec.status || 'DRAFT';
+                          if (recStatus === 'DRAFT') {
+                            return <span className="diff-tag" style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-muted)', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>草稿</span>;
+                          } else if (recStatus === 'PENDING_REVIEW') {
+                            return <span className="diff-tag" style={{ backgroundColor: 'var(--yellow)', color: '#000', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>待审核</span>;
+                          } else if (recStatus === 'APPROVED') {
+                            return <span className="diff-tag" style={{ backgroundColor: 'var(--green)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已审核</span>;
+                          } else if (recStatus === 'REJECTED') {
+                            return <span className="diff-tag" style={{ backgroundColor: 'var(--red)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }} title={rec.rejectReason || '已驳回'}>已驳回</span>;
+                          } else if (recStatus === 'PUBLISHED') {
+                            return <span className="diff-tag" style={{ backgroundColor: 'var(--accent)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已发布</span>;
+                          }
+                          return null;
+                        })()}
+                      </div>
                     </td>
                     <td className={`sticky-col-1 mono ${rowModified.isAdded ? 'cell-added' : ''}`} title={kw}>{kw}</td>
                     <td className={`sticky-col-2 ${rowModified.isAdded ? 'cell-added' : ''}`} title={zh} style={{ fontWeight: '500' }}>{zh}</td>
@@ -1691,82 +2067,238 @@ export default function TranslationTab({
       {/* Modal 1: Edit Modal */}
       {editModalRecord && (
         <div className="modal-backdrop">
-          <div className="modal-content">
+          <div className="modal-content" style={{ maxWidth: '1000px', width: '95%' }}>
             <div className="modal-header">
-              <h3 className="modal-title">编辑词条翻译 - {editModalRecord.KW}</h3>
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                编辑词条翻译 - {editModalRecord.KW}
+                {(editModalRecord.isLocked === 1 || editModalRecord.isLocked === true) && (
+                  <span className="diff-tag" style={{ backgroundColor: 'var(--red)', color: '#fff', fontSize: '0.75rem', padding: '0.1rem 0.5rem' }}>
+                    🔒 锁定只读
+                  </span>
+                )}
+              </h3>
               <button onClick={() => setEditModalRecord(null)} className="modal-close">✕</button>
             </div>
-            <div className="modal-body">
-              <div className="edit-grid">
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>KW 标识 (唯一主键)</label>
-                  <input 
-                    type="text" 
-                    value={editModalRecord.KW} 
-                    onChange={(e) => setEditModalRecord({ ...editModalRecord, KW: e.target.value })}
-                    className="text-input"
-                  />
-                </div>
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>CN（中文）</label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input 
-                      type="text" 
-                      value={editModalRecord.中文} 
-                      onChange={(e) => setEditModalRecord({ ...editModalRecord, 中文: e.target.value })}
-                      className="text-input"
-                      style={{ flex: 1 }}
-                    />
-                    <button 
-                      onClick={handleEditModalAiTranslate} 
-                      disabled={aiTranslatingSingle}
-                      className="btn btn-secondary"
-                      title="调用 Dify 进行 AI 自动预翻译"
-                    >
-                      {aiTranslatingSingle ? <Loader2 className="animate-spin" size={14} /> : 'AI 智能翻译'}
-                    </button>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>所在页面</label>
-                  <input 
-                    type="text" 
-                    value={editModalRecord.所在页面} 
-                    onChange={(e) => setEditModalRecord({ ...editModalRecord, 所在页面: e.target.value })}
-                    className="text-input"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>字号类别</label>
-                  <input 
-                    type="text" 
-                    value={editModalRecord.字号类别} 
-                    onChange={(e) => setEditModalRecord({ ...editModalRecord, 字号类别: e.target.value })}
-                    className="text-input"
-                  />
-                </div>
+            
+            {(editModalRecord.isLocked === 1 || editModalRecord.isLocked === true) && (
+              <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', padding: '0.6rem 1.5rem', color: 'var(--red)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <AlertCircle size={14} />
+                <span>此词条已被管理员锁定。普通翻译用户仅可查看数据，无法提交保存修改。</span>
+              </div>
+            )}
 
-                <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border-color)', margin: '0.8rem 0' }}></div>
-                
-                {TARGET_LANGUAGES.map(lang => (
-                  <div key={lang} className="form-group">
-                    <label>{lang}</label>
+            <div className="modal-body" style={{ display: 'flex', gap: '1.5rem', maxHeight: '68vh', overflowY: 'auto' }}>
+              
+              {/* 左侧主要修改表单 */}
+              <div style={{ flex: 3, minWidth: '450px' }}>
+                <div className="edit-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label>KW 标识 (唯一主键)</label>
                     <input 
                       type="text" 
-                      value={editModalRecord.translations[lang] || ''} 
-                      onChange={(e) => {
-                        const trans = { ...editModalRecord.translations, [lang]: e.target.value };
-                        setEditModalRecord({ ...editModalRecord, translations: trans });
-                      }}
+                      value={editModalRecord.KW} 
+                      onChange={(e) => setEditModalRecord({ ...editModalRecord, KW: e.target.value })}
+                      disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
                       className="text-input"
                     />
                   </div>
-                ))}
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label>CN（中文）</label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input 
+                        type="text" 
+                        value={editModalRecord.中文} 
+                        onChange={(e) => setEditModalRecord({ ...editModalRecord, 中文: e.target.value })}
+                        disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                        className="text-input"
+                        style={{ flex: 1 }}
+                      />
+                      <button 
+                        onClick={handleEditModalAiTranslate} 
+                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                        className="btn btn-secondary"
+                        title="调用 Dify 进行 AI 自动预翻译"
+                      >
+                        {aiTranslatingSingle ? <Loader2 className="animate-spin" size={14} /> : 'AI 智能翻译'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>所在页面</label>
+                    <input 
+                      type="text" 
+                      value={editModalRecord.所在页面} 
+                      onChange={(e) => setEditModalRecord({ ...editModalRecord, 所在页面: e.target.value })}
+                      disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                      className="text-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>字号类别</label>
+                    <input 
+                      type="text" 
+                      value={editModalRecord.字号类别} 
+                      onChange={(e) => setEditModalRecord({ ...editModalRecord, 字号类别: e.target.value })}
+                      disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                      className="text-input"
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border-color)', margin: '0.8rem 0' }}></div>
+                  
+                  {TARGET_LANGUAGES.map(lang => (
+                    <div key={lang} className="form-group">
+                      <label>{lang}</label>
+                      <input 
+                        type="text" 
+                        value={editModalRecord.translations[lang] || ''} 
+                        onChange={(e) => {
+                          const trans = { ...editModalRecord.translations, [lang]: e.target.value };
+                          setEditModalRecord({ ...editModalRecord, translations: trans });
+                        }}
+                        disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                        className="text-input"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 右侧翻译建议 / 历史记录双标签切换栏 */}
+              <div style={{ flex: 2, minWidth: '320px', borderLeft: '1px solid var(--border-color)', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column' }}>
+                
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.8rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem' }}>
+                  <button 
+                    onClick={() => setActiveRightTab('tm')}
+                    className={`btn ${activeRightTab === 'tm' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, height: '30px', fontSize: '0.8rem', padding: '0', background: activeRightTab === 'tm' ? 'var(--accent)' : 'transparent', color: activeRightTab === 'tm' ? '#fff' : 'var(--text-secondary)' }}
+                  >
+                    🧠 跨版本参考 ({tmReferences.length})
+                  </button>
+                  <button 
+                    onClick={() => setActiveRightTab('history')}
+                    className={`btn ${activeRightTab === 'history' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, height: '30px', fontSize: '0.8rem', padding: '0', background: activeRightTab === 'history' ? 'var(--accent)' : 'transparent', color: activeRightTab === 'history' ? '#fff' : 'var(--text-secondary)' }}
+                  >
+                    🕒 修改历史 ({snapshots.length})
+                  </button>
+                </div>
+                
+                {activeRightTab === 'tm' ? (
+                  <>
+                    {loadingTm ? (
+                      <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+                        <Loader2 className="animate-spin" size={16} />
+                        <span style={{ fontSize: '0.8rem' }}>正在检索记忆库参考...</span>
+                      </div>
+                    ) : tmReferences.length === 0 ? (
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '2rem 0', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                        暂无本项目其他大表中的翻译参考
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto', flex: 1, paddingRight: '0.3rem' }}>
+                        {tmReferences.map((ref, rIdx) => (
+                          <div key={rIdx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.6rem 0.8rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent)' }}>版本: {ref.versionName}</span>
+                              <button 
+                                onClick={() => handleApplyTmReference(ref.translations)}
+                                disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                                className="btn btn-secondary"
+                                style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem', height: '22px' }}
+                                title="一键填充全部译文"
+                              >
+                                应用此翻译
+                              </button>
+                            </div>
+                            
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                              <strong>中文:</strong> {ref.zh_cn}
+                            </div>
+
+                            <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              {Object.keys(ref.translations).map(lName => {
+                                if (!ref.translations[lName]) return null;
+                                return (
+                                  <div key={lName} style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>{lName}:</span>
+                                    <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{ref.translations[lName]}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {loadingSnapshots ? (
+                      <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+                        <Loader2 className="animate-spin" size={16} />
+                        <span style={{ fontSize: '0.8rem' }}>正在加载历史快照记录...</span>
+                      </div>
+                    ) : snapshots.length === 0 ? (
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '2rem 0', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                        此词条尚无任何修改快照记录
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto', flex: 1, paddingRight: '0.3rem' }}>
+                        {snapshots.map((ref) => (
+                          <div key={ref.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.6rem 0.8rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                                👤 {ref.creatorName}
+                              </span>
+                              <button 
+                                onClick={() => handleRollbackSnapshot(ref.id)}
+                                disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true || rollingBackId === ref.id}
+                                className="btn btn-secondary"
+                                style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem', height: '22px', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent' }}
+                                title="将本表此行翻译还原为此快照时的内容"
+                              >
+                                {rollingBackId === ref.id ? '还原中...' : '还原此版'}
+                              </button>
+                            </div>
+                            
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
+                              时间: {new Date(ref.createdAt).toLocaleString('zh-CN')}
+                            </div>
+
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                              <strong>键/中文:</strong> <code style={{ color: 'var(--accent)', fontSize: '0.75rem' }}>{ref.kw}</code> | {ref.zh_cn}
+                            </div>
+
+                            <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              {Object.keys(ref.translations).map(lName => {
+                                if (!ref.translations[lName]) return null;
+                                return (
+                                  <div key={lName} style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>{lName}:</span>
+                                    <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{ref.translations[lName]}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
+
             <div className="modal-footer">
               <button onClick={() => setEditModalRecord(null)} className="btn btn-secondary">取消</button>
-              <button onClick={handleSaveEdit} className="btn btn-primary">保存修改</button>
+              <button 
+                onClick={handleSaveEdit} 
+                disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                className="btn btn-primary"
+              >
+                保存修改
+              </button>
             </div>
           </div>
         </div>
@@ -2188,6 +2720,214 @@ export default function TranslationTab({
                 disabled={isTranslatingBatchAdd}
               >
                 确认批量写入 (仅完成翻译词条)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Batch Update Fields */}
+      {batchUpdateOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">批量设置分类字段</h3>
+              <button onClick={() => setBatchUpdateOpen(false)} className="modal-close">✕</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="alert-box alert-box-success" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                <span>您已选中 <strong>{selectedRecordIds.size}</strong> 条词条记录。</span>
+              </div>
+              <div className="form-group">
+                <label>所在页面 (可选)</label>
+                <input 
+                  type="text" 
+                  value={batchUpdateFields.context}
+                  onChange={(e) => setBatchUpdateFields({ ...batchUpdateFields, context: e.target.value })}
+                  className="text-input"
+                  placeholder="留空则不修改此字段"
+                />
+              </div>
+              <div className="form-group">
+                <label>字号类别 (负责人) (可选)</label>
+                <input 
+                  type="text" 
+                  value={batchUpdateFields.owner}
+                  onChange={(e) => setBatchUpdateFields({ ...batchUpdateFields, owner: e.target.value })}
+                  className="text-input"
+                  placeholder="留空则不修改此字段"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setBatchUpdateOpen(false)} className="btn btn-secondary">取消</button>
+              <button onClick={handleBatchUpdateFields} className="btn btn-primary">确认修改</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Batch Copy to Version */}
+      {batchCopyOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">复制词条到其他大表</h3>
+              <button onClick={() => setBatchCopyOpen(false)} className="modal-close">✕</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="alert-box alert-box-success" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                <span>准备复制 <strong>{selectedRecordIds.size}</strong> 条选中的词条。</span>
+              </div>
+              
+              <div className="form-group">
+                <label>选择目标大表版本</label>
+                <select 
+                  value={batchCopyTargetTableId} 
+                  onChange={(e) => setBatchCopyTargetTableId(e.target.value)}
+                  className="select-input"
+                  style={{ width: '100%' }}
+                >
+                  <option value="">-- 请选择目标固件大表 --</option>
+                  {tables.filter(t => t.id !== selectedTableId).map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>重复主键 (KW) 冲突策略</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.2rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="dupStrategy" 
+                      value="skip"
+                      checked={batchCopyDuplicateStrategy === 'skip'}
+                      onChange={() => setBatchCopyDuplicateStrategy('skip')}
+                    />
+                    <span>跳过重复项 (不更改目标版本数据)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="dupStrategy" 
+                      value="overwrite"
+                      checked={batchCopyDuplicateStrategy === 'overwrite'}
+                      onChange={() => setBatchCopyDuplicateStrategy('overwrite')}
+                    />
+                    <span>覆盖重复项 (用当前大表词条覆盖目标版本)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setBatchCopyOpen(false)} className="btn btn-secondary">取消</button>
+              <button 
+                onClick={handleBatchCopyVersions} 
+                disabled={!batchCopyTargetTableId}
+                className="btn btn-primary"
+              >
+                开始复制
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 5: TM Inherit Overlay */}
+      {syncInheritOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: '520px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">继承/补充其他大表翻译</h3>
+              <button onClick={() => setSyncInheritOpen(false)} className="modal-close">✕</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                💡 <strong>合并继承机制</strong>：
+                系统将检索源大表中相同的 <strong>KW</strong> 记录，如果当前大表对应的词条有某些语种为空（尚未翻译），系统会自动将源版本里已翻译的值填补过来，<strong>绝不会覆盖您当前表中已经翻译过的内容</strong>。
+              </div>
+
+              <div className="form-group">
+                <label>选择源大表版本 (从何处继承)</label>
+                <select 
+                  value={syncInheritSourceId} 
+                  onChange={(e) => setSyncInheritSourceId(e.target.value)}
+                  className="select-input"
+                  style={{ width: '100%' }}
+                >
+                  <option value="">-- 请选择源大表 --</option>
+                  {tables.filter(t => t.id !== selectedTableId).map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setSyncInheritOpen(false)} className="btn btn-secondary" disabled={inheriting}>取消</button>
+              <button 
+                onClick={handleInheritTranslationsSubmit} 
+                disabled={!syncInheritSourceId || inheriting}
+                className="btn btn-primary"
+              >
+                {inheriting ? '正在执行合并继承...' : '开始继承'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal 6: Batch Approve Workflow Modal */}
+      {batchApproveOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">批量审核词条状态</h3>
+              <button onClick={() => setBatchApproveOpen(false)} className="modal-close">✕</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="alert-box alert-box-success" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                <span>准备审核 <strong>{selectedRecordIds.size}</strong> 条选中的词条（将自动过滤被锁定的词条）。</span>
+              </div>
+
+              <div className="form-group">
+                <label>选择审核结论</label>
+                <select 
+                  value={batchApproveStatus}
+                  onChange={(e) => setBatchApproveStatus(e.target.value)}
+                  className="select-input"
+                  style={{ width: '100%' }}
+                >
+                  <option value="APPROVED">已审核 (APPROVED)</option>
+                  <option value="PUBLISHED">已发布 (PUBLISHED)</option>
+                  <option value="REJECTED">已驳回 (REJECTED)</option>
+                  <option value="DRAFT">设回草稿 (DRAFT)</option>
+                </select>
+              </div>
+
+              {batchApproveStatus === 'REJECTED' && (
+                <div className="form-group">
+                  <label style={{ color: 'var(--red)' }}>请输入驳回意见/修改原因 (必填)</label>
+                  <textarea 
+                    value={batchApproveRejectReason}
+                    onChange={(e) => setBatchApproveRejectReason(e.target.value)}
+                    className="text-input"
+                    rows={3}
+                    placeholder="例如: 英文翻译不符合Magene词典规范，请核对缩写"
+                    style={{ width: '100%', resize: 'vertical', minHeight: '60px' }}
+                    required
+                  />
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setBatchApproveOpen(false)} className="btn btn-secondary">取消</button>
+              <button 
+                onClick={handleBatchApproveSubmit} 
+                disabled={batchApproveStatus === 'REJECTED' && !batchApproveRejectReason.trim()}
+                className="btn btn-primary"
+              >
+                确认提交
               </button>
             </div>
           </div>

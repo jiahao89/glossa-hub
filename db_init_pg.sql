@@ -61,7 +61,24 @@ CREATE TABLE IF NOT EXISTS terms (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_by VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+    is_locked BOOLEAN DEFAULT FALSE,
+    locked_by VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+    locked_at TIMESTAMP WITH TIME ZONE,
+    status TEXT DEFAULT 'DRAFT',
+    reject_reason TEXT,
     UNIQUE(version_id, kw)
+);
+
+-- 6b. Snapshots Table
+CREATE TABLE IF NOT EXISTS term_snapshots (
+    id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    term_id VARCHAR(64) NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+    version_id VARCHAR(64) NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+    kw TEXT NOT NULL,
+    zh_cn TEXT,
+    translations JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_by VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- 7. Change Logs Table

@@ -10,6 +10,7 @@ export default function VersionsTab({ onNavigate }) {
   // New table modal state
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newVersionName, setNewVersionName] = useState('');
+  const [baseVersionId, setBaseVersionId] = useState('');
   const [adding, setAdding] = useState(false);
 
   // Edit table modal state
@@ -48,13 +49,15 @@ export default function VersionsTab({ onNavigate }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          versionName: newVersionName.trim()
+          versionName: newVersionName.trim(),
+          baseVersionId: baseVersionId || undefined
         })
       });
 
       const data = await res.json();
       if (res.ok) {
         setNewVersionName('');
+        setBaseVersionId('');
         setAddModalOpen(false);
         fetchTables();
       } else {
@@ -277,7 +280,21 @@ export default function VersionsTab({ onNavigate }) {
                   required
                   style={{ width: '100%', padding: '0.62rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
                 />
-                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>* 新表将自动继承现有的自定义目标语种表头。</p>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>继承翻译数据自 (基准大表/可选)</label>
+                <select 
+                  value={baseVersionId}
+                  onChange={(e) => setBaseVersionId(e.target.value)}
+                  style={{ width: '100%', padding: '0.62rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                >
+                  <option value="">-- 全空创建 (不继承词条与翻译) --</option>
+                  {tables.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>* 选择一个大表，新表在创建后会秒级自动克隆其全部历史词条和翻译数据。</p>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
