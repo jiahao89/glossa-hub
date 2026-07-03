@@ -148,17 +148,19 @@ CREATE TABLE IF NOT EXISTS glossary_tables (
     id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     table_name TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    headers TEXT DEFAULT '["中文专业术语","英文翻译对应","说明 / 定义"]'
 );
 
 -- 14. Glossary Terms
 CREATE TABLE IF NOT EXISTS glossary_terms (
     id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     table_id VARCHAR(64) NOT NULL REFERENCES glossary_tables(id) ON DELETE CASCADE,
-    cn_term TEXT NOT NULL,
-    en_term TEXT NOT NULL,
+    cn_term TEXT,
+    en_term TEXT,
     description TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    fields TEXT DEFAULT '{}'
 );
 
 -- 15. Performance Indexes

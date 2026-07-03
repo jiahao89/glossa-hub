@@ -27,3 +27,8 @@ dist-ssr
 *.sqlite
 *.db
 
+# Secrets
+.env
+.env.local
+.env.*
+!.env.example

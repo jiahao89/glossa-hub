@@ -259,7 +259,8 @@ function initSqliteTables() {
                         id TEXT PRIMARY KEY,
                         project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
                         table_name TEXT NOT NULL,
-                        created_at TEXT
+                        created_at TEXT,
+                        headers TEXT DEFAULT '["中文专业术语","英文翻译对应","说明 / 定义"]'
                       )
                     `, (gtTableErr) => {
                       if (gtTableErr) {
@@ -270,17 +271,24 @@ function initSqliteTables() {
                         CREATE TABLE IF NOT EXISTS glossary_terms (
                           id TEXT PRIMARY KEY,
                           table_id TEXT NOT NULL REFERENCES glossary_tables(id) ON DELETE CASCADE,
-                          cn_term TEXT NOT NULL,
-                          en_term TEXT NOT NULL,
+                          cn_term TEXT,
+                          en_term TEXT,
                           description TEXT,
-                          created_at TEXT
+                          created_at TEXT,
+                          fields TEXT DEFAULT '{}'
                         )
                       `, (gTermErr) => {
                         if (gTermErr) {
                           console.error('❌ 创建 glossary_terms 表失败:', gTermErr.message);
                           return reject(gTermErr);
                         }
-                        resolve();
+                        
+                        // Safely alter existing tables to upgrade columns for old DB files
+                        sqliteDb.run("ALTER TABLE glossary_tables ADD COLUMN headers TEXT", () => {
+                          sqliteDb.run("ALTER TABLE glossary_terms ADD COLUMN fields TEXT", () => {
+                            resolve();
+                          });
+                        });
                       });
                     });
                   };
@@ -336,7 +344,6 @@ const db = {
       const res = await pgPool.query(sql, params);
       return res.rows;
     } else {
-      // Convert Postgres-style placeholder ($1, $2) to SQLite style (?)
       const sqliteSql = sql.replace(/\$\d+/g, '?');
       return new Promise((resolve, reject) => {
         sqliteDb.all(sqliteSql, params, (err, rows) => {
@@ -362,6 +369,48 @@ const db = {
           resolve({ lastID: this.lastID, changes: this.changes });
         });
       });
+    }
+  },
+  async transaction(callback) {
+    if (dbType === 'postgres') {
+      const client = await pgPool.connect();
+      try {
+        await client.query('BEGIN');
+        const txDb = {
+          async query(sql, params = []) {
+            const res = await client.query(sql, params);
+            return res.rows;
+          },
+          async queryOne(sql, params = []) {
+            const rows = await this.query(sql, params);
+            return rows[0] || null;
+          },
+          async run(sql, params = []) {
+            const res = await client.query(sql, params);
+            return { lastID: null, changes: res.rowCount };
+          }
+        };
+        const result = await callback(txDb);
+        await client.query('COMMIT');
+        return result;
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    } else {
+      await this.run('BEGIN TRANSACTION');
+      try {
+        const result = await callback(this);
+        await this.run('COMMIT');
+        return result;
+      } catch (e) {
+        try {
+          await this.run('ROLLBACK');
+        } catch (err) {}
+        throw e;
+      }
     }
   }
 };
@@ -441,14 +490,37 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   }
 });
 
-// 2. GET /api/tables - 获取所有固件版本表 (向后兼容)
+// 2. GET /api/tables - 获取所有固件版本表 (带创建人及最近修改时间)
 app.get('/api/tables', authenticateToken, async (req, res) => {
   try {
     const versions = await db.query(
-      'SELECT id, version_name AS name FROM versions WHERE project_id = $1 ORDER BY created_at ASC',
+      `SELECT v.id, v.version_name AS name, v.created_at, u.name AS creator_name
+       FROM versions v
+       LEFT JOIN users u ON v.created_by = u.id
+       WHERE v.project_id = $1
+       ORDER BY v.created_at DESC`,
       ['proj-default']
     );
-    res.json(versions);
+    
+    const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
+    const updatedVersions = [];
+    for (const ver of versions) {
+      const latestLog = await db.queryOne(
+        `SELECT timestamp FROM ${logsTable} 
+         WHERE version_name = $1 
+         ORDER BY id DESC LIMIT 1`,
+        [ver.name]
+      );
+      updatedVersions.push({
+        id: ver.id,
+        name: ver.name,
+        created_at: ver.created_at,
+        creator_name: ver.creator_name || '系统默认',
+        last_modified: latestLog ? latestLog.timestamp : ver.created_at
+      });
+    }
+
+    res.json(updatedVersions);
   } catch (err) {
     console.error('获取版本列表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
@@ -614,6 +686,94 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
     res.json({ message: `同步成功！共同步 ${records.length} 条词条。` });
   } catch (err) {
     console.error('数据同步处理失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// 4b. POST /api/versions/sync-terms - 版本对比一键同步合并
+app.post('/api/versions/sync-terms', authenticateToken, async (req, res) => {
+  const { sourceVersionId, targetVersionId, syncActions } = req.body;
+  if (!sourceVersionId || !targetVersionId || !Array.isArray(syncActions)) {
+    return res.status(400).json({ error: '必须包含 sourceVersionId, targetVersionId 和 syncActions 数组！' });
+  }
+
+  try {
+    const sourceVer = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [sourceVersionId]);
+    const targetVer = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [targetVersionId]);
+    if (!sourceVer || !targetVer) {
+      return res.status(404).json({ error: '指定的源版本或目标版本不存在！' });
+    }
+
+    const sourceName = sourceVer.version_name;
+    const targetName = targetVer.version_name;
+
+    let addCount = 0;
+    let modCount = 0;
+    let delCount = 0;
+
+    await db.transaction(async (tx) => {
+      const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
+
+      for (const action of syncActions) {
+        const { type, kw, data } = action;
+        if (!kw) continue;
+
+        // Clear target row first to prevent unique constraint conflict
+        await tx.run('DELETE FROM terms WHERE version_id = $1 AND kw = $2', [targetVersionId, kw]);
+
+        if (type === 'ADD' || type === 'MOD') {
+          if (type === 'ADD') addCount++;
+          if (type === 'MOD') modCount++;
+
+          const termId = crypto.randomUUID();
+          const context = data.context || '';
+          const owner = data.owner || '';
+          const zhCn = data.zh_cn || '';
+          const transStr = typeof data.translations === 'object' ? JSON.stringify(data.translations) : (data.translations || '{}');
+
+          if (dbType === 'postgres') {
+            await tx.run(
+              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, updated_by, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+              [termId, targetVersionId, kw, context, owner, zhCn, transStr, req.user.id]
+            );
+          } else {
+            await tx.run(
+              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, updated_by, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'), datetime('now'))`,
+              [termId, targetVersionId, kw, context, owner, zhCn, transStr, req.user.id]
+            );
+          }
+        } else if (type === 'DEL') {
+          delCount++;
+        }
+      }
+
+      const details = `从版本 [${sourceName}] 同步合并变更到版本 [${targetName}]。新增: ${addCount} 条, 修改: ${modCount} 条, 删除: ${delCount} 条。`;
+      if (dbType === 'postgres') {
+        await tx.run(
+          `INSERT INTO ${logsTable} (timestamp, kw, chinese, action, details, version_name, user_id)
+           VALUES (NOW(), $1, $2, $3, $4, $5, $6)`,
+          [`SYNC_MERGE_${addCount + modCount + delCount}`, '批量同步合并', '同步合并', details, targetName, req.user.id]
+        );
+      } else {
+        await tx.run(
+          `INSERT INTO ${logsTable} (timestamp, kw, chinese, action, details, version_name, user_id)
+           VALUES (datetime('now'), $1, $2, $3, $4, $5, $6)`,
+          [`SYNC_MERGE_${addCount + modCount + delCount}`, '批量同步合并', '同步合并', details, targetName, req.user.id]
+        );
+      }
+    });
+
+    res.json({
+      message: `成功同步合并到 [${targetName}]！`,
+      added: addCount,
+      modified: modCount,
+      deleted: delCount
+    });
+
+  } catch (err) {
+    console.error('版本合并同步失败:', err);
+    res.status(500).json({ error: '合并同步处理中发生服务器内部错误。' });
   }
 });
 
@@ -1264,12 +1424,53 @@ app.delete('/api/projects/:projectId/versions/:versionId', authenticateToken, as
   }
 });
 
+// 19.5 PUT /api/projects/:projectId/versions/:versionId - 修改数据表名称
+app.put('/api/projects/:projectId/versions/:versionId', authenticateToken, async (req, res) => {
+  const { projectId, versionId } = req.params;
+  const { versionName } = req.body;
+
+  if (!versionName || !versionName.trim()) {
+    return res.status(400).json({ error: '数据表名称不能为空' });
+  }
+
+  try {
+    const newName = versionName.trim();
+    // Check duplication
+    const existing = await db.queryOne(
+      'SELECT id FROM versions WHERE project_id = $1 AND version_name = $2 AND id != $3',
+      [projectId, newName, versionId]
+    );
+    if (existing) {
+      return res.status(409).json({ error: '已存在同名数据表，请使用其他名称' });
+    }
+
+    await db.run(
+      'UPDATE versions SET version_name = $1 WHERE id = $2 AND project_id = $3',
+      [newName, versionId, projectId]
+    );
+
+    res.json({ message: '数据表名称更新成功', name: newName });
+  } catch (err) {
+    console.error('更新数据表名称失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
 // 20. GET /api/projects/:projectId/glossary-tables - 获取专业词汇大表列表
 app.get('/api/projects/:projectId/glossary-tables', authenticateToken, async (req, res) => {
   const { projectId } = req.params;
   try {
     const tables = await db.query('SELECT * FROM glossary_tables WHERE project_id = $1 ORDER BY table_name ASC', [projectId]);
-    res.json(tables);
+    const mapped = tables.map(t => {
+      let headersParsed = [];
+      try {
+        headersParsed = JSON.parse(t.headers || '["中文专业术语","英文翻译对应","说明 / 定义"]');
+      } catch (e) {
+        headersParsed = ["中文专业术语", "英文翻译对应", "说明 / 定义"];
+      }
+      return { ...t, headers: headersParsed };
+    });
+    res.json(mapped);
   } catch (err) {
     console.error('加载词汇表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
@@ -1298,7 +1499,7 @@ app.post('/api/projects/:projectId/glossary-tables', authenticateToken, async (r
       'INSERT INTO glossary_tables (id, project_id, table_name, created_at) VALUES ($1, $2, $3, $4)',
       [tableId, projectId, tableName, createdTime]
     );
-    res.status(201).json({ id: tableId, table_name: tableName, created_at: createdTime });
+    res.status(201).json({ id: tableId, table_name: tableName, created_at: createdTime, headers: ["中文专业术语", "英文翻译对应", "说明 / 定义"] });
   } catch (err) {
     console.error('创建词汇大表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
@@ -1325,7 +1526,16 @@ app.get('/api/glossary-tables/:tableId/terms', authenticateToken, async (req, re
   const { tableId } = req.params;
   try {
     const terms = await db.query('SELECT * FROM glossary_terms WHERE table_id = $1 ORDER BY cn_term ASC', [tableId]);
-    res.json(terms);
+    const mapped = terms.map(t => {
+      let fieldsParsed = {};
+      try {
+        fieldsParsed = JSON.parse(t.fields || '{}');
+      } catch (e) {
+        fieldsParsed = {};
+      }
+      return { ...t, fields: fieldsParsed };
+    });
+    res.json(mapped);
   } catch (err) {
     console.error('加载专业术语列表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
@@ -1334,45 +1544,65 @@ app.get('/api/glossary-tables/:tableId/terms', authenticateToken, async (req, re
 // 24. POST /api/glossary-tables/:tableId/terms - 新增/批量导入术语
 app.post('/api/glossary-tables/:tableId/terms', authenticateToken, async (req, res) => {
   const { tableId } = req.params;
-  const { cnTerm, enTerm, description, termsList } = req.body;
+  const { cnTerm, enTerm, description, termsList, headers } = req.body;
 
   try {
     if (Array.isArray(termsList)) {
-      const inserted = [];
       const createdTime = new Date().toISOString();
+      await db.transaction(async (tx) => {
+        // 1. Update custom table headers config if provided
+        if (Array.isArray(headers) && headers.length > 0) {
+          await tx.run('UPDATE glossary_tables SET headers = $1 WHERE id = $2', [JSON.stringify(headers), tableId]);
+        }
 
-      for (const t of termsList) {
-        if (!t.cnTerm || !t.enTerm) continue;
+        // 2. Clear all previous terms in this table to achieve overwrite import
+        await tx.run('DELETE FROM glossary_terms WHERE table_id = $1', [tableId]);
 
-        await db.run('DELETE FROM glossary_terms WHERE table_id = $1 AND cn_term = $2', [tableId, t.cnTerm]);
+        for (const t of termsList) {
+          const cn = (t.cnTerm || '').trim();
+          const en = (t.enTerm || '').trim();
+          if (!cn && !en) continue;
 
-        const termId = crypto.randomUUID();
-        await db.run(
-          'INSERT INTO glossary_terms (id, table_id, cn_term, en_term, description, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-          [termId, tableId, t.cnTerm.trim(), t.enTerm.trim(), (t.description || '').trim(), createdTime]
-        );
-        inserted.push({ id: termId, cn_term: t.cnTerm, en_term: t.enTerm, description: t.description });
-      }
-      return res.status(201).json({ message: `成功导入了 ${inserted.length} 条专业术语！`, count: inserted.length });
+          const termId = crypto.randomUUID();
+          const fieldsJson = JSON.stringify(t.fields || {});
+          await tx.run(
+            'INSERT INTO glossary_terms (id, table_id, cn_term, en_term, description, created_at, fields) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [termId, tableId, cn, en, (t.description || '').trim(), createdTime, fieldsJson]
+          );
+        }
+      });
+      return res.status(201).json({ message: `成功覆盖导入了 ${termsList.length} 条专业术语！`, count: termsList.length });
     }
 
-    if (!cnTerm || !enTerm) {
-      return res.status(400).json({ error: '中文术语和英文翻译不能为空' });
+    if (!cnTerm && !enTerm) {
+      return res.status(400).json({ error: '术语名称或翻译不能为空' });
     }
 
     const existing = await db.queryOne('SELECT id FROM glossary_terms WHERE table_id = $1 AND cn_term = $2', [tableId, cnTerm]);
     if (existing) {
-      return res.status(409).json({ error: '该中文专业术语在此表已存在' });
+      return res.status(409).json({ error: '该专业术语在此表已存在' });
     }
 
     const termId = crypto.randomUUID();
     const createdTime = new Date().toISOString();
+    const defaultFields = {
+      "中文专业术语": cnTerm,
+      "英文翻译对应": enTerm,
+      "说明 / 定义": description || ''
+    };
+
     await db.run(
-      'INSERT INTO glossary_terms (id, table_id, cn_term, en_term, description, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-      [termId, tableId, cnTerm.trim(), enTerm.trim(), (description || '').trim(), createdTime]
+      'INSERT INTO glossary_terms (id, table_id, cn_term, en_term, description, created_at, fields) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [termId, tableId, cnTerm.trim(), enTerm.trim(), (description || '').trim(), createdTime, JSON.stringify(defaultFields)]
     );
 
-    res.status(201).json({ id: termId, cn_term: cnTerm, en_term: enTerm, description });
+    res.status(201).json({ 
+      id: termId, 
+      cn_term: cnTerm, 
+      en_term: enTerm, 
+      description,
+      fields: defaultFields
+    });
   } catch (err) {
     console.error('添加专业术语失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }

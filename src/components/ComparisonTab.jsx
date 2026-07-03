@@ -29,6 +29,10 @@ export default function ComparisonTab() {
   const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
   const TARGET_LANGUAGES = targetLanguagesList;
 
+  const [sourceRecordsState, setSourceRecordsState] = useState([]);
+  const [selectedIndexes, setSelectedIndexes] = useState(new Set());
+  const [syncing, setSyncing] = useState(false);
+
   useEffect(() => {
     async function loadProjLanguages() {
       try {
@@ -49,7 +53,6 @@ export default function ComparisonTab() {
   const [tables, setTables] = useState([]); // [{ id, name }]
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
 
   // Selector States
   const [sourceTableId, setSourceTableId] = useState(''); // Version A
@@ -68,73 +71,33 @@ export default function ComparisonTab() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'added' | 'modified' | 'deleted' | 'unchanged'
 
-  // Load Bitable Tables and filter for numeric version tables
+  // Load Version Tables from database API
   useEffect(() => {
     async function loadVersionTables() {
       try {
         setLoading(true);
-        // Create a timeout race to prevent hanging outside Feishu iframe
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('SDK 连接超时，可能未运行在飞书环境中')), 1500)
-        );
-        const allTables = await Promise.race([
-          bitable.base.getTableMetaList(),
-          timeoutPromise
-        ]);
-        
-        // Sort version tables by their version number (e.g. "3.2" or "C706码表多语言文案2.1")
-        const getVersionNum = (name) => {
-          const match = (name || '').match(/\d+(\.\d+)?/);
-          return match ? parseFloat(match[0]) : 0;
-        };
-        const sorted = [...allTables].sort((a, b) => getVersionNum(a.name) - getVersionNum(b.name));
-        
-        setTables(sorted);
-        setIsDemoMode(false);
-        
-        if (sorted.length > 0) {
-          // Default Target Table to the latest version
-          setTargetTableId(sorted[sorted.length - 1].id);
-          // Default Source Table to the predecessor version
-          if (sorted.length > 1) {
-            setSourceTableId(sorted[sorted.length - 2].id);
-          } else {
-            setSourceTableId(sorted[0].id);
-          }
-        }
-      } catch (err) {
-        console.warn('⚠️ 跨版本比对加载数据表失败，切换为本地对比模拟模式:', err.message);
-        setIsDemoMode(true);
-        
-        // Try fetching synced tables from SQLite/JSON database
-        try {
-          const res = await fetch('/api/tables');
-          if (res.ok) {
-            const syncedTables = await res.json();
-            if (syncedTables.length > 0) {
-              const mockTables = [
-                { id: 'mock_3_1', name: '3.1 (演示)' },
-                { id: 'mock_3_2', name: '3.2 (演示)' }
-              ];
-              const allTables = [...syncedTables, ...mockTables];
-              setTables(allTables);
-              setSourceTableId('mock_3_1');
-              setTargetTableId('mock_3_2');
-              setLoading(false);
-              return;
+        setErrorMsg(null);
+        const res = await apiFetch('/api/tables');
+        if (res.ok) {
+          const syncedTables = await res.json();
+          setTables(syncedTables);
+          
+          if (syncedTables.length > 0) {
+            // Default Target Table to the latest version (first in list due to DESC order)
+            setTargetTableId(syncedTables[0].id);
+            // Default Source Table to the predecessor version (second in list)
+            if (syncedTables.length > 1) {
+              setSourceTableId(syncedTables[1].id);
+            } else {
+              setSourceTableId(syncedTables[0].id);
             }
           }
-        } catch (dbErr) {
-          console.warn('⚠️ 无法从本地 SQLite 读取比对表格:', dbErr.message);
+        } else {
+          setErrorMsg('加载数据表列表失败');
         }
-
-        const mockTables = [
-          { id: 'mock_3_1', name: '3.1' },
-          { id: 'mock_3_2', name: '3.2' }
-        ];
-        setTables(mockTables);
-        setSourceTableId('mock_3_1');
-        setTargetTableId('mock_3_2');
+      } catch (err) {
+        console.warn('⚠️ 跨版本比对加载数据表失败:', err.message);
+        setErrorMsg('加载数据表失败，请检查网络或后端服务。');
       } finally {
         setLoading(false);
       }
@@ -142,141 +105,27 @@ export default function ComparisonTab() {
     loadVersionTables();
   }, []);
 
-  const getMockVersionRecords = (tableId) => {
-    if (tableId === 'mock_3_1') {
-      return [
-        {
-          KW: 'KW_RIDE_LAP_AVG_SP',
-          中文: '圈平均速度',
-          所在页面: '运动数据页',
-          translations: {
-            '英文': 'Lap Avg Speed',
-            '法语': 'Vitesse moyenne du tour'
-          }
-        },
-        {
-          KW: 'KW_RIDE_LAP_AVG_CA',
-          中文: '圈平均踏频',
-          所在页面: '运动数据页',
-          translations: {
-            '英文': 'Lap Avg Cadence'
-          }
-        },
-        {
-          KW: 'KW_USER_NO_RECORD',
-          中文: '暂无记录，使用码表骑行后查看记录',
-          所在页面: '历史记录空页面',
-          translations: {
-            '英文': 'No records. Ride with your bike computer to view history.',
-            '法语': 'Aucun enregistrement.'
-          }
-        }
-      ];
-    } else if (tableId === 'mock_3_2') {
-      return [
-        {
-          KW: 'KW_RIDE_LAP_AVG_SP',
-          中文: '圈平均速度',
-          所在页面: '运动数据页',
-          translations: {
-            '英文': 'Lap Average Speed',
-            '法语': 'Vitesse moyenne du tour'
-          }
-        },
-        {
-          KW: 'KW_RIDE_LAP_AVG_CA',
-          中文: '圈平均踏频',
-          所在页面: '运动数据页',
-          translations: {
-            '英文': 'Lap Avg Cadence',
-            '法语': 'Cadence moyenne du tour'
-          }
-        },
-        {
-          KW: 'KW_RIDE_ROUTE_REPL',
-          中文: '是否替换当前路线？',
-          所在页面: '导航路线页',
-          translations: {
-            '英文': 'Replace current route?'
-          }
-        }
-      ];
-    }
-    return [];
-  };
-
-  // Safe fetch helper for Bitable records
+  // Safe fetch helper for records
   const fetchRecordsFromTable = async (tableId) => {
-    if (tableId.startsWith('mock_')) {
-      return getMockVersionRecords(tableId);
-    }
-
+    if (!tableId) return [];
     try {
-      const table = await bitable.base.getTableById(tableId);
-      
-      // Load fields mapping
-      const fieldMetaList = await table.getFieldMetaList();
-      const fieldMap = {};
-      fieldMetaList.forEach(f => {
-        fieldMap[f.name] = f.id;
-      });
-
-      let pageToken = undefined;
-      let hasMore = true;
-      let allRecords = [];
-
-      while (hasMore) {
-        const result = await table.getRecordsByPage({ pageToken, pageSize: 200 });
-        allRecords = [...allRecords, ...result.records];
-        hasMore = result.hasMore;
-        pageToken = result.pageToken;
-      }
-
-      // Helper to extract value
-      const getValue = (rec, fieldName) => {
-        const fId = fieldMap[fieldName];
-        if (!fId) return '';
-        const cell = rec.fields[fId];
-        if (!cell) return '';
-        if (Array.isArray(cell)) {
-          return cell.map(s => s.text || '').join('');
-        }
-        if (typeof cell === 'object' && cell.text) return cell.text;
-        return String(cell);
-      };
-
-      // Format into standard objects
-      return allRecords.map(rec => {
-        const translations = {};
+      const res = await apiFetch(`/api/tables/${tableId}/records`);
+      if (!res.ok) throw new Error('无法读取数据表内容');
+      const dbRecords = await res.json();
+      return dbRecords.map(r => {
+        const trans = {};
         TARGET_LANGUAGES.forEach(lang => {
-          translations[lang] = getValue(rec, lang);
+          trans[lang] = r.fields[lang] || '';
         });
         return {
-          KW: getValue(rec, 'KW')?.trim(),
-          中文: getValue(rec, 'CN（中文）')?.trim(),
-          所在页面: getValue(rec, '所在页面')?.trim() || getValue(rec, '词条所在界面（注意是界面不是模块！！）')?.trim(),
-          translations
+          KW: r.fields.KW || '',
+          中文: r.fields['CN（中文）'] || r.fields.中文 || '',
+          所在页面: r.fields.所在页面 || '',
+          translations: trans
         };
-      }).filter(item => item.KW);
+      });
     } catch (err) {
-      console.warn(`⚠️ Bitable 读取失败，尝试从本地 SQLite/JSON 读取数据 (Table: ${tableId}):`, err.message);
-      
-      const res = await fetch(`/api/tables/${tableId}/records`);
-      if (res.ok) {
-        const dbRecords = await res.json();
-        return dbRecords.map(r => {
-          const trans = {};
-          TARGET_LANGUAGES.forEach(lang => {
-            trans[lang] = r.fields[lang] || '';
-          });
-          return {
-            KW: r.fields.KW || '',
-            中文: r.fields['CN（中文）'] || r.fields.中文 || '',
-            所在页面: r.fields.所在页面 || '',
-            translations: trans
-          };
-        });
-      }
+      console.error('加载大表词条记录失败:', err);
       throw err;
     }
   };
@@ -452,6 +301,8 @@ export default function ComparisonTab() {
         }
       });
 
+      setSourceRecordsState(sourceRecords);
+      setSelectedIndexes(new Set());
       setComparisonResults(compared);
     } catch (err) {
       setErrorMsg(`计算比对数据失败: ${err.message}`);
@@ -464,6 +315,8 @@ export default function ComparisonTab() {
   const handleClearFallback = () => {
     setFallbackCsvData(null);
     setFallbackFileName('');
+    setSourceRecordsState([]);
+    setSelectedIndexes(new Set());
     if (tables.length > 0) {
       setSourceTableId(tables[0].id);
     }
@@ -495,6 +348,110 @@ export default function ComparisonTab() {
     });
     return countsDict;
   }, [comparisonResults]);
+
+  // Checkbox helpers
+  const toggleSelectRow = (idx) => {
+    const next = new Set(selectedIndexes);
+    if (next.has(idx)) {
+      next.delete(idx);
+    } else {
+      next.add(idx);
+    }
+    setSelectedIndexes(next);
+  };
+
+  const isAllSelected = useMemo(() => {
+    const selectable = filteredResults.filter(r => r.status !== 'unchanged');
+    if (selectable.length === 0) return false;
+    return selectable.every((_, i) => selectedIndexes.has(filteredResults.indexOf(selectable[i])));
+  }, [filteredResults, selectedIndexes]);
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIndexes(new Set());
+    } else {
+      const selectableIndexes = new Set();
+      filteredResults.forEach((r, idx) => {
+        if (r.status !== 'unchanged') selectableIndexes.add(idx);
+      });
+      setSelectedIndexes(selectableIndexes);
+    }
+  };
+
+  // Synchronization executor
+  const handleSyncActions = async (indexes) => {
+    if (indexes.size === 0) return;
+
+    const actions = [];
+    const idxArray = Array.from(indexes);
+
+    for (const idx of idxArray) {
+      const item = filteredResults[idx];
+      if (!item || item.status === 'unchanged') continue;
+
+      const kw = item.KW;
+
+      if (item.status === 'added' || item.status === 'modified') {
+        const srcRec = sourceRecordsState.find(r => r.KW === kw);
+        if (srcRec) {
+          actions.push({
+            type: item.status === 'added' ? 'ADD' : 'MOD',
+            kw,
+            data: {
+              context: srcRec.所在页面,
+              owner: '',
+              zh_cn: srcRec.中文,
+              translations: srcRec.translations
+            }
+          });
+        }
+      } else if (item.status === 'deleted') {
+        actions.push({
+          type: 'DEL',
+          kw
+        });
+      }
+    }
+
+    if (actions.length === 0) {
+      alert('没有需要同步的变动词条！');
+      return;
+    }
+
+    const targetVerName = tables.find(t => t.id === targetTableId)?.name || '目标版本';
+    const confirmMsg = `是否确认将选中的 ${actions.length} 条差异一键合并同步到 [${targetVerName}]？\n\n(此操作会自动写入数据库并记录合并日志。)`
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setSyncing(true);
+      const payload = {
+        sourceVersionId: sourceTableId || 'csv',
+        targetVersionId: targetTableId,
+        syncActions: actions
+      };
+
+      const res = await apiFetch('/api/versions/sync-terms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        alert(result.message || '合并同步成功！');
+        setSelectedIndexes(new Set());
+        await handleCompare(); // Re-trigger compare to refresh diff list
+      } else {
+        const errorData = await res.json();
+        alert(`同步失败: ${errorData.error || '服务器未知错误'}`);
+      }
+    } catch (e) {
+      console.error('同步失败:', e);
+      alert(`网络或后端服务异常，同步失败: ${e.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   return (
     <div className="compare-container">
@@ -583,15 +540,7 @@ export default function ComparisonTab() {
         </div>
       </div>
 
-      {/* Demo Mode Notice */}
-      {isDemoMode && (
-        <div style={{ padding: '0.5rem 1.5rem', backgroundColor: 'var(--bg-secondary)' }}>
-          <div className="alert-box alert-box-info" style={{ backgroundColor: 'rgba(235, 94, 40, 0.1)', color: 'var(--accent)', borderColor: 'rgba(235, 94, 40, 0.3)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <AlertCircle size={16} />
-            <span>已启用离线演示比对模式 (读取自 SQLite 同步历史数据或静态模拟数据)</span>
-          </div>
-        </div>
-      )}
+
 
       {/* Errors */}
       {errorMsg && (
@@ -673,6 +622,22 @@ export default function ComparisonTab() {
         </div>
       )}
 
+      {selectedIndexes.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1.5rem', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', justifyContent: 'space-between', flexShrink: 0 }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            已选中 <strong style={{ color: 'var(--accent)' }}>{selectedIndexes.size}</strong> 项差异条目
+          </span>
+          <button 
+            onClick={() => handleSyncActions(selectedIndexes)} 
+            disabled={syncing}
+            className="btn btn-primary"
+            style={{ padding: '0.35rem 1.2rem', fontSize: '0.8rem' }}
+          >
+            {syncing ? '正在批量同步...' : '一键同步所选差异到基准表 B'}
+          </button>
+        </div>
+      )}
+
       {/* Comparison View Grid */}
       <div className="grid-container" style={{ flex: 1 }}>
         {loading ? (
@@ -693,11 +658,20 @@ export default function ComparisonTab() {
           <table className="data-table">
             <thead>
               <tr>
+                <th style={{ width: '45px', textAlign: 'center' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={isAllSelected}
+                    onChange={toggleSelectAll}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </th>
                 <th className="sticky-col-1" style={{ width: '150px' }}>KW (Key)</th>
                 <th className="sticky-col-2" style={{ width: '180px' }}>中文 (Source)</th>
                 <th style={{ width: '100px' }}>变更类型</th>
-                <th style={{ width: '150px' }}>所在页面</th>
+                <th style={{ width: '120px' }}>所在页面</th>
                 <th>对比详细变动内容</th>
+                <th style={{ width: '130px', textAlign: 'center' }}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -712,14 +686,26 @@ export default function ComparisonTab() {
                   rowClass = 'diff-row-modified';
                   statusTag = <span className="diff-tag diff-tag-modified">修改 (MOD)</span>;
                 } else if (item.status === 'deleted') {
-                  rowClass = 'diff-row-danger'; // Custom css color block or handled visually
+                  rowClass = 'diff-row-danger';
                   statusTag = <span className="diff-tag" style={{ backgroundColor: 'var(--red)', color: '#fff' }}>删除 (DEL)</span>;
                 } else {
                   statusTag = <span className="diff-tag diff-tag-unchanged">无变化</span>;
                 }
 
+                const globalIdx = idx;
+
                 return (
                   <tr key={idx} className={rowClass}>
+                    <td style={{ textAlign: 'center' }}>
+                      {item.status !== 'unchanged' && (
+                        <input 
+                          type="checkbox" 
+                          checked={selectedIndexes.has(globalIdx)}
+                          onChange={() => toggleSelectRow(globalIdx)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      )}
+                    </td>
                     <td className="sticky-col-1 mono" title={item.KW}>{item.KW}</td>
                     <td className="sticky-col-2" title={item.中文}>{item.中文}</td>
                     <td>{statusTag}</td>
@@ -745,6 +731,38 @@ export default function ComparisonTab() {
                             </div>
                           ))}
                         </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      {item.status === 'added' && (
+                        <button 
+                          onClick={() => handleSyncActions(new Set([globalIdx]))} 
+                          disabled={syncing}
+                          className="btn btn-secondary" 
+                          style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem', borderColor: 'var(--green)', color: 'var(--green)', background: 'transparent' }}
+                        >
+                          同步至基准
+                        </button>
+                      )}
+                      {item.status === 'modified' && (
+                        <button 
+                          onClick={() => handleSyncActions(new Set([globalIdx]))} 
+                          disabled={syncing}
+                          className="btn btn-secondary" 
+                          style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem', borderColor: 'var(--yellow)', color: 'var(--yellow)', background: 'transparent' }}
+                        >
+                          覆盖基准
+                        </button>
+                      )}
+                      {item.status === 'deleted' && (
+                        <button 
+                          onClick={() => handleSyncActions(new Set([globalIdx]))} 
+                          disabled={syncing}
+                          className="btn btn-secondary" 
+                          style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent' }}
+                        >
+                          同步删除
+                        </button>
                       )}
                     </td>
                   </tr>

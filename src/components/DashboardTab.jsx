@@ -2,6 +2,46 @@ import React, { useState, useEffect } from 'react';
 import { Database, FileText, CheckCircle, BarChart3, Activity, Clock, User } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
+function formatLogTime(timestampStr) {
+  if (!timestampStr) return '';
+  let date;
+  if (typeof timestampStr === 'string' && timestampStr.includes(' ') && !timestampStr.includes('T')) {
+    date = new Date(timestampStr.replace(' ', 'T') + '+08:00');
+  } else {
+    date = new Date(timestampStr);
+  }
+
+  if (isNaN(date.getTime())) {
+    return timestampStr;
+  }
+
+  const formatterDate = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const formatterTime = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+
+  const now = new Date();
+  const todayStr = formatterDate.format(now);
+  const logDateStr = formatterDate.format(date);
+  const timePart = formatterTime.format(date);
+  
+  if (todayStr === logDateStr) {
+    return timePart;
+  } else {
+    const ymd = logDateStr.replace(/\//g, '-');
+    return `${ymd} ${timePart}`;
+  }
+}
+
 export default function DashboardTab({ onNavigate }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +93,7 @@ export default function DashboardTab({ onNavigate }) {
       <div className="welcome-banner" style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700' }}>GlossaHub 词条管理平台</h2>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>实时计算多维词条翻译覆盖率、固件包就绪状态与团队提交轨迹。</p>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>实时计算多维词条翻译覆盖率、词条翻译就绪状态与团队提交轨迹。</p>
         </div>
         <button onClick={fetchStats} className="btn btn-secondary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <Activity size={14} />
@@ -117,12 +157,12 @@ export default function DashboardTab({ onNavigate }) {
         <div className="panel-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem' }}>
           <h3 style={{ margin: '0 0 1.25rem 0', fontSize: '1.1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Activity size={16} style={{ color: 'var(--accent)' }} />
-            <span>固件包就绪状态与进度表</span>
+            <span>词条翻译进度表</span>
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {stats.tableProgress.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>暂无固件大表，请在“智能翻译”中创建。</div>
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>暂无词条表，请在“数据表管理”中创建。</div>
             ) : (
               stats.tableProgress.map(v => (
                 <div key={v.id} className="progress-item" style={{ background: 'var(--bg-primary)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
@@ -150,7 +190,7 @@ export default function DashboardTab({ onNavigate }) {
         <div className="panel-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
           <h3 style={{ margin: '0 0 1.25rem 0', fontSize: '1.1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Clock size={16} style={{ color: 'var(--yellow)' }} />
-            <span>最新协作动态</span>
+            <span>变更记录</span>
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
@@ -176,10 +216,10 @@ export default function DashboardTab({ onNavigate }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                         <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{log.operator}</span>
-                        <span style={{ color: 'var(--text-muted)' }}>{log.timestamp?.split(' ')[1] || ''}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>{formatLogTime(log.timestamp)}</span>
                       </div>
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.3' }}>
-                        在<strong>{log.version || '固件包'}</strong>修改词条 <code style={{ color: 'var(--accent)', background: 'var(--bg-primary)', padding: '1px 4px', borderRadius: '2px', fontSize: '0.75rem' }}>{log.kw}</code>: {parsedDetails}
+                        在<strong>{log.version || '词条表'}</strong>修改词条 <code style={{ color: 'var(--accent)', background: 'var(--bg-primary)', padding: '1px 4px', borderRadius: '2px', fontSize: '0.75rem' }}>{log.kw}</code>: {parsedDetails}
                       </span>
                     </div>
                   </div>

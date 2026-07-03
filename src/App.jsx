@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import DashboardTab from './components/DashboardTab';
 import TranslationTab from './components/TranslationTab';
+import VersionsTab from './components/VersionsTab';
 import ComparisonTab from './components/ComparisonTab';
+import GlossaryTab from './components/GlossaryTab';
 import LanguagesTab from './components/LanguagesTab';
 import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
@@ -16,12 +18,22 @@ import {
   ChevronLeft, 
   ChevronRight,
   User,
-  ShieldCheck
+  ShieldCheck,
+  Database,
+  BookOpen
 } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedTableId, setSelectedTableId] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const handleNavigate = (tab, targetTableId = '') => {
+    setActiveTab(tab);
+    if (targetTableId) {
+      setSelectedTableId(targetTableId);
+    }
+  };
   
   // Auth state
   const [token, setToken] = useState(() => localStorage.getItem('token') || '');
@@ -136,8 +148,10 @@ export default function App() {
   const getBreadcrumbTitle = () => {
     switch (activeTab) {
       case 'dashboard': return '仪表盘看板';
-      case 'translate': return '智能翻译矩阵';
-      case 'compare': return '固件版本对比';
+      case 'versions': return '数据表管理';
+      case 'translate': return '词条管理';
+      case 'compare': return '词条变更对比';
+      case 'glossary': return '专业词汇库';
       case 'languages': return '语种字典管理';
       case 'logs': return '词条修改日志';
       case 'settings': return '翻译引擎设置';
@@ -243,24 +257,44 @@ export default function App() {
             {!sidebarCollapsed && <span>仪表盘看板</span>}
           </button>
 
-          {/* Translation Matrix */}
+          {/* Term Matrix */}
           <button 
             onClick={() => setActiveTab('translate')}
             className={`nav-item-btn ${activeTab === 'translate' ? 'active' : ''}`}
-            title="智能翻译矩阵"
+            title="词条管理"
           >
             <Languages size={16} />
-            {!sidebarCollapsed && <span>智能翻译矩阵</span>}
+            {!sidebarCollapsed && <span>词条管理</span>}
           </button>
 
           {/* Version Comparison */}
           <button 
             onClick={() => setActiveTab('compare')}
             className={`nav-item-btn ${activeTab === 'compare' ? 'active' : ''}`}
-            title="固件版本对比"
+            title="词条变更对比"
           >
             <ArrowLeftRight size={16} />
-            {!sidebarCollapsed && <span>固件版本对比</span>}
+            {!sidebarCollapsed && <span>词条变更对比</span>}
+          </button>
+
+          {/* Glossary Manager */}
+          <button 
+            onClick={() => setActiveTab('glossary')}
+            className={`nav-item-btn ${activeTab === 'glossary' ? 'active' : ''}`}
+            title="专业词汇库"
+          >
+            <BookOpen size={16} />
+            {!sidebarCollapsed && <span>专业词汇库</span>}
+          </button>
+
+          {/* Versions Manager */}
+          <button 
+            onClick={() => setActiveTab('versions')}
+            className={`nav-item-btn ${activeTab === 'versions' ? 'active' : ''}`}
+            title="数据表管理"
+          >
+            <Database size={16} />
+            {!sidebarCollapsed && <span>数据表管理</span>}
           </button>
 
           {/* Languages Manager */}
@@ -359,15 +393,19 @@ export default function App() {
         {/* Dynamic page container */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
+          {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} />}
           {activeTab === 'translate' && (
             <TranslationTab 
               difyConnected={difyConnected}
               onAddLog={handleAddLog}
               modifiedCells={modifiedCells}
               setModifiedCells={setModifiedCells}
+              selectedTableId={selectedTableId}
+              setSelectedTableId={setSelectedTableId}
             />
           )}
           {activeTab === 'compare' && <ComparisonTab />}
+          {activeTab === 'glossary' && <GlossaryTab />}
           {activeTab === 'languages' && <LanguagesTab />}
           {activeTab === 'logs' && <LogsTab />}
           {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} />}

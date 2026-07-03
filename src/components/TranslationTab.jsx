@@ -12,8 +12,10 @@ const DEFAULT_TARGET_LANGUAGES = [
 export default function TranslationTab({ 
   difyConnected = false,
   onAddLog: onAddLogOriginal, 
-  modifiedCells, 
-  setModifiedCells 
+  modifiedCells = {},
+  setModifiedCells = () => {},
+  selectedTableId: propSelectedTableId,
+  setSelectedTableId: propSetSelectedTableId
 }) {
 
   // Dynamic languages dictionary shadowing (Approved Spec)
@@ -59,111 +61,20 @@ export default function TranslationTab({
 
   // Bitable State
   const [tables, setTables] = useState([]);
-  const [selectedTableId, setSelectedTableId] = useState('');
+  const [internalSelectedTableId, setInternalSelectedTableId] = useState('');
+  const selectedTableId = (propSelectedTableId !== undefined && propSelectedTableId !== '') ? propSelectedTableId : internalSelectedTableId;
+  const setSelectedTableId = (val) => {
+    if (propSetSelectedTableId) {
+      propSetSelectedTableId(val);
+    } else {
+      setInternalSelectedTableId(val);
+    }
+  };
   const [_fields, setFields] = useState([]); // [{ id, name, type }]
   const [records, setRecords] = useState([]); // [{ id, fields: { fieldId: val } }]
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null); // { type, text }
 
-  // Fallback Standalone Mode States
-  const [isDemoMode, setIsDemoMode] = useState(false);
-  const [mockDatabase, setMockDatabase] = useState({
-    tbl_3_1: {
-      fields: [
-        { id: 'fld_kw', name: 'KW' },
-        { id: 'fld_zh', name: 'CN（中文）' },
-        { id: 'fld_page', name: '所在页面' },
-        { id: 'fld_owner', name: '字号类别' },
-        ...TARGET_LANGUAGES.map((lang, idx) => ({ id: `fld_lang_${idx}`, name: lang }))
-      ],
-      records: [
-        {
-          recordId: 'rec_1',
-          fields: {
-            fld_kw: 'KW_RIDE_LAP_AVG_SP',
-            fld_zh: '圈平均速度',
-            fld_page: '运动数据页',
-            fld_owner: '张三',
-            fld_lang_0: 'Lap Avg Speed',
-            fld_lang_1: 'Vitesse moyenne du tour'
-          }
-        },
-        {
-          recordId: 'rec_2',
-          fields: {
-            fld_kw: 'KW_RIDE_LAP_AVG_CA',
-            fld_zh: '圈平均踏频',
-            fld_page: '运动数据页',
-            fld_owner: '张三',
-            fld_lang_0: 'Lap Avg Cadence'
-          }
-        },
-        {
-          recordId: 'rec_3',
-          fields: {
-            fld_kw: 'KW_USER_NO_RECORD',
-            fld_zh: '暂无记录，使用码表骑行后查看记录',
-            fld_page: '历史记录空页面',
-            fld_owner: '李四',
-            fld_lang_0: 'No records. Ride with your bike computer to view history.',
-            fld_lang_1: 'Aucun enregistrement.'
-          }
-        },
-        {
-          recordId: 'rec_4',
-          fields: {
-            fld_kw: 'KW_RIDE_ROUTE_MAX_G',
-            fld_zh: '最大坡度',
-            fld_page: '高度页',
-            fld_owner: '李四'
-          }
-        }
-      ]
-    },
-    tbl_3_2: {
-      fields: [
-        { id: 'fld_kw', name: 'KW' },
-        { id: 'fld_zh', name: 'CN（中文）' },
-        { id: 'fld_page', name: '所在页面' },
-        { id: 'fld_owner', name: '字号类别' },
-        ...TARGET_LANGUAGES.map((lang, idx) => ({ id: `fld_lang_${idx}`, name: lang }))
-      ],
-      records: [
-        {
-          recordId: 'rec_1',
-          fields: {
-            fld_kw: 'KW_RIDE_LAP_AVG_SP',
-            fld_zh: '圈平均速度',
-            fld_page: '运动数据页',
-            fld_owner: '张三',
-            fld_lang_0: 'Lap Average Speed',
-            fld_lang_1: 'Vitesse moyenne du tour'
-          }
-        },
-        {
-          recordId: 'rec_2',
-          fields: {
-            fld_kw: 'KW_RIDE_LAP_AVG_CA',
-            fld_zh: '圈平均踏频',
-            fld_page: '运动数据页',
-            fld_owner: '张三',
-            fld_lang_0: 'Lap Avg Cadence',
-            fld_lang_1: 'Cadence moyenne du tour'
-          }
-        },
-        {
-          recordId: 'rec_5',
-          fields: {
-            fld_kw: 'KW_RIDE_ROUTE_REPL',
-            fld_zh: '是否替换当前路线？',
-            fld_page: '导航路线页',
-            fld_owner: '王五',
-            fld_lang_0: 'Replace current route?'
-          }
-        }
-      ]
-    }
-  });
 
   // Column Visibility States for responsive layout
   const [colDropdownOpen, setColDropdownOpen] = useState(false);
@@ -223,27 +134,7 @@ export default function TranslationTab({
   // File Input Ref
   const fileInputRef = useRef(null);
 
-  // Sync mock database state to ref to avoid dependency render loops
-  const mockDatabaseRef = useRef(mockDatabase);
-  useEffect(() => {
-    mockDatabaseRef.current = mockDatabase;
-  }, [mockDatabase]);
 
-  // Sync offline modifications directly to SQLite backend database
-  const saveOfflineRecords = useCallback(async (tableId, recordsList) => {
-    if (tableId === 'tbl_3_1' || tableId === 'tbl_3_2') return;
-    try {
-      const activeTableMeta = tables.find(t => t.id === tableId);
-      const tableName = activeTableMeta ? activeTableMeta.name : 'Unknown';
-      await apiFetch('/api/sync-table', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tableId, tableName, records: recordsList })
-      });
-    } catch (err) {
-      console.warn('⚠️ 无法同步离线修改到本地 SQLite:', err.message);
-    }
-  }, [tables]);
 
   // Load Version Tables
   useEffect(() => {
@@ -297,49 +188,7 @@ export default function TranslationTab({
     return allRecords;
   }, []);
 
-  const syncRecordsToSqlite = useCallback(async (tableId, recordsList) => {
-    if (isDemoMode) return;
-    try {
-      const activeTableMeta = tables.find(t => t.id === tableId);
-      const tableName = activeTableMeta ? activeTableMeta.name : 'Unknown';
-      
-      const formatted = recordsList.map(rec => {
-        const fields = {};
-        Object.keys(rec.fields).forEach(fId => {
-          const fName = _revFieldMap[fId] || fId;
-          let val = rec.fields[fId];
-          if (Array.isArray(val)) {
-            val = val.map(s => s.text || '').join('');
-          } else if (typeof val === 'object' && val !== null && val.text) {
-            val = val.text;
-          }
-          fields[fName] = val;
-        });
 
-        const localRec = records.find(r => r.recordId === rec.recordId);
-        const nowStr = new Date().toISOString();
-
-        return {
-          recordId: rec.recordId,
-          fields,
-          createdAt: rec.createdAt || localRec?.createdAt || nowStr,
-          updatedAt: rec.updatedAt || nowStr
-        };
-      });
-
-      await apiFetch('/api/sync-table', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tableId,
-          tableName,
-          records: formatted
-        })
-      });
-    } catch (err) {
-      console.warn('⚠️ 实时同步到本地数据库失败:', err.message);
-    }
-  }, [isDemoMode, tables, _revFieldMap, records]);
 
   const loadTableData = useCallback(async (tableId) => {
     try {
@@ -454,8 +303,8 @@ export default function TranslationTab({
     if (sortBy === 'changeFirst') {
       return [...list].sort((a, b) => {
         // 1. Session edits float to the top
-        const isModA = modifiedCells[a.recordId] ? 1 : 0;
-        const isModB = modifiedCells[b.recordId] ? 1 : 0;
+        const isModA = (modifiedCells || {})[a.recordId] ? 1 : 0;
+        const isModB = (modifiedCells || {})[b.recordId] ? 1 : 0;
         if (isModA !== isModB) {
           return isModB - isModA;
         }
@@ -804,49 +653,20 @@ export default function TranslationTab({
     }
   };
 
-  // Helper to fetch untranslated records for a specific table (mock/SQLite/Bitable)
+  // Helper to fetch untranslated records for a specific table
   const getUntranslatedRecordsForTable = async (tableId) => {
     let targetRecordsList = [];
     let targetFieldMap = {};
-    
-    if (isDemoMode) {
-      const mockTable = mockDatabase[tableId];
-      if (mockTable) {
-        targetRecordsList = mockTable.records;
-        mockTable.fields.forEach(f => {
-          targetFieldMap[f.name] = f.id;
-        });
-      } else {
-        try {
-          const res = await apiFetch(`/api/tables/${tableId}/records`);
-          if (res.ok) {
-            targetRecordsList = await res.json();
-            targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
-            TARGET_LANGUAGES.forEach(lang => { targetFieldMap[lang] = lang; });
-          }
-        } catch (err) {
-          console.error('⚠️ 无法从本地 SQLite 读取词条数据:', err.message);
-        }
+
+    try {
+      const res = await apiFetch(`/api/tables/${tableId}/records`);
+      if (res.ok) {
+        targetRecordsList = await res.json();
+        targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
+        TARGET_LANGUAGES.forEach(lang => { targetFieldMap[lang] = lang; });
       }
-    } else {
-      try {
-        const table = await bitable.base.getTableById(tableId);
-        const fieldMetaList = await table.getFieldMetaList();
-        fieldMetaList.forEach(f => {
-          targetFieldMap[f.name] = f.id;
-        });
-        
-        let pageToken = undefined;
-        let hasMore = true;
-        while (hasMore) {
-          const result = await table.getRecordsByPage({ pageToken, pageSize: 200 });
-          targetRecordsList = [...targetRecordsList, ...result.records];
-          hasMore = result.hasMore;
-          pageToken = result.pageToken;
-        }
-      } catch (err) {
-        console.error('⚠️ 无法从 Bitable 加载比对记录:', err.message);
-      }
+    } catch (err) {
+      console.error('⚠️ 无法读取词条数据:', err.message);
     }
     
     const getValue = (rec, fieldName) => {
@@ -1217,111 +1037,37 @@ export default function TranslationTab({
           }
         }
       }
-      let targetFieldMap = {};
-      if (isDemoMode) {
-        targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
-        TARGET_LANGUAGES.forEach(lang => {
-          targetFieldMap[lang] = lang;
-        });
-      } else {
-        const table = await bitable.base.getTableById(batchAddTargetTableId);
-        const fieldMetaList = await table.getFieldMetaList();
-        fieldMetaList.forEach(f => {
-          targetFieldMap[f.name] = f.id;
-        });
-      }
+      // 字段映射：API 返回的 records 以字段名为 key（与 SQLite 存储一致）
+      const targetFieldMap = {
+        'KW': 'KW',
+        'CN（中文）': 'CN（中文）',
+        '所在页面': '所在页面',
+        '字号类别': '字号类别'
+      };
+      TARGET_LANGUAGES.forEach(lang => { targetFieldMap[lang] = lang; });
 
-      const newRecordIdsForHighlight = [];
-
-      if (isDemoMode) {
-        const newMockRecords = completedRows.map(row => {
-          const newRecordId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          const fields = {
-            [targetFieldMap['KW']]: row.KW,
-            [targetFieldMap['CN（中文）']]: row.中文,
-            [targetFieldMap['所在页面']]: row.所在页面,
-            [targetFieldMap['字号类别']]: 'AI/Manual'
-          };
-          TARGET_LANGUAGES.forEach(lang => {
-            fields[lang] = row.translations[lang] || '';
-          });
-
-          newRecordIdsForHighlight.push(newRecordId);
-          return {
-            recordId: newRecordId,
-            fields,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-        });
-
-        if (mockDatabaseRef.current[batchAddTargetTableId]) {
-          setMockDatabase(prev => {
-            const currentTable = prev[batchAddTargetTableId];
-            return {
-              ...prev,
-              [batchAddTargetTableId]: {
-                ...currentTable,
-                records: [...(currentTable?.records || []), ...newMockRecords]
-              }
-            };
-          });
-        }
-
-        let updatedRecordsList = [];
-        if (batchAddTargetTableId === selectedTableId) {
-          setRecords(prev => {
-            updatedRecordsList = [...prev, ...newMockRecords];
-            return updatedRecordsList;
-          });
-        } else {
-          updatedRecordsList = [...(mockDatabaseRef.current[batchAddTargetTableId]?.records || []), ...newMockRecords];
-        }
-
-        saveOfflineRecords(batchAddTargetTableId, updatedRecordsList);
-
-        const updatedCellsDict = { ...modifiedCells };
-        newMockRecords.forEach((rec, idx) => {
-          const row = completedRows[idx];
-          const addedLangs = {};
-          TARGET_LANGUAGES.forEach(lang => {
-            if (row.translations[lang]) addedLangs[lang] = true;
-          });
-          updatedCellsDict[rec.recordId] = { ...addedLangs, isAdded: true };
-          onAddLog('批量新增 (离线)', row.KW, row.中文);
-        });
-        setModifiedCells(updatedCellsDict);
-
-        showStatus('success', `批量新增成功 (离线模式)！共写入 ${completedRows.length} 条已翻译词条。`);
-        setBatchAddModalOpen(false);
-        return;
-      }
-
-      const table = await bitable.base.getTableById(batchAddTargetTableId);
-      
       const updatedCellsDict = { ...modifiedCells };
-
       const addedRecordsForSync = [];
       const nowStr = new Date().toISOString();
 
       for (let i = 0; i < completedRows.length; i++) {
         const row = completedRows[i];
-        const fields = {};
-        if (targetFieldMap['KW']) fields[targetFieldMap['KW']] = row.KW;
-        if (targetFieldMap['CN（中文）']) fields[targetFieldMap['CN（中文）']] = row.中文;
-        if (targetFieldMap['所在页面']) fields[targetFieldMap['所在页面']] = row.所在页面;
-        if (targetFieldMap['字号类别']) fields[targetFieldMap['字号类别']] = 'AI/Manual';
-        
+        const fields = {
+          'KW': row.KW,
+          'CN（中文）': row.中文,
+          '所在页面': row.所在页面,
+          '字号类别': 'AI/Manual'
+        };
+
         const addedLangs = {};
         TARGET_LANGUAGES.forEach(lang => {
-          const fieldId = targetFieldMap[lang];
-          if (fieldId && row.translations[lang]) {
-            fields[fieldId] = row.translations[lang];
+          if (row.translations[lang]) {
+            fields[lang] = row.translations[lang];
             addedLangs[lang] = true;
           }
         });
 
-        const newRecordId = await table.addRecord({ fields });
+        const newRecordId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         updatedCellsDict[newRecordId] = { ...addedLangs, isAdded: true };
         onAddLog('批量新增', row.KW, row.中文);
 
@@ -1642,102 +1388,6 @@ export default function TranslationTab({
     }
   };
 
-  // Sync all Bitable data to local SQLite database immediately
-  const handleSyncAllTables = async () => {
-    if (isDemoMode) {
-      alert('当前处于离线模式，无法从飞书同步！请在飞书多维表格内运行插件以进行同步。');
-      return;
-    }
-    
-    showStatus('info', '正在开始从飞书同步所有词条数据表...');
-    
-    try {
-      const tableMetaList = await bitable.base.getTableMetaList();
-      if (tableMetaList.length === 0) {
-        throw new Error('未在当前飞书多维表格中找到任何数据表');
-      }
-
-      let totalSyncedCount = 0;
-
-      for (const tMeta of tableMetaList) {
-        showStatus('info', `正在同步词条表: 【${tMeta.name}】...`);
-        const table = await bitable.base.getTableById(tMeta.id);
-        const fieldMetaList = await table.getFieldMetaList();
-        
-        const targetFieldMap = {};
-        const revFMap = {};
-        fieldMetaList.forEach(f => {
-          targetFieldMap[f.name] = f.id;
-          revFMap[f.id] = f.name;
-        });
-
-        let hasMore = true;
-        let pageToken = undefined;
-        const allRecords = [];
-        while (hasMore) {
-          const result = await table.getRecordsByPage({ pageToken, pageSize: 200 });
-          allRecords.push(...(result.records || []));
-          hasMore = result.hasMore;
-          pageToken = result.pageToken;
-        }
-
-        const formattedRecords = allRecords.map(rec => {
-          const fields = {};
-          Object.keys(rec.fields).forEach(fId => {
-            const fName = revFMap[fId] || fId;
-            let val = rec.fields[fId];
-            if (Array.isArray(val)) {
-              val = val.map(s => s.text || '').join('');
-            } else if (typeof val === 'object' && val !== null && val.text) {
-              val = val.text;
-            }
-            fields[fName] = val;
-          });
-
-          return {
-            recordId: rec.recordId,
-            fields,
-            createdAt: rec.createdAt || '',
-            updatedAt: rec.updatedAt || ''
-          };
-        });
-
-        const syncRes = await apiFetch('/api/sync-table', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tableId: tMeta.id,
-            tableName: tMeta.name,
-            records: formattedRecords
-          })
-        });
-
-        if (!syncRes.ok) {
-          const errJson = await syncRes.json();
-          throw new Error(`数据表 【${tMeta.name}】 同步失败: ${errJson.error || '服务器响应异常'}`);
-        }
-
-        totalSyncedCount += formattedRecords.length;
-      }
-
-      // Clean up local SQLite tables that are no longer present in Bitable
-      const activeTableIds = tableMetaList.map(t => t.id);
-      try {
-        await apiFetch('/api/sync-cleanup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ activeTableIds })
-        });
-      } catch (cleanErr) {
-        console.warn('⚠️ 清理本地冗余表格缓存失败:', cleanErr.message);
-      }
-
-      showStatus('success', `同步成功！已同步全部 ${tableMetaList.length} 个词条表，共计 ${totalSyncedCount} 条数据，并清理了已在飞书中删除的废弃表缓存。`);
-    } catch (err) {
-      showStatus('danger', `同步失败: ${err.message}`);
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       {/* Search and Toolbar */}
@@ -1752,10 +1402,14 @@ export default function TranslationTab({
               value={selectedTableId} 
               onChange={(e) => setSelectedTableId(e.target.value)}
               className="select-input"
+              disabled={tables.length === 0}
             >
               {tables.map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
+              {tables.length === 0 && (
+                <option value="">-- 请先在左侧新建数据表 --</option>
+              )}
             </select>
 
           </div>
@@ -1926,6 +1580,11 @@ export default function TranslationTab({
           <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', gap: '0.8rem' }}>
             <Loader2 className="animate-spin" size={24} color="var(--accent)" />
             <span style={{ color: 'var(--text-secondary)' }}>正在读取多维表格数据...</span>
+          </div>
+        ) : tables.length === 0 ? (
+          <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexDirection: 'column', gap: '0.8rem' }}>
+            <AlertCircle size={32} style={{ opacity: 0.5, color: 'var(--accent)' }} />
+            <span>暂无数据表。请先前往左侧“数据表管理”新建大表！</span>
           </div>
         ) : filteredRecords.length === 0 ? (
           <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
