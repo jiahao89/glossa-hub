@@ -3,7 +3,9 @@ import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 import { apiFetch } from '../utils/api';
 import { useToast } from './Toast';
 import EmptyState from './EmptyState';
-import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock } from 'lucide-react';
+import { SkeletonTable } from './Skeleton';
+import Pagination from './Pagination';
+import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock, CheckCircle, Settings, Copy } from 'lucide-react';
 
 const DEFAULT_TARGET_LANGUAGES = [
   'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
@@ -93,6 +95,8 @@ export default function TranslationTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterUntranslated, setFilterUntranslated] = useState(false);
   const [filterStatus, setFilterStatus] = useState(''); // '' | DRAFT | TRANSLATING | PENDING_REVIEW | APPROVED | REJECTED | PUBLISHED
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [sortBy, setSortBy] = useState('changeFirst'); // 'changeFirst' | 'default' | 'createdTime' | 'modifiedTime'
 
   // Field mappings
@@ -503,10 +507,15 @@ export default function TranslationTab({
       
       if (!matchesSearch) return false;
 
-      // 按状态筛选（DRAFT/TRANSLATING/PENDING_REVIEW/APPROVED/REJECTED/PUBLISHED）
+      // 按状态筛选（合并后：DRAFT/TRANSLATING/PENDING_REVIEW 都视作“待审核”）
       if (filterStatus) {
         const recStatus = rec.status || 'DRAFT';
-        if (recStatus !== filterStatus) return false;
+        const isPending = (recStatus === 'DRAFT' || recStatus === 'TRANSLATING' || recStatus === 'PENDING_REVIEW');
+        if (filterStatus === 'PENDING_REVIEW') {
+          if (!isPending) return false;
+        } else if (recStatus !== filterStatus) {
+          return false;
+        }
       }
 
       if (filterUntranslated) {
@@ -552,6 +561,15 @@ export default function TranslationTab({
 
     return list; // fallback default sorting
   }, [records, searchQuery, filterUntranslated, filterStatus, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, visibleLanguages]);
+
+  // 分页：当筛选条件/搜索/版本变化导致总数变化时，自动重置到第 1 页
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedRecords = filteredRecords.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedTableId, searchQuery, filterStatus, filterUntranslated, sortBy, pageSize]);
 
   // Open Edit Modal
   const handleRowDoubleClick = (record) => {
@@ -1402,7 +1420,7 @@ export default function TranslationTab({
         });
       }
 
-      await syncRecordsToSqlite(batchAddTargetTableId, addedRecordsForSync);
+      await saveOfflineRecords(batchAddTargetTableId, addedRecordsForSync);
 
       setModifiedCells(updatedCellsDict);
       showStatus('success', `批量新增成功！共写入 ${completedRows.length} 条已翻译词条。`);
@@ -1767,8 +1785,6 @@ export default function TranslationTab({
             title="按状态筛选"
           >
             <option value="">全部状态</option>
-            <option value="DRAFT">待翻译</option>
-            <option value="TRANSLATING">翻译中</option>
             <option value="PENDING_REVIEW">待审核</option>
             <option value="APPROVED">已审核</option>
             <option value="REJECTED">被驳回</option>
@@ -1860,79 +1876,78 @@ export default function TranslationTab({
         </div>
 
         <div className="toolbar-right">
-          <button onClick={() => { setAddTargetTableId(selectedTableId); setAddModalOpen(true); }} className="btn btn-secondary">
-            <Plus size={13} /> 新增
-          </button>
+          {/* 常规操作组 */}
+          <div className="toolbar-group">
+            <button onClick={() => { setAddTargetTableId(selectedTableId); setAddModalOpen(true); }} className="btn btn-secondary">
+              <Plus size={14} /> 新增
+            </button>
+            <button onClick={() => { setBatchAddModalOpen(true); initBatchAddRows(); }} className="btn btn-secondary">
+              <Layers size={14} /> 批量新增
+            </button>
+            <button onClick={handleDataClean} className="btn btn-secondary" title="清除无 KW 或无中文的空记录">
+              <Trash2 size={14} /> 数据清理
+            </button>
+            <button onClick={handleTriggerImport} className="btn btn-secondary" title="导入 CSV">
+              <FileInput size={14} /> 导入
+            </button>
+            <button onClick={handleExportCSV} className="btn btn-secondary" title="导出 CSV">
+              <FileOutput size={14} /> 导出
+            </button>
+          </div>
 
-          <button onClick={() => { setBatchAddModalOpen(true); initBatchAddRows(); }} className="btn btn-secondary">
-            <Layers size={13} /> 批量新增
-          </button>
+          {/* 翻译操作组 */}
+          <div className="toolbar-divider" />
+          <div className="toolbar-group">
+            <button onClick={handleOpenBatchTranslate} className="btn btn-primary">
+              <RefreshCw size={14} /> 批量翻译
+            </button>
+            <button onClick={() => { setSyncInheritSourceId(''); setSyncInheritOpen(true); }} className="btn btn-secondary" title="从其他大表继承补全缺失翻译">
+              <Layers size={14} /> 继承翻译
+            </button>
+          </div>
 
-          <button onClick={handleDataClean} className="btn btn-secondary" title="清除无 KW 或无中文的空记录">
-            <Trash2 size={13} /> 数据清理
-          </button>
-          
-          <button onClick={handleOpenBatchTranslate} className="btn btn-primary">
-            <RefreshCw size={12} /> 批量翻译
-          </button>
-
+          {/* 选中操作组 —— 仅在有选中时显示 */}
           {selectedRecordIds.size > 0 && (
             <>
-              {currentUser?.role === 'admin' && (
-                <button 
-                  onClick={() => { setBatchApproveStatus('APPROVED'); setBatchApproveRejectReason(''); setBatchApproveOpen(true); }}
-                  className="btn btn-secondary"
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem', borderColor: 'var(--green)', color: 'var(--green)', background: 'transparent' }}
+              <div className="toolbar-divider" />
+              <div className="toolbar-group">
+                {currentUser?.role === 'admin' && (
+                  <button
+                    onClick={() => { setBatchApproveStatus('APPROVED'); setBatchApproveRejectReason(''); setBatchApproveOpen(true); }}
+                    className="toolbar-action-btn is-success"
+                  >
+                    <CheckCircle size={14} /> 批量审核 ({selectedRecordIds.size})
+                  </button>
+                )}
+                <button
+                  onClick={() => { setBatchUpdateFields({ context: '', owner: '' }); setBatchUpdateOpen(true); }}
+                  className="toolbar-action-btn is-warning"
                 >
-                  批量审核 ({selectedRecordIds.size})
+                  <Settings size={14} /> 批量设置 ({selectedRecordIds.size})
                 </button>
-              )}
-
-              <button 
-                onClick={() => { setBatchUpdateFields({ context: '', owner: '' }); setBatchUpdateOpen(true); }}
-                className="btn btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem', borderColor: 'var(--yellow)', color: 'var(--yellow)', background: 'transparent' }}
-              >
-                批量设置 ({selectedRecordIds.size})
-              </button>
-              
-              <button 
-                onClick={() => { setBatchCopyTargetTableId(tables.find(t => t.id !== selectedTableId)?.id || ''); setBatchCopyDuplicateStrategy('skip'); setBatchCopyOpen(true); }}
-                className="btn btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem', borderColor: 'var(--accent)', color: 'var(--accent)', background: 'transparent' }}
-              >
-                复制到其他版本 ({selectedRecordIds.size})
-              </button>
-
-              <button 
-                onClick={handleDeleteSelected} 
-                className="btn btn-danger" 
-                style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', height: '28px', fontSize: '0.72rem', padding: '0 0.45rem' }}
-              >
-                删除选中 ({selectedRecordIds.size})
-              </button>
+                <button
+                  onClick={() => { setBatchCopyTargetTableId(tables.find(t => t.id !== selectedTableId)?.id || ''); setBatchCopyDuplicateStrategy('skip'); setBatchCopyOpen(true); }}
+                  className="toolbar-action-btn is-accent"
+                >
+                  <Copy size={14} /> 复制到版本 ({selectedRecordIds.size})
+                </button>
+                <button
+                  onClick={handleDeleteSelected}
+                  className="toolbar-action-btn is-danger"
+                >
+                  <Trash2 size={14} /> 删除 ({selectedRecordIds.size})
+                </button>
+              </div>
             </>
           )}
 
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleCsvImportSelected} 
-            accept=".csv" 
-            style={{ display: 'none' }} 
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleCsvImportSelected}
+            accept=".csv"
+            style={{ display: 'none' }}
           />
-
-          <button onClick={() => { setSyncInheritSourceId(''); setSyncInheritOpen(true); }} className="btn btn-secondary" title="从其他大表继承补全缺失翻译">
-            <Layers size={13} /> 继承翻译
-          </button>
-          
-          <button onClick={handleTriggerImport} className="btn btn-secondary" title="导入 CSV">
-            <FileInput size={13} /> 导入
-          </button>
-          
-          <button onClick={handleExportCSV} className="btn btn-secondary" title="导出 CSV">
-            <FileOutput size={13} /> 导出
-          </button>
         </div>
       </div>
 
@@ -1949,9 +1964,8 @@ export default function TranslationTab({
       {/* Data Grid Widescreen View */}
       <div className="grid-container">
         {loading ? (
-          <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', gap: '0.8rem' }}>
-            <Loader2 className="animate-spin" size={24} color="var(--accent)" />
-            <span style={{ color: 'var(--text-secondary)' }}>正在读取词条数据...</span>
+          <div style={{ padding: '0' }}>
+            <SkeletonTable rows={12} cols={Math.min(8, 4 + visibleLanguages.length)} />
           </div>
         ) : tables.length === 0 ? (
           <EmptyState
@@ -1984,14 +1998,15 @@ export default function TranslationTab({
             <thead>
               <tr>
                 <th style={{ width: '40px', textAlign: 'center' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={filteredRecords.length > 0 && filteredRecords.every(rec => selectedRecordIds.has(rec.recordId))}
+                  <input
+                    type="checkbox"
+                    checked={pagedRecords.length > 0 && pagedRecords.every(rec => selectedRecordIds.has(rec.recordId))}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedRecordIds(new Set(filteredRecords.map(r => r.recordId)));
+                        setSelectedRecordIds(prev => new Set([...prev, ...pagedRecords.map(r => r.recordId)]));
                       } else {
-                        setSelectedRecordIds(new Set());
+                        const pageIds = new Set(pagedRecords.map(r => r.recordId));
+                        setSelectedRecordIds(prev => new Set([...prev].filter(id => !pageIds.has(id))));
                       }
                     }}
                   />
@@ -2010,7 +2025,7 @@ export default function TranslationTab({
               </tr>
             </thead>
             <tbody>
-              {filteredRecords.map(rec => {
+              {pagedRecords.map(rec => {
                 const recId = rec.recordId;
                 const kw = getRecordValueByName(rec, 'KW');
                 const zh = getRecordValueByName(rec, 'CN（中文）');
@@ -2070,16 +2085,15 @@ export default function TranslationTab({
                         
                         {(() => {
                           const recStatus = rec.status || 'DRAFT';
-                          if (recStatus === 'DRAFT') {
-                            return <span className="diff-tag" style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-muted)', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>草稿</span>;
-                          } else if (recStatus === 'PENDING_REVIEW') {
+                          // 合并显示：DRAFT 与 PENDING_REVIEW 统一为“待审核”
+                          if (recStatus === 'DRAFT' || recStatus === 'PENDING_REVIEW' || recStatus === 'TRANSLATING') {
                             return <span className="diff-tag" style={{ backgroundColor: 'var(--yellow)', color: '#000', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>待审核</span>;
                           } else if (recStatus === 'APPROVED') {
                             return <span className="diff-tag" style={{ backgroundColor: 'var(--green)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已审核</span>;
                           } else if (recStatus === 'REJECTED') {
                             return <span className="diff-tag" style={{ backgroundColor: 'var(--red)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }} title={rec.rejectReason || '已驳回'}>已驳回</span>;
                           } else if (recStatus === 'PUBLISHED') {
-                            return <span className="diff-tag" style={{ backgroundColor: 'var(--accent)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已发布</span>;
+                            return <span className="diff-tag" style={{ backgroundColor: '#8b5cf6', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已发布</span>;
                           }
                           return null;
                         })()}
@@ -2153,7 +2167,19 @@ export default function TranslationTab({
             </tbody>
           </table>
         )}
-      </div>
+      </div>{/* /.grid-container */}
+
+      {/* 分页器（独立 footer，不跟随表格滚动） */}
+      <Pagination
+        total={filteredRecords.length}
+        page={safePage}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={setPageSize}
+        extra={selectedRecordIds.size > 0 ? (
+          <> · 已选 <strong style={{ color: 'var(--accent)' }}>{selectedRecordIds.size}</strong> 条</>
+        ) : null}
+      />
 
       {/* Modal 1: Edit Modal */}
       {editModalRecord && (
@@ -3004,7 +3030,6 @@ export default function TranslationTab({
                   <option value="APPROVED">已审核 (APPROVED)</option>
                   <option value="PUBLISHED">已发布 (PUBLISHED)</option>
                   <option value="REJECTED">已驳回 (REJECTED)</option>
-                  <option value="DRAFT">设回草稿 (DRAFT)</option>
                 </select>
               </div>
 

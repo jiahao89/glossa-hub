@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { apiFetch } from './utils/api.js';
 import DashboardTab from './components/DashboardTab';
 import TranslationTab from './components/TranslationTab';
 import VersionsTab from './components/VersionsTab';
@@ -38,8 +39,12 @@ export default function App() {
   // Auth state
   const [token, setToken] = useState(() => localStorage.getItem('token') || '');
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
   // Login form state
@@ -53,8 +58,12 @@ export default function App() {
 
   // Cell highlight modified state
   const [modifiedCells, setModifiedCells] = useState(() => {
-    const saved = localStorage.getItem('glossahub_modified_cells');
-    return saved ? JSON.parse(saved) : {};
+    try {
+      const saved = localStorage.getItem('glossahub_modified_cells');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
   });
 
   useEffect(() => {
@@ -64,12 +73,8 @@ export default function App() {
   const handleAddLog = async (action, kw = '', chinese = '', details = '', version = '') => {
     if (!token) return;
     try {
-      await fetch('/api/logs', {
+      await apiFetch('/api/logs', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({ action, kw, chinese, details, version })
       });
     } catch (err) {
@@ -391,24 +396,26 @@ export default function App() {
         </header>
 
         {/* Dynamic page container */}
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
-          {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} />}
-          {activeTab === 'translate' && (
-            <TranslationTab 
-              difyConnected={difyConnected}
-              onAddLog={handleAddLog}
-              modifiedCells={modifiedCells}
-              setModifiedCells={setModifiedCells}
-              selectedTableId={selectedTableId}
-              setSelectedTableId={setSelectedTableId}
-            />
-          )}
-          {activeTab === 'compare' && <ComparisonTab />}
-          {activeTab === 'glossary' && <GlossaryTab />}
-          {activeTab === 'languages' && <LanguagesTab />}
-          {activeTab === 'logs' && <LogsTab />}
-          {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} />}
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+          <div key={activeTab} className="tab-fade-in" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
+            {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} />}
+            {activeTab === 'translate' && (
+              <TranslationTab
+                difyConnected={difyConnected}
+                onAddLog={handleAddLog}
+                modifiedCells={modifiedCells}
+                setModifiedCells={setModifiedCells}
+                selectedTableId={selectedTableId}
+                setSelectedTableId={setSelectedTableId}
+              />
+            )}
+            {activeTab === 'compare' && <ComparisonTab />}
+            {activeTab === 'glossary' && <GlossaryTab />}
+            {activeTab === 'languages' && <LanguagesTab />}
+            {activeTab === 'logs' && <LogsTab />}
+            {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} />}
+          </div>
         </div>
 
         {/* Footer */}

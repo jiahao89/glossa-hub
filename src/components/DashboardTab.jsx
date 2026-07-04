@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Database, FileText, CheckCircle, BarChart3, Activity, Clock, User } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import { Skeleton } from './Skeleton';
 
 function formatLogTime(timestampStr) {
   if (!timestampStr) return '';
@@ -71,9 +72,31 @@ export default function DashboardTab({ onNavigate }) {
 
   if (loading) {
     return (
-      <div className="flex-center" style={{ height: '70vh', flexDirection: 'column', gap: '1rem' }}>
-        <Activity className="animate-spin text-accent" size={36} style={{ color: 'var(--accent)' }} />
-        <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>正在装载 GlossaHub 仪表盘分析...</span>
+      <div className="dashboard-container" style={{ padding: '1.5rem', overflowY: 'auto', height: '100%' }}>
+        {/* Welcome Banner 骨架 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+          <div style={{ flex: 1 }}>
+            <Skeleton width="280px" height={28} style={{ marginBottom: '8px' }} />
+            <Skeleton width="420px" height={14} />
+          </div>
+          <Skeleton width="100px" height={32} radius={6} />
+        </div>
+        {/* KPI 卡片骨架：4 列 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bento-card" style={{ padding: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <Skeleton variant="circle" width={36} height={36} />
+                <Skeleton width="80px" height={12} />
+              </div>
+              <Skeleton width="60%" height={28} style={{ marginBottom: '4px' }} />
+              <Skeleton width="40%" height={12} />
+            </div>
+          ))}
+        </div>
+        {/* 下方图表区骨架 */}
+        <Skeleton width="180px" height={18} style={{ marginBottom: '12px' }} />
+        <Skeleton count={3} height={44} radius={8} />
       </div>
     );
   }
@@ -90,9 +113,9 @@ export default function DashboardTab({ onNavigate }) {
   return (
     <div className="dashboard-container" style={{ padding: '1.5rem', overflowY: 'auto', height: '100%' }}>
       {/* Welcome Banner */}
-      <div className="welcome-banner" style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div className="welcome-banner" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
-          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700' }}>GlossaHub 词条管理平台</h2>
+          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em' }}>GlossaHub 词条管理平台</h2>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>实时计算多维词条翻译覆盖率、词条翻译就绪状态与团队提交轨迹。</p>
         </div>
         <button onClick={fetchStats} className="btn btn-secondary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -172,8 +195,8 @@ export default function DashboardTab({ onNavigate }) {
                   </div>
                   
                   {/* Progress Line */}
-                  <div style={{ height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden', marginBottom: '0.75rem' }}>
-                    <div style={{ width: `${v.progress}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #00b8ff 100%)', borderRadius: '3px', boxShadow: '0 0 8px rgba(0, 242, 255, 0.4)' }} />
+                  <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden', marginBottom: '0.75rem' }}>
+                    <div style={{ width: `${v.progress}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #06b6d4 50%, #22d3ee 100%)', borderRadius: '4px', transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)' }} />
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>

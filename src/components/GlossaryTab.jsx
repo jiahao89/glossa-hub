@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './Toast';
+import Pagination from './Pagination';
 import { Plus, Trash2, Download, Upload, BookOpen, AlertTriangle, FileSpreadsheet, Search } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
@@ -15,6 +16,8 @@ export default function GlossaryTab() {
 
   // Search keyword
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   // Table Modals
   const [addTableModal, setAddTableModal] = useState(false);
@@ -318,6 +321,15 @@ export default function GlossaryTab() {
     );
   });
 
+  // 分页：搜索/词表切换时自动回到第 1 页
+  const totalPages = Math.max(1, Math.ceil(filteredTerms.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedTerms = filteredTerms.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedTableId, searchQuery, pageSize]);
+
   if (loadingTables) {
     return (
       <div className="flex-center" style={{ height: '60vh', flexDirection: 'column', gap: '1rem' }}>
@@ -428,7 +440,7 @@ export default function GlossaryTab() {
             <span>请在上方创建一个专业词汇库以开始管理术语数据。</span>
           </div>
         ) : (
-          <div style={{ flex: 1, overflow: 'auto', padding: '0.5rem' }}>
+          <div style={{ flex: 1, overflow: 'auto', padding: '0.5rem', minHeight: 0 }}>
             {(() => {
               const displayHeaders = activeTable?.headers || ['中文专业术语', '英文翻译对应', '说明 / 定义'];
               return (
@@ -436,13 +448,16 @@ export default function GlossaryTab() {
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)' }}>
                       {displayHeaders.map(h => (
-                        <th key={h} style={{ padding: '0.75rem' }}>{h}</th>
+                        <th key={h} style={{
+                          padding: '0.75rem',
+                          whiteSpace: 'nowrap',
+                        }}>{h}</th>
                       ))}
-                      <th style={{ padding: '0.75rem', width: '80px', textAlign: 'center' }}>操作</th>
+                      <th style={{ padding: '0.75rem', width: '80px', textAlign: 'center', whiteSpace: 'nowrap' }}>操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTerms.map((term) => (
+                    {pagedTerms.map((term) => (
                       <tr key={term.id} style={{ borderBottom: '1px solid var(--border-color)' }} className="table-row-hover">
                         {displayHeaders.map(h => {
                           const cellVal = term.fields?.[h] !== undefined ? term.fields[h] : (
@@ -478,7 +493,7 @@ export default function GlossaryTab() {
                         </td>
                       </tr>
                     ))}
-                    {filteredTerms.length === 0 && (
+                    {pagedTerms.length === 0 && (
                       <tr>
                         <td colSpan={displayHeaders.length + 1} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
                           <FileSpreadsheet size={32} style={{ opacity: 0.2, marginBottom: '0.5rem' }} />
@@ -492,7 +507,18 @@ export default function GlossaryTab() {
             })()}
           </div>
         )}
-      </div>
+      </div>{/* /.term-table-container */}
+
+      {/* 分页器（独立 footer，不跟随表格滚动） */}
+      {filteredTerms.length > 0 && (
+        <Pagination
+          total={filteredTerms.length}
+          page={safePage}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
 
       {/* Add Table Modal */}
       {addTableModal && (

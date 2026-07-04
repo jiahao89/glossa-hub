@@ -6,6 +6,12 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
+/* ===== 骨架屏 shimmer 动画 ===== */
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 :root {
   --bg-primary: #0e0e10;
   --bg-secondary: #16161a;
@@ -24,7 +30,7 @@
   
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-muted: #7c899c;
   
   --border-color: #2a2a32;
   --border-focus: #40404c;
@@ -152,7 +158,6 @@ html, body {
   color: var(--bg-primary);
   background-color: var(--accent);
   font-weight: 600;
-  box-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
 }
 
 /* Main Content */
@@ -192,12 +197,10 @@ html, body {
 
 .status-dot.active {
   background-color: var(--green);
-  box-shadow: 0 0 6px var(--green);
 }
 
 .status-dot.inactive {
   background-color: var(--red);
-  box-shadow: 0 0 6px var(--red);
 }
 
 /* Widescreen Toolbar */
@@ -222,16 +225,85 @@ html, body {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
-.toolbar-right .btn {
-  padding: 0.2rem 0.45rem;
-  font-size: 0.72rem;
-  gap: 0.2rem;
+/* 工具栏分组竖线分隔 */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background-color: var(--border-color);
+  margin: 0 0.25rem;
+  flex-shrink: 0;
+}
+
+/* 选中操作按钮统一样式 */
+.toolbar-action-btn {
+  height: 32px;
+  font-size: 0.8rem;
+  padding: 0 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
   white-space: nowrap;
-  height: 28px;
+}
+
+.toolbar-action-btn:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--border-focus);
+}
+
+.toolbar-action-btn.is-success {
+  border-color: rgba(16, 185, 129, 0.4);
+  color: var(--green);
+}
+.toolbar-action-btn.is-success:hover {
+  background-color: rgba(16, 185, 129, 0.12);
+  border-color: var(--green);
+}
+
+.toolbar-action-btn.is-warning {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: var(--yellow);
+}
+.toolbar-action-btn.is-warning:hover {
+  background-color: rgba(245, 158, 11, 0.12);
+  border-color: var(--yellow);
+}
+
+.toolbar-action-btn.is-accent {
+  border-color: rgba(0, 242, 255, 0.3);
+  color: var(--accent);
+}
+.toolbar-action-btn.is-accent:hover {
+  background-color: rgba(0, 242, 255, 0.1);
+  border-color: var(--accent);
+}
+
+.toolbar-action-btn.is-danger {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--red);
+}
+.toolbar-action-btn.is-danger:hover {
+  background-color: rgba(239, 68, 68, 0.12);
+  border-color: var(--red);
+}
+
+.toolbar-right .btn {
+  white-space: nowrap;
 }
 
 /* Input Fields */
@@ -372,6 +444,7 @@ html, body {
 /* Widescreen Data Grid Table */
 .grid-container {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   background-color: var(--bg-primary);
   position: relative;
@@ -412,8 +485,16 @@ html, body {
   background-color: var(--bg-primary);
 }
 
+.data-table tr {
+  position: relative;
+}
+
 .data-table tr:hover {
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.data-table tbody tr:hover {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* Sticky Headers / Frozen Columns */
@@ -469,8 +550,8 @@ html, body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -482,7 +563,7 @@ html, body {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg), 0 0 20px rgba(0, 242, 255, 0.05);
+  box-shadow: var(--shadow-lg);
   width: 90%;
   max-width: 800px;
   max-height: 85vh;
@@ -636,10 +717,49 @@ html, body {
   font-weight: 550;
 }
 
+/* Close button (modal X) — global style for class="close-btn" used in components */
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: 50%;
+  font-size: 1.25rem;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.close-btn:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* Tab page transition */
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-fade-in {
+  animation: tabFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slideUp {
@@ -716,7 +836,7 @@ html, body {
 .login-card {
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-color) !important;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 242, 255, 0.05) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7) !important;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -749,7 +869,7 @@ html, body {
   color: var(--bg-primary);
   background-color: var(--accent);
   font-weight: 600;
-  box-shadow: 0 0 12px rgba(0, 242, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 242, 255, 0.3);
 }
 
 /* Collapsed Sidebar overrides */
@@ -776,8 +896,8 @@ html, body {
 
 .stats-bento .bento-card:hover {
   transform: translateY(-2px);
-  border-color: var(--border-focus);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 12px rgba(0, 242, 255, 0.05);
+  border-color: rgba(0, 242, 255, 0.25);
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .bento-icon-wrapper {
@@ -804,9 +924,10 @@ html, body {
 }
 
 .bento-value {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: 1.5rem;
+  font-weight: 800;
   color: var(--text-primary);
+  letter-spacing: -0.02em;
 }
 
 /* Custom Scrollbar override for main content viewports */

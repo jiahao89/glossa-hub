@@ -27,6 +27,9 @@ dist-ssr
 *.sqlite
 *.db
 
+# Test artifacts
+test-screenshots/
+
 # Secrets
 .env
 .env.local

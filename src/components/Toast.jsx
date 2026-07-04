@@ -79,9 +79,9 @@ export function ToastProvider({ children }) {
 
 function ToastItem({ toast, onClose }) {
   const config = {
-    success: { icon: CheckCircle2, bg: '#10b981', label: '成功' },
-    error: { icon: AlertCircle, bg: '#ef4444', label: '错误' },
-    info: { icon: Info, bg: '#3b82f6', label: '提示' },
+    success: { icon: CheckCircle2, bg: 'var(--green)', label: '成功' },
+    error: { icon: AlertCircle, bg: 'var(--red)', label: '错误' },
+    info: { icon: Info, bg: 'var(--accent)', label: '提示' },
   };
   const { icon: Icon, bg } = config[toast.type] || config.info;
 
@@ -92,17 +92,20 @@ function ToastItem({ toast, onClose }) {
         display: 'flex',
         alignItems: 'flex-start',
         gap: '10px',
-        minWidth: '280px',
-        maxWidth: '420px',
+        minWidth: '300px',
+        maxWidth: '480px',
         padding: '12px 14px',
-        backgroundColor: '#fff',
+        backgroundColor: 'var(--bg-secondary)',
         borderLeft: `4px solid ${bg}`,
+        border: '1px solid var(--border-color)',
+        borderLeftWidth: '4px',
+        borderLeftColor: bg,
         borderRadius: '6px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px var(--border-color)',
         fontSize: '0.875rem',
-        color: '#1f2937',
+        color: 'var(--text-primary)',
         pointerEvents: 'auto',
-        animation: 'toast-slide-in 0.2s ease-out',
+        animation: 'toast-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
       <Icon size={18} color={bg} style={{ flexShrink: 0, marginTop: '1px' }} />
@@ -116,13 +119,15 @@ function ToastItem({ toast, onClose }) {
           background: 'transparent',
           border: 'none',
           cursor: 'pointer',
-          padding: '0',
+          padding: '2px',
           display: 'flex',
-          color: '#9ca3af',
+          color: 'var(--text-muted)',
           flexShrink: 0,
+          borderRadius: '4px',
+          transition: 'color 0.15s, background-color 0.15s',
         }}
       >
-        <X size={14} />
+        <X size={16} />
       </button>
     </div>
   );

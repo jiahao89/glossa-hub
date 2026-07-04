@@ -353,7 +353,28 @@ export default function LogsTab() {
 
       {/* Git style Double Column Diff Modal */}
       {diffModalOpen && activeLog && (() => {
-        const parsed = JSON.parse(activeLog.details);
+        let parsed;
+        try {
+          parsed = JSON.parse(activeLog.details);
+        } catch {
+          return (
+            <div className="modal-backdrop">
+              <div className="modal-content" style={{ maxWidth: '480px', width: '90%' }}>
+                <div className="modal-header">
+                  <h3 style={{ margin: 0 }}>日志详情</h3>
+                  <button onClick={() => setDiffModalOpen(false)} className="close-btn">&times;</button>
+                </div>
+                <div className="modal-body" style={{ padding: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  该日志的详情数据格式异常，无法展示对比视图。
+                  <pre style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{activeLog.details}</pre>
+                </div>
+                <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setDiffModalOpen(false)} className="btn btn-primary" style={{ width: '100px' }}>关闭</button>
+                </div>
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="modal-backdrop">
             <div className="modal-content" style={{ maxWidth: '780px', width: '90%' }}>
