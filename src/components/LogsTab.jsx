@@ -359,16 +359,29 @@ export default function LogsTab() {
         try {
           parsed = JSON.parse(activeLog.details);
         } catch {
+          // 非 JSON 格式日志（如新建词条、批量导入等）展示完整元信息 + 原文详情
           return (
             <div className="modal-backdrop">
-              <div className="modal-content" style={{ maxWidth: '480px', width: '90%' }}>
+              <div className="modal-content" style={{ maxWidth: '560px', width: '90%' }}>
                 <div className="modal-header">
-                  <h3 style={{ margin: 0 }}>日志详情</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <History size={16} style={{ color: 'var(--accent)' }} />
+                    <h3 style={{ margin: 0 }}>日志详情</h3>
+                  </div>
                   <button onClick={() => setDiffModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
                 </div>
-                <div className="modal-body" style={{ padding: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  该日志的详情数据格式异常，无法展示对比视图。
-                  <pre style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{activeLog.details}</pre>
+                <div className="modal-body" style={{ padding: '1rem 0' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem', background: 'var(--bg-primary)', padding: '0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.82rem' }}>
+                    <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '王赵云'}</strong></div>
+                    <div>操作时间: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.timestamp}</strong></div>
+                    <div>所属数据表: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.version_name || activeLog.version || '通用'}</strong></div>
+                    <div>词条键名: <code style={{ color: 'var(--accent)' }}>{activeLog.kw || '-'}</code></div>
+                    <div style={{ gridColumn: 'span 2' }}>中文源文: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.chinese || '-'}</strong></div>
+                  </div>
+                  <div style={{ marginTop: '1rem', padding: '0 1.5rem' }}>
+                    <div style={{ marginBottom: '0.5rem', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-secondary)' }}>详情内容</div>
+                    <pre style={{ margin: 0, padding: '0.75rem', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', color: 'var(--text-primary)', wordBreak: 'break-all', whiteSpace: 'pre-wrap', border: '1px solid var(--border-color)', maxHeight: '40vh', overflowY: 'auto' }}>{activeLog.details || '（无详情）'}</pre>
+                  </div>
                 </div>
                 <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button onClick={() => setDiffModalOpen(false)} className="btn btn-primary" style={{ width: '100px' }}>关闭</button>
