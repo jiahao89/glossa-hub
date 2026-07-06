@@ -306,7 +306,7 @@ export default function LogsTab() {
               filteredLogs.map(log => {
                 const isDiff = isJsonDetails(log.details);
                 return (
-                  <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)', height: '40px' }}>
+                  <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)', height: '40px', cursor: 'pointer' }} onDoubleClick={() => handleOpenDiff(log)}>
                     <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>{log.timestamp}</td>
                     <td style={{ padding: '0.75rem 1rem', fontWeight: '500' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -335,12 +335,14 @@ export default function LogsTab() {
                           <span>对比 Diff</span>
                         </button>
                       ) : (
-                        <span 
-                          style={{ color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'help' }}
-                          title={log.details}
+                        <button 
+                          onClick={() => handleOpenDiff(log)}
+                          className="btn btn-secondary"
+                          style={{ height: '24px', padding: '0 0.4rem', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
                         >
-                          悬停查看
-                        </span>
+                          <Eye size={11} />
+                          <span>查看</span>
+                        </button>
                       )}
                     </td>
                   </tr>
