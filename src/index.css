@@ -1,4 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+/* ===== CSS 导入（所有 @import 必须在最前面）===== */
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/* ===== 项目自定义主题令牌 (Tailwind CSS v4) ===== */
+@theme {
+  --font-sans: 'Outfit', 'Inter', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* 映射项目暗色主题色彩到 Tailwind 令牌 */
+  --color-surface: #0e0e10;
+  --color-surface-foreground: #f8fafc;
+  --color-accent: #00f2ff;
+  --color-accent-foreground: #0e0e10;
+}
 
 /* ===== Toast 通知动画 ===== */
 @keyframes toast-slide-in {
