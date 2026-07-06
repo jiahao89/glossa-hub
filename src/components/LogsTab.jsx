@@ -176,7 +176,7 @@ export default function LogsTab() {
       {/* Title */}
       <div className="tab-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0 }}>
         <div>
-          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.4rem', fontWeight: '700' }}>词条修改日志</h2>
+          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em' }}>词条修改日志</h2>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>记录系统内所有用户对词条的大货导入、翻译覆盖与字段变更轨迹。</p>
         </div>
         <button 
@@ -362,7 +362,7 @@ export default function LogsTab() {
               <div className="modal-content" style={{ maxWidth: '480px', width: '90%' }}>
                 <div className="modal-header">
                   <h3 style={{ margin: 0 }}>日志详情</h3>
-                  <button onClick={() => setDiffModalOpen(false)} className="close-btn">&times;</button>
+                  <button onClick={() => setDiffModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
                 </div>
                 <div className="modal-body" style={{ padding: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                   该日志的详情数据格式异常，无法展示对比视图。
@@ -383,7 +383,7 @@ export default function LogsTab() {
                   <History size={16} style={{ color: 'var(--accent)' }} />
                   <h3 style={{ margin: 0 }}>Git 风格对比修改器</h3>
                 </div>
-                <button onClick={() => setDiffModalOpen(false)} className="close-btn">&times;</button>
+                <button onClick={() => setDiffModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
               </div>
               
               <div className="modal-body" style={{ padding: '1rem 0' }}>
@@ -415,7 +415,7 @@ export default function LogsTab() {
                     <div style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--green)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
                       修改后 (New Value)
                     </div>
-                    <div style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.05)', color: '#6ee7b7', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    <div style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.05)', color: 'var(--green-soft)', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                       {parsed.newVal || <span style={{ fontStyle: 'italic', color: 'rgba(16,185,129,0.4)' }}>[已清空]</span>}
                     </div>
                   </div>

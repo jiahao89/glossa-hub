@@ -345,7 +345,7 @@ export default function GlossaryTab() {
       {/* Upper header */}
       <div className="tab-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0 }}>
         <div>
-          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.4rem', fontWeight: '700' }}>专业词汇库</h2>
+          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em' }}>专业词汇库</h2>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>管理迈金骑行行业专有词汇与缩写。支持导出为 CSV 导入至 Dify 知识库。</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -377,6 +377,7 @@ export default function GlossaryTab() {
                 className="icon-btn" 
                 style={{ color: 'var(--red)', padding: '0.4rem', marginLeft: '0.25rem' }} 
                 title="删除此词汇大表"
+                aria-label="删除此词汇大表"
               >
                 <Trash2 size={16} />
               </button>
@@ -487,6 +488,7 @@ export default function GlossaryTab() {
                             className="icon-btn" 
                             style={{ color: 'var(--red)', display: 'inline-flex' }}
                             title="删除术语"
+                            aria-label="删除术语"
                           >
                             <Trash2 size={14} />
                           </button>

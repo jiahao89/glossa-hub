@@ -464,14 +464,22 @@ export default function TranslationTab({
     }
   };
 
+  // Pre-build normalized field map for O(1) fuzzy lookups (avoids O(n) scan per call)
+  const normalizedFieldMap = useMemo(() => {
+    const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
+    const map = {};
+    for (const key of Object.keys(fieldMap)) {
+      map[normalize(key)] = fieldMap[key];
+    }
+    return map;
+  }, [fieldMap]);
+
   // Helper to resolve field ID by Name using exact and fuzzy normalized matching
   const getFieldIdByName = useCallback((name) => {
     if (fieldMap[name]) return fieldMap[name];
     const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
-    const normName = normalize(name);
-    const foundKey = Object.keys(fieldMap).find(k => normalize(k) === normName);
-    return foundKey ? fieldMap[foundKey] : null;
-  }, [fieldMap]);
+    return normalizedFieldMap[normalize(name)] || null;
+  }, [fieldMap, normalizedFieldMap]);
 
   // Helpers to get field value by Name
   const getRecordValueByName = useCallback((record, fieldName) => {
@@ -567,9 +575,14 @@ export default function TranslationTab({
   const safePage = Math.min(currentPage, totalPages);
   const pagedRecords = filteredRecords.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  useEffect(() => {
+  // Render-during-render pattern: detect stale page without extra useEffect cycle
+  // Track the filter signature that last caused a reset
+  const filterSignature = `${selectedTableId}|${searchQuery}|${filterStatus}|${filterUntranslated}|${sortBy}|${pageSize}`;
+  const lastFilterRef = useRef(filterSignature);
+  if (lastFilterRef.current !== filterSignature) {
+    lastFilterRef.current = filterSignature;
     setCurrentPage(1);
-  }, [selectedTableId, searchQuery, filterStatus, filterUntranslated, sortBy, pageSize]);
+  }
 
   // Open Edit Modal
   const handleRowDoubleClick = (record) => {

@@ -173,7 +173,7 @@ export default function LanguagesTab() {
       {/* Header */}
       <div className="tab-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.4rem', fontWeight: '700' }}>语种字典管理</h2>
+          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em' }}>语种字典管理</h2>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>定义与配置本翻译系统支持的翻译目标语种。顺序将决定智能矩阵及版本比对时的列表呈现顺序。</p>
         </div>
         <button 
@@ -240,6 +240,7 @@ export default function LanguagesTab() {
                         className="icon-btn"
                         style={{ padding: '2px', opacity: idx === languages.length - 1 ? 0.3 : 1 }}
                         title="下移"
+                        aria-label="下移"
                       >
                         <ArrowDown size={14} />
                       </button>
@@ -299,7 +300,7 @@ export default function LanguagesTab() {
           <div className="modal-content" style={{ maxWidth: '420px' }}>
             <div className="modal-header">
               <h3>新增语种配置</h3>
-              <button onClick={() => setAddModalOpen(false)} className="close-btn">&times;</button>
+              <button onClick={() => setAddModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
             </div>
             <form onSubmit={handleAddLanguage}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 0' }}>
@@ -343,7 +344,7 @@ export default function LanguagesTab() {
           <div className="modal-content" style={{ maxWidth: '420px' }}>
             <div className="modal-header">
               <h3>更正语种名称</h3>
-              <button onClick={() => setRenameModalOpen(false)} className="close-btn">&times;</button>
+              <button onClick={() => setRenameModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
             </div>
             <form onSubmit={handleRenameLanguage}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 0' }}>

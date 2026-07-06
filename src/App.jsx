@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { apiFetch } from './utils/api.js';
 import DashboardTab from './components/DashboardTab';
-import TranslationTab from './components/TranslationTab';
-import VersionsTab from './components/VersionsTab';
-import ComparisonTab from './components/ComparisonTab';
-import GlossaryTab from './components/GlossaryTab';
-import LanguagesTab from './components/LanguagesTab';
-import LogsTab from './components/LogsTab';
-import SettingsTab from './components/SettingsTab';
+import { SkeletonTab } from './components/Skeleton';
+
+// Lazy-load secondary tabs to reduce initial bundle
+const TranslationTab = lazy(() => import('./components/TranslationTab'));
+const VersionsTab = lazy(() => import('./components/VersionsTab'));
+const ComparisonTab = lazy(() => import('./components/ComparisonTab'));
+const GlossaryTab = lazy(() => import('./components/GlossaryTab'));
+const LanguagesTab = lazy(() => import('./components/LanguagesTab'));
+const LogsTab = lazy(() => import('./components/LogsTab'));
+const SettingsTab = lazy(() => import('./components/SettingsTab'));
 import { 
   LayoutDashboard, 
   Languages, 
@@ -66,8 +69,16 @@ export default function App() {
     }
   });
 
+  // Debounced localStorage persistence (avoids blocking main thread on every cell edit)
   useEffect(() => {
-    localStorage.setItem('glossahub_modified_cells', JSON.stringify(modifiedCells));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('glossahub_modified_cells', JSON.stringify(modifiedCells));
+      } catch (err) {
+        console.warn('Failed to persist modified cells:', err);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
   }, [modifiedCells]);
 
   const handleAddLog = async (action, kw = '', chinese = '', details = '', version = '') => {
@@ -192,7 +203,7 @@ export default function App() {
                 type="text" 
                 value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value)}
-                placeholder="请输入用户名 (如: wangzhaoyun)"
+                placeholder="请输入用户名"
                 className="text-input"
                 required
               />
@@ -244,6 +255,7 @@ export default function App() {
             className="icon-btn"
             style={{ margin: sidebarCollapsed ? '0 auto' : '0', padding: '4px' }}
             title={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}
+            aria-label={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}
           >
             {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
           </button>
@@ -257,6 +269,7 @@ export default function App() {
             onClick={() => setActiveTab('dashboard')}
             className={`nav-item-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
             title="仪表盘看板"
+            aria-label="仪表盘看板"
           >
             <LayoutDashboard size={16} />
             {!sidebarCollapsed && <span>仪表盘看板</span>}
@@ -267,6 +280,7 @@ export default function App() {
             onClick={() => setActiveTab('translate')}
             className={`nav-item-btn ${activeTab === 'translate' ? 'active' : ''}`}
             title="词条管理"
+            aria-label="词条管理"
           >
             <Languages size={16} />
             {!sidebarCollapsed && <span>词条管理</span>}
@@ -277,6 +291,7 @@ export default function App() {
             onClick={() => setActiveTab('compare')}
             className={`nav-item-btn ${activeTab === 'compare' ? 'active' : ''}`}
             title="词条变更对比"
+            aria-label="词条变更对比"
           >
             <ArrowLeftRight size={16} />
             {!sidebarCollapsed && <span>词条变更对比</span>}
@@ -287,6 +302,7 @@ export default function App() {
             onClick={() => setActiveTab('glossary')}
             className={`nav-item-btn ${activeTab === 'glossary' ? 'active' : ''}`}
             title="专业词汇库"
+            aria-label="专业词汇库"
           >
             <BookOpen size={16} />
             {!sidebarCollapsed && <span>专业词汇库</span>}
@@ -297,6 +313,7 @@ export default function App() {
             onClick={() => setActiveTab('versions')}
             className={`nav-item-btn ${activeTab === 'versions' ? 'active' : ''}`}
             title="数据表管理"
+            aria-label="数据表管理"
           >
             <Database size={16} />
             {!sidebarCollapsed && <span>数据表管理</span>}
@@ -307,6 +324,7 @@ export default function App() {
             onClick={() => setActiveTab('languages')}
             className={`nav-item-btn ${activeTab === 'languages' ? 'active' : ''}`}
             title="语种字典管理"
+            aria-label="语种字典管理"
           >
             <Globe size={16} />
             {!sidebarCollapsed && <span>语种字典管理</span>}
@@ -317,6 +335,7 @@ export default function App() {
             onClick={() => setActiveTab('logs')}
             className={`nav-item-btn ${activeTab === 'logs' ? 'active' : ''}`}
             title="词条修改日志"
+            aria-label="词条修改日志"
           >
             <History size={16} />
             {!sidebarCollapsed && <span>词条修改日志</span>}
@@ -327,6 +346,7 @@ export default function App() {
             onClick={() => setActiveTab('settings')}
             className={`nav-item-btn ${activeTab === 'settings' ? 'active' : ''}`}
             title="翻译引擎设置"
+            aria-label="翻译引擎设置"
           >
             <Settings size={16} />
             {!sidebarCollapsed && <span>翻译引擎设置</span>}
@@ -364,6 +384,7 @@ export default function App() {
               className="icon-btn" 
               style={{ margin: '0 auto', padding: '6px', color: 'var(--red)', background: 'var(--bg-primary)' }}
               title="退出登录"
+              aria-label="退出登录"
             >
               <LogOut size={14} />
             </button>
@@ -398,6 +419,7 @@ export default function App() {
         {/* Dynamic page container */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
           <div key={activeTab} className="tab-fade-in" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <Suspense fallback={<SkeletonTab />}>
             {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
             {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} />}
             {activeTab === 'translate' && (
@@ -415,6 +437,7 @@ export default function App() {
             {activeTab === 'languages' && <LanguagesTab />}
             {activeTab === 'logs' && <LogsTab />}
             {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} />}
+            </Suspense>
           </div>
         </div>
 

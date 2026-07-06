@@ -75,4 +75,15 @@ export function SkeletonTable({ rows = 8, cols = 6 }) {
   );
 }
 
+// 页面级骨架占位（用于 Suspense fallback）
+export function SkeletonTab() {
+  return (
+    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <Skeleton width="200px" height={28} />
+      <Skeleton width="100%" height={36} radius={8} />
+      <SkeletonTable rows={10} cols={6} />
+    </div>
+  );
+}
+
 export default Skeleton;
