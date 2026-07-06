@@ -177,7 +177,7 @@ export default function DashboardTab({ onNavigate }) {
       <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '1.5rem' }}>
         
         {/* Left Side: Firmware Progress Cards */}
-        <div className="panel-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem' }}>
+        <div className="panel-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', overflow: 'hidden' }}>
           <h3 style={{ margin: '0 0 1.25rem 0', fontSize: '1.1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Activity size={16} style={{ color: 'var(--accent)' }} />
             <span>词条翻译进度表</span>
@@ -210,7 +210,7 @@ export default function DashboardTab({ onNavigate }) {
         </div>
 
         {/* Right Side: Modification streams */}
-        <div className="panel-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
+        <div className="panel-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           <h3 style={{ margin: '0 0 1.25rem 0', fontSize: '1.1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Clock size={16} style={{ color: 'var(--yellow)' }} />
             <span>变更记录</span>
