@@ -1,5 +1,4 @@
 const fs = require('fs');
-const path = require('path');
 const http = require('http');
 
 // 1. Re-implement parseCSV locally to match utils/csvHelper.js
@@ -103,7 +102,7 @@ function makeRequest(options, postData) {
         try {
           const parsed = JSON.parse(data);
           resolve({ status: res.statusCode, body: parsed });
-        } catch (e) {
+        } catch {
           resolve({ status: res.statusCode, rawBody: data });
         }
       });

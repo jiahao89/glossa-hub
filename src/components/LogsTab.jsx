@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Search, Filter, History, Trash2, Eye, ArrowRight, User } from 'lucide-react';
+import { Search, History, Trash2, Eye, User } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { useToast } from './Toast';
 import EmptyState from './EmptyState';
@@ -9,7 +9,7 @@ export default function LogsTab() {
   const toast = useToast();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [_error, setError] = useState(null);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');

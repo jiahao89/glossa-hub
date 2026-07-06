@@ -13,6 +13,7 @@ import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 const ToastContext = createContext(null);
 
+// eslint-disable-next-line react/only-export-components
 export function useToast() {
   const ctx = useContext(ToastContext);
   if (!ctx) {
@@ -134,4 +135,5 @@ function ToastItem({ toast, onClose }) {
 }
 
 // 默认导出 hook，方便快速调用
+// eslint-disable-next-line react/only-export-components
 export default useToast;

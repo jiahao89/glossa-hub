@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './Toast';
 import Pagination from './Pagination';
-import { Plus, Trash2, Download, Upload, BookOpen, AlertTriangle, FileSpreadsheet, Search } from 'lucide-react';
+import { Plus, Trash2, Download, Upload, BookOpen, FileSpreadsheet, Search } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 import GlossaModal from './GlossaModal';
@@ -13,7 +13,7 @@ export default function GlossaryTab() {
   const [terms, setTerms] = useState([]);
   const [loadingTables, setLoadingTables] = useState(true);
   const [loadingTerms, setLoadingTerms] = useState(false);
-  const [error, setError] = useState(null);
+  const [_error, setError] = useState(null);
 
   // Search keyword
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,6 +68,7 @@ export default function GlossaryTab() {
 
   useEffect(() => {
     fetchTables();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

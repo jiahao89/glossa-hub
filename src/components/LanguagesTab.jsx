@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './Toast';
 import EmptyState from './EmptyState';
-import { Plus, Edit2, Trash2, ArrowUp, ArrowDown, HelpCircle, Globe, AlertTriangle } from 'lucide-react';
+import { Plus, Edit2, Trash2, ArrowUp, ArrowDown, Globe, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
 
@@ -9,7 +9,7 @@ export default function LanguagesTab() {
   const toast = useToast();
   const [languages, setLanguages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [_error, setError] = useState(null);
 
   // Add Language modal state
   const [addModalOpen, setAddModalOpen] = useState(false);

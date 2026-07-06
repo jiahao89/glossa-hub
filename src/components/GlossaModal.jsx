@@ -104,11 +104,6 @@ export default function GlossaModal({
     <div
       className={variant === 'simple' ? 'modal-backdrop flex-center' : 'modal-backdrop'}
       onClick={handleBackdropClick}
-      style={variant === 'simple' ? {
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000,
-        backdropFilter: 'blur(8px)',
-      } : undefined}
     >
       <div
         ref={dialogRef}

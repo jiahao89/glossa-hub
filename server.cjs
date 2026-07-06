@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
@@ -439,7 +438,7 @@ const db = {
       } catch (e) {
         try {
           await this.run('ROLLBACK');
-        } catch (err) {}
+        } catch {}
         throw e;
       }
     }
@@ -576,7 +575,7 @@ app.get('/api/tables/:tableId/records', authenticateToken, async (req, res) => {
         if (typeof temp === 'object' && temp !== null) {
           trans = temp;
         }
-      } catch (e) {
+      } catch {
         trans = {};
       }
 
@@ -1704,7 +1703,7 @@ app.post('/api/terms/batch-approve', authenticateToken, async (req, res) => {
 
 // 11. POST /api/projects/:projectId/dify - 保存项目的 Dify 配置
 app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) => {
-  const { projectId } = req.params;
+  const { projectId: _projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
   if (!baseUrl || !apiKey) {
@@ -1839,7 +1838,7 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req,
 
 // 13.5. POST /api/projects/:projectId/dify-test - 测试 Dify 连接性
 app.post('/api/projects/:projectId/dify-test', authenticateToken, async (req, res) => {
-  const { projectId } = req.params;
+  const { projectId: _projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
   const targetUrl = baseUrl || '';
@@ -2207,7 +2206,7 @@ app.get('/api/projects/:projectId/glossary-tables', authenticateToken, async (re
       let headersParsed = [];
       try {
         headersParsed = JSON.parse(t.headers || '["中文专业术语","英文翻译对应","说明 / 定义"]');
-      } catch (e) {
+      } catch {
         headersParsed = ["中文专业术语", "英文翻译对应", "说明 / 定义"];
       }
       return { ...t, headers: headersParsed };
@@ -2272,7 +2271,7 @@ app.get('/api/glossary-tables/:tableId/terms', authenticateToken, async (req, re
       let fieldsParsed = {};
       try {
         fieldsParsed = JSON.parse(t.fields || '{}');
-      } catch (e) {
+      } catch {
         fieldsParsed = {};
       }
       return { ...t, fields: fieldsParsed };

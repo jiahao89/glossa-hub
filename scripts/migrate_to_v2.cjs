@@ -28,7 +28,7 @@ async function runMigration() {
   let sqlite3;
   try {
     sqlite3 = require('sqlite3').verbose();
-  } catch (err) {
+  } catch {
     console.error('❌ 错误: 缺少 sqlite3 依赖。请先运行 npm install sqlite3');
     process.exit(1);
   }
@@ -47,7 +47,7 @@ async function runMigration() {
 // ----------------------------------------------------
 // 方案 A: 本地 SQLite 表结构整理与数据迁移
 // ----------------------------------------------------
-async function migrateLocalSqlite(srcDb, sqlite3) {
+async function migrateLocalSqlite(srcDb, _sqlite3) {
   srcDb.serialize(() => {
     // 1. 创建新版表结构
     console.log('🔨 创建 SQLite v2 表结构...');
@@ -187,7 +187,7 @@ async function migrateLocalSqlite(srcDb, sqlite3) {
   });
 }
 
-function migrateTerms(srcDb, defaultProjId) {
+function migrateTerms(srcDb, _defaultProjId) {
   console.log('📝 迁移词条详细数据...');
   srcDb.all('SELECT * FROM records', [], (err, rows) => {
     if (err) {
@@ -213,7 +213,7 @@ function migrateTerms(srcDb, defaultProjId) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'user-wangzhaoyun')
       `);
 
-      rows.forEach((row, idx) => {
+      rows.forEach((row, _idx) => {
         // termID 用 recordId，version_id 用 tableId
         stmt.run([
           row.recordId,
@@ -297,7 +297,7 @@ async function migrateToPostgres(srcDb, pgUrl) {
   let Client;
   try {
     ({ Client } = require('pg'));
-  } catch (err) {
+  } catch {
     console.error('❌ 错误: 缺少 pg 依赖。请先运行 npm install pg');
     srcDb.close();
     process.exit(1);
@@ -482,7 +482,7 @@ async function migrateToPostgres(srcDb, pgUrl) {
         const valuePlaceholders = [];
         const queryParams = [];
         
-        chunk.forEach((rec, idx) => {
+        chunk.forEach((rec, _idx) => {
           const mappedVerId = versionMap.get(rec.tableId);
           if (!mappedVerId) return; // 对应版本丢失，跳过
 
@@ -533,7 +533,7 @@ async function migrateToPostgres(srcDb, pgUrl) {
   });
 }
 
-async function migratePgLogs(srcDb, pgClient, wangId) {
+async function migratePgLogs(srcDb, pgClient, _wangId) {
   srcDb.all('SELECT * FROM logs', [], async (err, logs) => {
     if (err || logs.length === 0) {
       console.log('ℹ️ 未检测到旧 logs 修改记录。');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { apiFetch } from './utils/api.js';
 import DashboardTab from './components/DashboardTab';
 import { SkeletonTab } from './components/Skeleton';

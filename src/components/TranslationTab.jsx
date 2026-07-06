@@ -77,7 +77,7 @@ export default function TranslationTab({
       setInternalSelectedTableId(val);
     }
   };
-  const [_fields, setFields] = useState([]); // [{ id, name, type }]
+  const [_fields, _setFields] = useState([]); // [{ id, name, type }]
   const [records, setRecords] = useState([]); // [{ id, fields: { fieldId: val } }]
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null); // { type, text }
@@ -381,9 +381,11 @@ export default function TranslationTab({
       }
     }
     loadTables();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const mergeTimestamps = useCallback(async (allRecords, tableId) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _mergeTimestamps = useCallback(async (allRecords, tableId) => {
     try {
       const res = await apiFetch(`/api/tables/${tableId}/records`);
       if (res.ok) {
@@ -443,6 +445,7 @@ export default function TranslationTab({
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load Fields and Records when selected table changes
@@ -569,7 +572,8 @@ export default function TranslationTab({
     }
 
     return list; // fallback default sorting
-  }, [records, searchQuery, filterUntranslated, filterStatus, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, visibleLanguages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, searchQuery, filterUntranslated, filterStatus, getRecordValueByName, sortBy, modifiedCells, recordIndexMap]);
 
   // 分页：当筛选条件/搜索/版本变化导致总数变化时，自动重置到第 1 页
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));

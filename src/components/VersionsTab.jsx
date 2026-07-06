@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './Toast';
-import { Plus, Trash2, Calendar, FileText, LayoutGrid, AlertOctagon, ArrowRight, Clock, User, Edit2 } from 'lucide-react';
+import { Plus, Trash2, FileText, LayoutGrid, AlertOctagon, ArrowRight, Clock, User, Edit2 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
 
@@ -147,7 +147,7 @@ export default function VersionsTab({ onNavigate }) {
         hour: '2-digit',
         minute: '2-digit'
       });
-    } catch (e) {
+    } catch {
       return dateStr;
     }
   };

@@ -194,7 +194,7 @@ async function runTest() {
 
     // Verify DB
     const dbTerm1 = await queryOne('SELECT status, reject_reason FROM terms WHERE id = ?', [termIds[0]]);
-    const dbTerm2 = await queryOne('SELECT status, reject_reason FROM terms WHERE id = ?', [termIds[1]]);
+    const _dbTerm2 = await queryOne('SELECT status, reject_reason FROM terms WHERE id = ?', [termIds[1]]);
 
     if (dbTerm1.status !== 'REJECTED' || dbTerm1.reject_reason !== 'WORKFLOW_BATCH_REJECT_TEST') {
       throw new Error(`Workflow state update failed. Term1 status=[${dbTerm1.status}] reason=[${dbTerm1.reject_reason}]`);
@@ -238,7 +238,7 @@ async function runTest() {
     // --- REGRESSION TEST: Bug #2 double JSON serialization ---
     console.log('\n--- Regression Test: Bug #2 Double JSON serialization ---');
     const doubleStringified = JSON.stringify({ 'EN（英文）': 'BUG2_TEST_VAL' });
-    const bug2Res = await fetch(`http://127.0.0.1:3001/api/terms/${testTerm.id}`, {
+    const _bug2Res = await fetch(`http://127.0.0.1:3001/api/terms/${testTerm.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
