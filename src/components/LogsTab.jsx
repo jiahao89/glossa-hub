@@ -315,12 +315,12 @@ export default function LogsTab() {
                       </span>
                     </td>
                     <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>{log.version_name || log.version || '通用'}</td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <code style={{ background: 'var(--bg-primary)', padding: '2px 5px', borderRadius: '4px', color: 'var(--accent)', fontSize: '0.75rem' }}>
+                    <td style={{ padding: '0.75rem 1rem', maxWidth: '200px' }}>
+                      <code className="truncate" style={{ display: 'block', background: 'var(--bg-primary)', padding: '2px 5px', borderRadius: '4px', color: 'var(--accent)', fontSize: '0.75rem' }} title={log.kw || '-'}>
                         {log.kw || '-'}
                       </code>
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', color: 'var(--text-primary)' }}>{log.chinese || '-'}</td>
+                    <td style={{ padding: '0.75rem 1rem', color: 'var(--text-primary)', maxWidth: '300px' }} className="truncate" title={log.chinese || '-'}>{log.chinese || '-'}</td>
                     <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>
                       {getBriefActionText(log)}
                     </td>

@@ -198,10 +198,10 @@ export default function VersionsTab({ onNavigate }) {
             <tbody>
               {tables.map((table) => (
                 <tr key={table.id} style={{ borderBottom: '1px solid var(--border-color)' }} className="table-row-hover">
-                  <td style={{ padding: '1rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+                  <td style={{ padding: '1rem', fontWeight: '600', color: 'var(--text-primary)', maxWidth: '300px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <FileText size={15} style={{ color: 'var(--accent)', opacity: 0.8 }} />
-                      <span>{table.name}</span>
+                      <FileText size={15} style={{ color: 'var(--accent)', opacity: 0.8, flexShrink: 0 }} />
+                      <span className="truncate" title={table.name}>{table.name}</span>
                     </div>
                   </td>
                   <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{formatDate(table.created_at)}</td>

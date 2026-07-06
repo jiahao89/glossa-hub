@@ -1000,3 +1000,10 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
 }
+
+/* Truncate utilities */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

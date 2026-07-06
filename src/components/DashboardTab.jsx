@@ -236,14 +236,14 @@ export default function DashboardTab({ onNavigate }) {
                     <div style={{ background: 'var(--bg-tertiary)', borderRadius: '50%', minWidth: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
                       <User size={13} />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                         <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{log.operator}</span>
                         <span style={{ color: 'var(--text-muted)' }}>{formatLogTime(log.timestamp)}</span>
                       </div>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.3' }}>
+                      <div className="truncate" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.3' }} title={`在${log.version || '词条表'}修改词条 ${log.kw}: ${parsedDetails}`}>
                         在<strong>{log.version || '词条表'}</strong>修改词条 <code style={{ color: 'var(--accent)', background: 'var(--bg-primary)', padding: '1px 4px', borderRadius: '2px', fontSize: '0.75rem' }}>{log.kw}</code>: {parsedDetails}
-                      </span>
+                      </div>
                     </div>
                   </div>
                 );
