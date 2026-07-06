@@ -3,6 +3,7 @@ import { useToast } from './Toast';
 import EmptyState from './EmptyState';
 import { Plus, Edit2, Trash2, ArrowUp, ArrowDown, HelpCircle, Globe, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import GlossaModal from './GlossaModal';
 
 export default function LanguagesTab() {
   const toast = useToast();
@@ -295,83 +296,77 @@ export default function LanguagesTab() {
       </div>
 
       {/* Add Language Modal */}
-      {addModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '420px' }}>
-            <div className="modal-header">
-              <h3>新增语种配置</h3>
-              <button onClick={() => setAddModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
-            </div>
-            <form onSubmit={handleAddLanguage}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 0' }}>
-                <div className="form-group">
-                  <label>语种代码 (如: ES, PT, DE)</label>
-                  <input 
-                    type="text" 
-                    value={newLangCode} 
-                    onChange={(e) => setNewLangCode(e.target.value)} 
-                    placeholder="大写字母简写"
-                    className="text-input"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>语种显示名称 (如: ES（西班牙）)</label>
-                  <input 
-                    type="text" 
-                    value={newLangName} 
-                    onChange={(e) => setNewLangName(e.target.value)} 
-                    placeholder="在翻译矩阵列头显示的完整文本"
-                    className="text-input"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setAddModalOpen(false)} className="btn btn-secondary">取消</button>
-                <button type="submit" disabled={adding} className="btn btn-primary">
-                  {adding ? '正在添加...' : '确认添加'}
-                </button>
-              </div>
-            </form>
+      <GlossaModal
+        isOpen={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        title={<span><Globe size={14} style={{ marginRight: '0.3rem', color: 'var(--accent)' }} />新增语种配置</span>}
+        maxWidth="420px"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <button type="button" onClick={() => setAddModalOpen(false)} className="btn btn-secondary">取消</button>
+            <button type="submit" form="add-language-form" disabled={adding} className="btn btn-primary">
+              {adding ? '正在添加...' : '确认添加'}
+            </button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <form id="add-language-form" onSubmit={handleAddLanguage} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 0' }}>
+          <div className="form-group">
+            <label>语种代码 (如: ES, PT, DE)</label>
+            <input
+              type="text"
+              value={newLangCode}
+              onChange={(e) => setNewLangCode(e.target.value)}
+              placeholder="大写字母简写"
+              className="text-input"
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>语种显示名称 (如: ES（西班牙）)</label>
+            <input
+              type="text"
+              value={newLangName}
+              onChange={(e) => setNewLangName(e.target.value)}
+              placeholder="在翻译矩阵列头显示的完整文本"
+              className="text-input"
+              required
+            />
+          </div>
+        </form>
+      </GlossaModal>
 
       {/* Rename Language Modal */}
-      {renameModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '420px' }}>
-            <div className="modal-header">
-              <h3>更正语种名称</h3>
-              <button onClick={() => setRenameModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
-            </div>
-            <form onSubmit={handleRenameLanguage}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 0' }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  修改 <strong>{activeLang?.lang_code}</strong> 的中文显示头。此操作将迁移此语种下的全部现有翻译数据列头。
-                </p>
-                <div className="form-group">
-                  <label>新语种显示名称</label>
-                  <input 
-                    type="text" 
-                    value={newLangNameInput} 
-                    onChange={(e) => setNewLangNameInput(e.target.value)} 
-                    className="text-input"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setRenameModalOpen(false)} className="btn btn-secondary">取消</button>
-                <button type="submit" disabled={renaming} className="btn btn-primary">
-                  {renaming ? '正在更新...' : '保存更改'}
-                </button>
-              </div>
-            </form>
+      <GlossaModal
+        isOpen={renameModalOpen}
+        onClose={() => setRenameModalOpen(false)}
+        title={<span><Edit2 size={14} style={{ marginRight: '0.3rem', color: 'var(--accent)' }} />更正语种名称</span>}
+        maxWidth="420px"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <button type="button" onClick={() => setRenameModalOpen(false)} className="btn btn-secondary">取消</button>
+            <button type="submit" form="rename-language-form" disabled={renaming} className="btn btn-primary">
+              {renaming ? '正在更新...' : '保存更改'}
+            </button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <form id="rename-language-form" onSubmit={handleRenameLanguage} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 0' }}>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            修改 <strong>{activeLang?.lang_code}</strong> 的中文显示头。此操作将迁移此语种下的全部现有翻译数据列头。
+          </p>
+          <div className="form-group">
+            <label>新语种显示名称</label>
+            <input
+              type="text"
+              value={newLangNameInput}
+              onChange={(e) => setNewLangNameInput(e.target.value)}
+              className="text-input"
+              required
+            />
+          </div>
+        </form>
+      </GlossaModal>
 
     </div>
   );

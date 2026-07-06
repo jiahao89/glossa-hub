@@ -4,6 +4,7 @@ import Pagination from './Pagination';
 import { Plus, Trash2, Download, Upload, BookOpen, AlertTriangle, FileSpreadsheet, Search } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
+import GlossaModal from './GlossaModal';
 
 export default function GlossaryTab() {
   const toast = useToast();
@@ -523,90 +524,92 @@ export default function GlossaryTab() {
       )}
 
       {/* Add Table Modal */}
-      {addTableModal && (
-        <div className="modal-backdrop flex-center" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
-          <div className="card" style={{ width: '400px', padding: '1.5rem', border: '1px solid var(--border-color)' }}>
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', fontWeight: '600' }}>新建词汇表</h3>
-            <form onSubmit={handleCreateTable}>
-              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>词汇大表名称</label>
-                <input 
-                  type="text" 
-                  value={newTableName}
-                  onChange={(e) => setNewTableName(e.target.value)}
-                  placeholder="例如: 迈金骑行通用术语表"
-                  autoFocus
-                  required
-                  style={{ width: '100%', padding: '0.62rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setAddTableModal(false)} className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>
-                  取消
-                </button>
-                <button type="submit" disabled={creatingTable} className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>
-                  {creatingTable ? '正在创建...' : '确认创建'}
-                </button>
-              </div>
-            </form>
+      <GlossaModal
+        isOpen={addTableModal}
+        onClose={() => setAddTableModal(false)}
+        variant="simple"
+        width="400px"
+      >
+        <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', fontWeight: '600' }}>新建词汇表</h3>
+        <form onSubmit={handleCreateTable}>
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>词汇大表名称</label>
+            <input 
+              type="text" 
+              value={newTableName}
+              onChange={(e) => setNewTableName(e.target.value)}
+              placeholder="例如: 迈金骑行通用术语表"
+              autoFocus
+              required
+              style={{ width: '100%', padding: '0.62rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+            />
           </div>
-        </div>
-      )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <button type="button" onClick={() => setAddTableModal(false)} className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>
+              取消
+            </button>
+            <button type="submit" disabled={creatingTable} className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>
+              {creatingTable ? '正在创建...' : '确认创建'}
+            </button>
+          </div>
+        </form>
+      </GlossaModal>
 
       {/* Add Term Modal */}
-      {addTermModal && (
-        <div className="modal-backdrop flex-center" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
-          <div className="card" style={{ width: '450px', padding: '1.5rem', border: '1px solid var(--border-color)' }}>
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', fontWeight: '600' }}>添加专业术语</h3>
-            <form onSubmit={handleAddTerm}>
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>中文专业术语</label>
-                <input 
-                  type="text" 
-                  value={newCnTerm}
-                  onChange={(e) => setNewCnTerm(e.target.value)}
-                  placeholder="如: 踏频"
-                  required
-                  autoFocus
-                  style={{ width: '100%', padding: '0.55rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>英文翻译对应</label>
-                <input 
-                  type="text" 
-                  value={newEnTerm}
-                  onChange={(e) => setNewEnTerm(e.target.value)}
-                  placeholder="如: Cadence"
-                  required
-                  style={{ width: '100%', padding: '0.55rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>说明 / 定义 (可选)</label>
-                <textarea 
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="输入此术语的使用场景或定义以辅助翻译判断..."
-                  rows={3}
-                  style={{ width: '100%', padding: '0.55rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', resize: 'vertical' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setAddTermModal(false)} className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>
-                  取消
-                </button>
-                <button type="submit" disabled={addingTerm} className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>
-                  {addingTerm ? '正在保存...' : '确认保存'}
-                </button>
-              </div>
-            </form>
+      <GlossaModal
+        isOpen={addTermModal}
+        onClose={() => setAddTermModal(false)}
+        variant="simple"
+        width="450px"
+      >
+        <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', fontWeight: '600' }}>添加专业术语</h3>
+        <form onSubmit={handleAddTerm}>
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>中文专业术语</label>
+            <input 
+              type="text" 
+              value={newCnTerm}
+              onChange={(e) => setNewCnTerm(e.target.value)}
+              placeholder="如: 踏频"
+              required
+              autoFocus
+              style={{ width: '100%', padding: '0.55rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+            />
           </div>
-        </div>
-      )}
+
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>英文翻译对应</label>
+            <input 
+              type="text" 
+              value={newEnTerm}
+              onChange={(e) => setNewEnTerm(e.target.value)}
+              placeholder="如: Cadence"
+              required
+              style={{ width: '100%', padding: '0.55rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>说明 / 定义 (可选)</label>
+            <textarea 
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              placeholder="输入此术语的使用场景或定义以辅助翻译判断..."
+              rows={3}
+              style={{ width: '100%', padding: '0.55rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', resize: 'vertical' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <button type="button" onClick={() => setAddTermModal(false)} className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>
+              取消
+            </button>
+            <button type="submit" disabled={addingTerm} className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>
+              {addingTerm ? '正在保存...' : '确认保存'}
+            </button>
+          </div>
+        </form>
+      </GlossaModal>
 
     </div>
   );

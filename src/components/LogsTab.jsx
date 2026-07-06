@@ -3,6 +3,7 @@ import { Clock, Search, Filter, History, Trash2, Eye, ArrowRight, User } from 'l
 import { apiFetch } from '../utils/api';
 import { useToast } from './Toast';
 import EmptyState from './EmptyState';
+import GlossaModal from './GlossaModal';
 
 export default function LogsTab() {
   const toast = useToast();
@@ -354,95 +355,81 @@ export default function LogsTab() {
       </div>
 
       {/* Git style Double Column Diff Modal */}
-      {diffModalOpen && activeLog && (() => {
+      {activeLog && (() => {
         let parsed;
         try {
           parsed = JSON.parse(activeLog.details);
         } catch {
           // 非 JSON 格式日志（如新建词条、批量导入等）展示完整元信息 + 原文详情
           return (
-            <div className="modal-backdrop">
-              <div className="modal-content" style={{ maxWidth: '560px', width: '90%' }}>
-                <div className="modal-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <History size={16} style={{ color: 'var(--accent)' }} />
-                    <h3 style={{ margin: 0 }}>日志详情</h3>
-                  </div>
-                  <button onClick={() => setDiffModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
+            <GlossaModal
+              isOpen={diffModalOpen}
+              onClose={() => setDiffModalOpen(false)}
+              title="日志详情"
+              maxWidth="560px"
+              footer={<button onClick={() => setDiffModalOpen(false)} className="btn btn-primary" style={{ width: '100px' }}>关闭</button>}
+            >
+              <div style={{ padding: '1rem 0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem', background: 'var(--bg-primary)', padding: '0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.82rem' }}>
+                  <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '王赵云'}</strong></div>
+                  <div>操作时间: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.timestamp}</strong></div>
+                  <div>所属数据表: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.version_name || activeLog.version || '通用'}</strong></div>
+                  <div>词条键名: <code style={{ color: 'var(--accent)' }}>{activeLog.kw || '-'}</code></div>
+                  <div style={{ gridColumn: 'span 2' }}>中文源文: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.chinese || '-'}</strong></div>
                 </div>
-                <div className="modal-body" style={{ padding: '1rem 0' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem', background: 'var(--bg-primary)', padding: '0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.82rem' }}>
-                    <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '王赵云'}</strong></div>
-                    <div>操作时间: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.timestamp}</strong></div>
-                    <div>所属数据表: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.version_name || activeLog.version || '通用'}</strong></div>
-                    <div>词条键名: <code style={{ color: 'var(--accent)' }}>{activeLog.kw || '-'}</code></div>
-                    <div style={{ gridColumn: 'span 2' }}>中文源文: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.chinese || '-'}</strong></div>
-                  </div>
-                  <div style={{ marginTop: '1rem', padding: '0 1.5rem' }}>
-                    <div style={{ marginBottom: '0.5rem', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-secondary)' }}>详情内容</div>
-                    <pre style={{ margin: 0, padding: '0.75rem', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', color: 'var(--text-primary)', wordBreak: 'break-all', whiteSpace: 'pre-wrap', border: '1px solid var(--border-color)', maxHeight: '40vh', overflowY: 'auto' }}>{activeLog.details || '（无详情）'}</pre>
-                  </div>
-                </div>
-                <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button onClick={() => setDiffModalOpen(false)} className="btn btn-primary" style={{ width: '100px' }}>关闭</button>
+                <div style={{ marginTop: '1rem', padding: '0 1.5rem' }}>
+                  <div style={{ marginBottom: '0.5rem', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-secondary)' }}>详情内容</div>
+                  <pre style={{ margin: 0, padding: '0.75rem', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', color: 'var(--text-primary)', wordBreak: 'break-all', whiteSpace: 'pre-wrap', border: '1px solid var(--border-color)', maxHeight: '40vh', overflowY: 'auto' }}>{activeLog.details || '（无详情）'}</pre>
                 </div>
               </div>
-            </div>
+            </GlossaModal>
           );
         }
         return (
-          <div className="modal-backdrop">
-            <div className="modal-content" style={{ maxWidth: '780px', width: '90%' }}>
-              <div className="modal-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <History size={16} style={{ color: 'var(--accent)' }} />
-                  <h3 style={{ margin: 0 }}>Git 风格对比修改器</h3>
-                </div>
-                <button onClick={() => setDiffModalOpen(false)} className="close-btn" aria-label="关闭">&times;</button>
-              </div>
-              
-              <div className="modal-body" style={{ padding: '1rem 0' }}>
-                {/* Meta details */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginBottom: '1.25rem', fontSize: '0.78rem' }}>
-                  <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '王赵云'}</strong></div>
-                  <div>修改时间: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.timestamp}</strong></div>
-                  <div>所属大表: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.version_name || activeLog.version || '通用'}</strong></div>
-                  <div>词条键名: <code style={{ color: 'var(--accent)' }}>{activeLog.kw}</code></div>
-                  <div style={{ gridColumn: 'span 2' }}>中文源文: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.chinese}</strong></div>
-                  <div style={{ gridColumn: 'span 2' }}>修改字段: <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>{parsed.field}</span></div>
-                </div>
-
-                {/* Left/Right double columns diff layout */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', minHeight: '120px' }}>
-                  
-                  {/* Left: Previous (DELETED) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                    <div style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--red)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                      修改前 (Previous Value)
-                    </div>
-                    <div style={{ padding: '0.75rem', background: 'rgba(239, 68, 68, 0.05)', color: '#fda4af', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                      {parsed.oldVal || <span style={{ fontStyle: 'italic', color: 'rgba(239,68,68,0.4)' }}>[空/未配置]</span>}
-                    </div>
-                  </div>
-
-                  {/* Right: Updated (ADDED) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                    <div style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--green)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                      修改后 (New Value)
-                    </div>
-                    <div style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.05)', color: 'var(--green-soft)', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                      {parsed.newVal || <span style={{ fontStyle: 'italic', color: 'rgba(16,185,129,0.4)' }}>[已清空]</span>}
-                    </div>
-                  </div>
-
-                </div>
+          <GlossaModal
+            isOpen={diffModalOpen}
+            onClose={() => setDiffModalOpen(false)}
+            title="Git 风格对比修改器"
+            maxWidth="780px"
+            footer={<button onClick={() => setDiffModalOpen(false)} className="btn btn-primary" style={{ width: '100px' }}>关闭</button>}
+          >
+            <div style={{ padding: '1rem 0' }}>
+              {/* Meta details */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginBottom: '1.25rem', fontSize: '0.78rem' }}>
+                <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '王赵云'}</strong></div>
+                <div>修改时间: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.timestamp}</strong></div>
+                <div>所属大表: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.version_name || activeLog.version || '通用'}</strong></div>
+                <div>词条键名: <code style={{ color: 'var(--accent)' }}>{activeLog.kw}</code></div>
+                <div style={{ gridColumn: 'span 2' }}>中文源文: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.chinese}</strong></div>
+                <div style={{ gridColumn: 'span 2' }}>修改字段: <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>{parsed.field}</span></div>
               </div>
 
-              <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button onClick={() => setDiffModalOpen(false)} className="btn btn-primary" style={{ width: '100px' }}>关闭</button>
+              {/* Left/Right double columns diff layout */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', minHeight: '120px' }}>
+
+                {/* Left: Previous (DELETED) */}
+                <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                  <div style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--red)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                    修改前 (Previous Value)
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'rgba(239, 68, 68, 0.05)', color: '#fda4af', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {parsed.oldVal || <span style={{ fontStyle: 'italic', color: 'rgba(239,68,68,0.4)' }}>[空/未配置]</span>}
+                  </div>
+                </div>
+
+                {/* Right: Updated (ADDED) */}
+                <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                  <div style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--green)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
+                    修改后 (New Value)
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.05)', color: 'var(--green-soft)', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {parsed.newVal || <span style={{ fontStyle: 'italic', color: 'rgba(16,185,129,0.4)' }}>[已清空]</span>}
+                  </div>
+                </div>
+
               </div>
             </div>
-          </div>
+          </GlossaModal>
         );
       })()}
 

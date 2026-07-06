@@ -5,6 +5,7 @@ import { useToast } from './Toast';
 import EmptyState from './EmptyState';
 import { SkeletonTable } from './Skeleton';
 import Pagination from './Pagination';
+import GlossaModal from './GlossaModal';
 import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock, CheckCircle, Settings, Copy } from 'lucide-react';
 
 const DEFAULT_TARGET_LANGUAGES = [
@@ -2196,28 +2197,37 @@ export default function TranslationTab({
 
       {/* Modal 1: Edit Modal */}
       {editModalRecord && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '1000px', width: '95%' }}>
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                编辑词条翻译 - {editModalRecord.KW}
-                {(editModalRecord.isLocked === 1 || editModalRecord.isLocked === true) && (
-                  <span className="diff-tag" style={{ backgroundColor: 'var(--red)', color: '#fff', fontSize: '0.75rem', padding: '0.1rem 0.5rem' }}>
-                    🔒 锁定只读
-                  </span>
-                )}
-              </h3>
-              <button onClick={() => setEditModalRecord(null)} className="modal-close">✕</button>
-            </div>
-            
+        <GlossaModal
+          isOpen={true}
+          onClose={() => setEditModalRecord(null)}
+          title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            编辑词条翻译 - {editModalRecord.KW}
             {(editModalRecord.isLocked === 1 || editModalRecord.isLocked === true) && (
-              <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', padding: '0.6rem 1.5rem', color: 'var(--red)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <AlertCircle size={14} />
-                <span>此词条已被管理员锁定。普通翻译用户仅可查看数据，无法提交保存修改。</span>
-              </div>
+              <span className="diff-tag" style={{ backgroundColor: 'var(--red)', color: '#fff', fontSize: '0.75rem', padding: '0.1rem 0.5rem' }}>
+                🔒 锁定只读
+              </span>
             )}
-
-            <div className="modal-body" style={{ display: 'flex', gap: '1.5rem', maxHeight: '68vh', overflowY: 'auto' }}>
+          </span>}
+          maxWidth="1000px"
+          width="95%"
+          footer={<>
+            <button onClick={() => setEditModalRecord(null)} className="btn btn-secondary">取消</button>
+            <button
+              onClick={handleSaveEdit}
+              disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+              className="btn btn-primary"
+            >
+              保存修改
+            </button>
+          </>}
+        >
+          {(editModalRecord.isLocked === 1 || editModalRecord.isLocked === true) && (
+            <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', padding: '0.6rem 1.5rem', color: 'var(--red)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <AlertCircle size={14} />
+              <span>此词条已被管理员锁定。普通翻译用户仅可查看数据，无法提交保存修改。</span>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '1.5rem', maxHeight: '68vh', overflowY: 'auto' }}>
               
               {/* 左侧主要修改表单 */}
               <div style={{ flex: 3, minWidth: '450px' }}>
@@ -2418,31 +2428,21 @@ export default function TranslationTab({
                   </>
                 )}
               </div>
-            </div>
-
-            <div className="modal-footer">
-              <button onClick={() => setEditModalRecord(null)} className="btn btn-secondary">取消</button>
-              <button 
-                onClick={handleSaveEdit} 
-                disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
-                className="btn btn-primary"
-              >
-                保存修改
-              </button>
-            </div>
           </div>
-        </div>
+        </GlossaModal>
       )}
 
       {/* Modal 2: Add Modal */}
       {addModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">新增翻译词条</h3>
-              <button onClick={() => setAddModalOpen(false)} className="modal-close">✕</button>
-            </div>
-            <div className="modal-body">
+        <GlossaModal
+          isOpen={true}
+          onClose={() => setAddModalOpen(false)}
+          title="新增翻译词条"
+          footer={<>
+            <button onClick={() => setAddModalOpen(false)} className="btn btn-secondary">取消</button>
+            <button onClick={handleSaveAdd} className="btn btn-primary">保存新增</button>
+          </>}
+        >
               <div className="edit-grid">
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>目标版本 (数据表)</label>
@@ -2529,31 +2529,50 @@ export default function TranslationTab({
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => setAddModalOpen(false)} className="btn btn-secondary">取消</button>
-              <button onClick={handleSaveAdd} className="btn btn-primary">保存新增</button>
-            </div>
-          </div>
-        </div>
+        </GlossaModal>
       )}
 
       {/* Modal 3: Batch Translate Preview & Status */}
       {batchTranslateOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '900px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Dify 批量智能翻译工作流 ({batchPreviewList.length} 条待翻译)</h3>
-              <button 
-                onClick={() => !isTranslatingBatch && setBatchTranslateOpen(false)} 
-                className="modal-close"
-                disabled={isTranslatingBatch}
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <GlossaModal
+          isOpen={true}
+          onClose={() => setBatchTranslateOpen(false)}
+          title={`Dify 批量智能翻译工作流 (${batchPreviewList.length} 条待翻译)`}
+          maxWidth="900px"
+          closeDisabled={isTranslatingBatch}
+          footer={<>
+            <button
+              onClick={() => setBatchTranslateOpen(false)}
+              className="btn btn-secondary"
+              disabled={isTranslatingBatch}
+            >
+              取消
+            </button>
+            <button
+              onClick={handleStartBatchTranslate}
+              className="btn btn-secondary"
+              disabled={isTranslatingBatch || isSavingBatch}
+            >
+              {isTranslatingBatch ? (
+                <><Loader2 size={14} className="animate-spin" /> 正在调用 Dify 翻译...</>
+              ) : (
+                '开始 Dify 翻译'
+              )}
+            </button>
+            <button
+              onClick={handleConfirmBatchWrite}
+              className="btn btn-primary"
+              disabled={isTranslatingBatch || isSavingBatch || batchPreviewList.every(i => Object.keys(i.translations).length === 0)}
+            >
+              {isSavingBatch ? (
+                <><Loader2 size={14} className="animate-spin" /> 正在保存到本地数据库...</>
+              ) : (
+                <><Check size={14} /> 确认并保存到本地数据库</>
+              )}
+            </button>
+          </>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {/* Target Table Selector */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>目标版本 (数据表):</span>
@@ -2636,59 +2655,46 @@ export default function TranslationTab({
                 </table>
               </div>
             </div>
-
-            <div className="modal-footer">
-              <button 
-                onClick={() => setBatchTranslateOpen(false)} 
-                className="btn btn-secondary"
-                disabled={isTranslatingBatch}
-              >
-                取消
-              </button>
-              
-              <button
-                onClick={handleStartBatchTranslate}
-                className="btn btn-secondary"
-                disabled={isTranslatingBatch || isSavingBatch}
-              >
-                {isTranslatingBatch ? (
-                  <><Loader2 size={14} className="animate-spin" /> 正在调用 Dify 翻译...</>
-                ) : (
-                  '开始 Dify 翻译'
-                )}
-              </button>
-
-              <button
-                onClick={handleConfirmBatchWrite}
-                className="btn btn-primary"
-                disabled={isTranslatingBatch || isSavingBatch || batchPreviewList.every(i => Object.keys(i.translations).length === 0)}
-              >
-                {isSavingBatch ? (
-                  <><Loader2 size={14} className="animate-spin" /> 正在保存到本地数据库...</>
-                ) : (
-                  <><Check size={14} /> 确认并保存到本地数据库</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+        </GlossaModal>
       )}
       {/* Modal 4: Batch Add Terms */}
       {batchAddModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '1000px', width: '95vw' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">手动批量新增词条 (最多15条)</h3>
-              <button 
-                onClick={() => !isTranslatingBatchAdd && setBatchAddModalOpen(false)} 
-                className="modal-close"
-                disabled={isTranslatingBatchAdd}
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <GlossaModal
+          isOpen={true}
+          onClose={() => setBatchAddModalOpen(false)}
+          title="手动批量新增词条 (最多15条)"
+          maxWidth="1000px"
+          width="95vw"
+          closeDisabled={isTranslatingBatchAdd}
+          footer={<>
+            <button
+              onClick={() => setBatchAddModalOpen(false)}
+              className="btn btn-secondary"
+              disabled={isTranslatingBatchAdd}
+            >
+              取消
+            </button>
+            <button
+              onClick={handleStartBatchAddTranslate}
+              className="btn btn-secondary"
+              disabled={isTranslatingBatchAdd}
+            >
+              {isTranslatingBatchAdd ? (
+                <><Loader2 size={14} className="animate-spin" /> 正在调用 Dify 翻译...</>
+              ) : (
+                'AI 批量翻译'
+              )}
+            </button>
+            <button
+              onClick={handleConfirmBatchAddWrite}
+              className="btn btn-primary"
+              disabled={isTranslatingBatchAdd}
+            >
+              确认批量写入 (仅完成翻译词条)
+            </button>
+          </>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {/* Target Table Selector */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>目标版本 (数据表):</span>
@@ -2836,47 +2842,22 @@ export default function TranslationTab({
                 </button>
               </div>
             </div>
-            
-            <div className="modal-footer">
-              <button 
-                onClick={() => setBatchAddModalOpen(false)} 
-                className="btn btn-secondary"
-                disabled={isTranslatingBatchAdd}
-              >
-                取消
-              </button>
-              <button
-                onClick={handleStartBatchAddTranslate}
-                className="btn btn-secondary"
-                disabled={isTranslatingBatchAdd}
-              >
-                {isTranslatingBatchAdd ? (
-                  <><Loader2 size={14} className="animate-spin" /> 正在调用 Dify 翻译...</>
-                ) : (
-                  'AI 批量翻译'
-                )}
-              </button>
-              <button
-                onClick={handleConfirmBatchAddWrite}
-                className="btn btn-primary"
-                disabled={isTranslatingBatchAdd}
-              >
-                确认批量写入 (仅完成翻译词条)
-              </button>
-            </div>
-          </div>
-        </div>
+        </GlossaModal>
       )}
 
       {/* Modal 3: Batch Update Fields */}
       {batchUpdateOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '480px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">批量设置分类字段</h3>
-              <button onClick={() => setBatchUpdateOpen(false)} className="modal-close">✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <GlossaModal
+          isOpen={true}
+          onClose={() => setBatchUpdateOpen(false)}
+          title="批量设置分类字段"
+          maxWidth="480px"
+          footer={<>
+            <button onClick={() => setBatchUpdateOpen(false)} className="btn btn-secondary">取消</button>
+            <button onClick={handleBatchUpdateFields} className="btn btn-primary">确认修改</button>
+          </>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="alert-box alert-box-success" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
                 <span>您已选中 <strong>{selectedRecordIds.size}</strong> 条词条记录。</span>
               </div>
@@ -2901,23 +2882,28 @@ export default function TranslationTab({
                 />
               </div>
             </div>
-            <div className="modal-footer">
-              <button onClick={() => setBatchUpdateOpen(false)} className="btn btn-secondary">取消</button>
-              <button onClick={handleBatchUpdateFields} className="btn btn-primary">确认修改</button>
-            </div>
-          </div>
-        </div>
+        </GlossaModal>
       )}
 
       {/* Modal 4: Batch Copy to Version */}
       {batchCopyOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '480px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">复制词条到其他大表</h3>
-              <button onClick={() => setBatchCopyOpen(false)} className="modal-close">✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <GlossaModal
+          isOpen={true}
+          onClose={() => setBatchCopyOpen(false)}
+          title="复制词条到其他大表"
+          maxWidth="480px"
+          footer={<>
+            <button onClick={() => setBatchCopyOpen(false)} className="btn btn-secondary">取消</button>
+            <button
+              onClick={handleBatchCopyVersions}
+              disabled={!batchCopyTargetTableId}
+              className="btn btn-primary"
+            >
+              开始复制
+            </button>
+          </>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="alert-box alert-box-success" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
                 <span>准备复制 <strong>{selectedRecordIds.size}</strong> 条选中的词条。</span>
               </div>
@@ -2963,29 +2949,28 @@ export default function TranslationTab({
                 </div>
               </div>
             </div>
-            <div className="modal-footer">
-              <button onClick={() => setBatchCopyOpen(false)} className="btn btn-secondary">取消</button>
-              <button 
-                onClick={handleBatchCopyVersions} 
-                disabled={!batchCopyTargetTableId}
-                className="btn btn-primary"
-              >
-                开始复制
-              </button>
-            </div>
-          </div>
-        </div>
+        </GlossaModal>
       )}
 
       {/* Modal 5: TM Inherit Overlay */}
       {syncInheritOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '520px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">继承/补充其他大表翻译</h3>
-              <button onClick={() => setSyncInheritOpen(false)} className="modal-close">✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <GlossaModal
+          isOpen={true}
+          onClose={() => setSyncInheritOpen(false)}
+          title="继承/补充其他大表翻译"
+          maxWidth="520px"
+          footer={<>
+            <button onClick={() => setSyncInheritOpen(false)} className="btn btn-secondary" disabled={inheriting}>取消</button>
+            <button
+              onClick={handleInheritTranslationsSubmit}
+              disabled={!syncInheritSourceId || inheriting}
+              className="btn btn-primary"
+            >
+              {inheriting ? '正在执行合并继承...' : '开始继承'}
+            </button>
+          </>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
                 💡 <strong>合并继承机制</strong>：
                 系统将检索源大表中相同的 <strong>KW</strong> 记录，如果当前大表对应的词条有某些语种为空（尚未翻译），系统会自动将源版本里已翻译的值填补过来，<strong>绝不会覆盖您当前表中已经翻译过的内容</strong>。
@@ -3006,28 +2991,27 @@ export default function TranslationTab({
                 </select>
               </div>
             </div>
-            <div className="modal-footer">
-              <button onClick={() => setSyncInheritOpen(false)} className="btn btn-secondary" disabled={inheriting}>取消</button>
-              <button 
-                onClick={handleInheritTranslationsSubmit} 
-                disabled={!syncInheritSourceId || inheriting}
-                className="btn btn-primary"
-              >
-                {inheriting ? '正在执行合并继承...' : '开始继承'}
-              </button>
-            </div>
-          </div>
-        </div>
+        </GlossaModal>
       )}
       {/* Modal 6: Batch Approve Workflow Modal */}
       {batchApproveOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '480px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">批量审核词条状态</h3>
-              <button onClick={() => setBatchApproveOpen(false)} className="modal-close">✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <GlossaModal
+          isOpen={true}
+          onClose={() => setBatchApproveOpen(false)}
+          title="批量审核词条状态"
+          maxWidth="480px"
+          footer={<>
+            <button onClick={() => setBatchApproveOpen(false)} className="btn btn-secondary">取消</button>
+            <button
+              onClick={handleBatchApproveSubmit}
+              disabled={batchApproveStatus === 'REJECTED' && !batchApproveRejectReason.trim()}
+              className="btn btn-primary"
+            >
+              确认提交
+            </button>
+          </>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="alert-box alert-box-success" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
                 <span>准备审核 <strong>{selectedRecordIds.size}</strong> 条选中的词条（将自动过滤被锁定的词条）。</span>
               </div>
@@ -3061,18 +3045,7 @@ export default function TranslationTab({
                 </div>
               )}
             </div>
-            <div className="modal-footer">
-              <button onClick={() => setBatchApproveOpen(false)} className="btn btn-secondary">取消</button>
-              <button 
-                onClick={handleBatchApproveSubmit} 
-                disabled={batchApproveStatus === 'REJECTED' && !batchApproveRejectReason.trim()}
-                className="btn btn-primary"
-              >
-                确认提交
-              </button>
-            </div>
-          </div>
-        </div>
+        </GlossaModal>
       )}
     </div>
   );

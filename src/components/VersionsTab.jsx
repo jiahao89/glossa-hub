@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from './Toast';
 import { Plus, Trash2, Calendar, FileText, LayoutGrid, AlertOctagon, ArrowRight, Clock, User, Edit2 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import GlossaModal from './GlossaModal';
 
 export default function VersionsTab({ onNavigate }) {
   const toast = useToast();
@@ -268,15 +269,18 @@ export default function VersionsTab({ onNavigate }) {
       </div>
 
       {/* Add Modal */}
-      {addModalOpen && (
-        <div className="modal-backdrop flex-center" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
-          <div className="card" style={{ width: '400px', padding: '1.5rem', border: '1px solid var(--border-color)' }}>
+      <GlossaModal
+        isOpen={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        variant="simple"
+        width="400px"
+      >
             <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', fontWeight: '600' }}>新建固件数据表</h3>
             <form onSubmit={handleAddTable}>
               <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>数据表名称 / 固件版本号</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={newVersionName}
                   onChange={(e) => setNewVersionName(e.target.value)}
                   placeholder="例如: C406 Pro v2.1"
@@ -288,7 +292,7 @@ export default function VersionsTab({ onNavigate }) {
 
               <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>继承翻译数据自 (基准大表/可选)</label>
-                <select 
+                <select
                   value={baseVersionId}
                   onChange={(e) => setBaseVersionId(e.target.value)}
                   style={{ width: '100%', padding: '0.62rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer' }}
@@ -310,20 +314,21 @@ export default function VersionsTab({ onNavigate }) {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </GlossaModal>
 
       {/* Edit Modal */}
-      {editModalOpen && (
-        <div className="modal-backdrop flex-center" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
-          <div className="card" style={{ width: '400px', padding: '1.5rem', border: '1px solid var(--border-color)' }}>
+      <GlossaModal
+        isOpen={editModalOpen}
+        onClose={() => { setEditModalOpen(false); setEditingTable(null); }}
+        variant="simple"
+        width="400px"
+      >
             <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', fontWeight: '600' }}>修改固件数据表名称</h3>
             <form onSubmit={handleEditTable}>
               <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>数据表名称 / 固件版本号</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editVersionName}
                   onChange={(e) => setEditVersionName(e.target.value)}
                   placeholder="例如: C406 Pro v2.1"
@@ -342,9 +347,7 @@ export default function VersionsTab({ onNavigate }) {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </GlossaModal>
     </div>
   );
 }
