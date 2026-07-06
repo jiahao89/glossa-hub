@@ -12,7 +12,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 // 新增可访问性特性：
 //   - ESC 键关闭
 //   - 点击 backdrop 关闭（可选）
-//   - 打开时自动聚焦第一个可交互元素
+//   - 打开时自动聚焦对话框容器
 //   - role="dialog" + aria-modal="true" + aria-labelledby
 //
 // 用法：
@@ -98,7 +98,7 @@ export default function GlossaModal({
 
   const contentStyle = variant === 'simple'
     ? { width: width || '400px', padding: '1.5rem', border: '1px solid var(--border-color)' }
-    : { ...(maxWidth && { maxWidth }), ...(width && { width }) };
+    : { maxWidth: maxWidth || width, ...(width && { width }) };
 
   return (
     <div
