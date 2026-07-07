@@ -94,6 +94,11 @@ async function initDatabase() {
         if (match) servername = match[1];
       }
 
+      // 如果连接串指向 Supabase 实例，无论用的是直连还是池化，强制使用物理主机的 SNI 标识
+      if (pgUrl.includes('supabase')) {
+        servername = 'db.seypmsanzhhbucnilcgl.supabase.co';
+      }
+
       const pgConfig = parse(pgUrl);
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
 
