@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS terms (
     owner TEXT, -- The developer in charge (e.g. 王赵云)
     zh_cn TEXT NOT NULL,
     translations JSONB NOT NULL DEFAULT '{}'::jsonb, -- E.g. {"EN（英文）": "Speed", "FR（法）": "Vitesse"}
+    translations_meta JSONB NOT NULL DEFAULT '{}'::jsonb, -- 翻译来源标记 {"EN（英文）": "ai", "FR（法）": "human"}
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_by VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
@@ -178,6 +179,20 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     fields TEXT DEFAULT '{}'
+);
+
+-- 14b. AI Usage Logs (P1-2: AI 用量追踪)
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+    project_id VARCHAR(64) NOT NULL,
+    term_kw TEXT,
+    zh_cn TEXT,
+    target_languages TEXT,
+    total_tokens INTEGER DEFAULT 0,
+    elapsed_time REAL DEFAULT 0,
+    status TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- 15. Performance Indexes

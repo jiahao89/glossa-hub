@@ -8,6 +8,7 @@
     "server": "node server.cjs",
     "dev:all": "concurrently \"npm run dev\" \"node server.cjs\"",
     "build": "vite build",
+    "start": "node server.cjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",

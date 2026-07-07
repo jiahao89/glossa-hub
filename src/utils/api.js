@@ -1,10 +1,13 @@
 /**
  * 统一 API 请求封装
  * 自动附带 JWT Token，401 时自动跳转登录页
+ * 支持通过环境变量配置 API 地址（云端部署）
  */
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
 export async function apiFetch(url, options = {}) {
   const token = localStorage.getItem('token');
-  const res = await fetch(url, {
+  const res = await fetch(`${API_BASE}${url}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

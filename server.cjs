@@ -7,7 +7,7 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // JWT_SECRET: 生产环境必须通过环境变量设置；开发环境给默认值但打警告
 const JWT_SECRET = process.env.JWT_SECRET;
