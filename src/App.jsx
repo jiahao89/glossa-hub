@@ -26,13 +26,28 @@ import {
   User,
   ShieldCheck,
   Database,
-  BookOpen
+  BookOpen,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedTableId, setSelectedTableId] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // 主题状态: 'dark' 或 'light'
+  const [theme, setTheme] = useState(() => localStorage.getItem('glossahub_theme') || 'dark');
+
+  // 主题切换时动态应用 light-mode CSS 样式并持久化存储
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light-mode');
+    } else {
+      document.documentElement.classList.remove('light-mode');
+    }
+    localStorage.setItem('glossahub_theme', theme);
+  }, [theme]);
 
   const handleNavigate = (tab, targetTableId = '') => {
     setActiveTab(tab);
@@ -407,14 +422,37 @@ export default function App() {
             <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{getBreadcrumbTitle()}</span>
           </div>
 
-          {/* Dify state indicator */}
-          <div className="status-indicator" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem' }}>
-            <Globe size={13} style={{ color: 'var(--text-muted)' }} />
-            <span style={{ color: 'var(--text-secondary)' }}>Dify 翻译引擎状态:</span>
-            <div className={`status-dot ${difyConnected ? 'active' : 'inactive'}`} />
-            <span style={{ color: difyConnected ? 'var(--green)' : 'var(--red)', fontWeight: '500' }}>
-              {difyConnected ? '已联通' : '未配置'}
-            </span>
+          {/* Dify state indicator & Theme Toggle */}
+          <div className="status-indicator" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', fontSize: '0.75rem' }}>
+            {/* Theme Toggle Button */}
+            <button
+              onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '6px',
+                borderRadius: 'var(--radius-md)',
+                transition: 'var(--transition)'
+              }}
+              title={theme === 'dark' ? '切换为明亮模式' : '切换为暗黑模式'}
+            >
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+
+            <div style={{ width: '1px', height: '14px', background: 'var(--border-color)' }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Globe size={13} style={{ color: 'var(--text-muted)' }} />
+              <span style={{ color: 'var(--text-secondary)' }}>Dify 翻译引擎状态:</span>
+              <div className={`status-dot ${difyConnected ? 'active' : 'inactive'}`} />
+              <span style={{ color: difyConnected ? 'var(--green)' : 'var(--red)', fontWeight: '500' }}>
+                {difyConnected ? '已联通' : '未配置'}
+              </span>
+            </div>
           </div>
         </header>
 

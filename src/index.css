@@ -7,11 +7,11 @@
   --font-sans: 'Outfit', 'Inter', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
-  /* 映射项目暗色主题色彩到 Tailwind 令牌 */
-  --color-surface: #0e0e10;
-  --color-surface-foreground: #f8fafc;
-  --color-accent: #00f2ff;
-  --color-accent-foreground: #0e0e10;
+  /* 映射项目主题色彩到 Tailwind 令牌 (动态适配暗/明模式) */
+  --color-surface: var(--bg-primary);
+  --color-surface-foreground: var(--text-primary);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--bg-primary);
 }
 
 /* ===== Toast 通知动画 ===== */
@@ -26,6 +26,7 @@
   100% { background-position: -200% 0; }
 }
 
+/* 默认暗色模式变量 (Dark Mode - Default) */
 :root {
   --bg-primary: #0e0e10;
   --bg-secondary: #16161a;
@@ -58,6 +59,37 @@
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
+}
+
+/* 明亮模式变量覆盖 (Light Mode) */
+html.light-mode {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-hover: #e2e8f0;
+  --accent: #2563eb; /* 皇家蓝作为明亮高亮色 */
+  --accent-rgb: 37, 99, 235;
+  --accent-glow: rgba(37, 99, 235, 0.1);
+  
+  --green: #059669;
+  --green-bg: rgba(5, 150, 105, 0.1);
+  --green-soft: #10b981;
+  --yellow: #d97706;
+  --yellow-bg: rgba(217, 119, 6, 0.1);
+  --red: #dc2626;
+  --red-bg: rgba(220, 38, 38, 0.1);
+  --red-soft: #f43f5e;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  
+  --border-color: #e2e8f0;
+  --border-focus: #cbd5e1;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 /* Global Reset */
