@@ -203,7 +203,7 @@ export default function DashboardTab({ onNavigate }) {
                   
                   {/* Progress Line */}
                   <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden', marginBottom: '0.75rem' }}>
-                    <div style={{ width: `${v.progress}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent) 0%, #06b6d4 50%, #22d3ee 100%)', borderRadius: '4px', transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                    <div style={{ width: `${v.progress}%`, height: '100%', background: 'var(--accent)', borderRadius: '4px', transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)' }} />
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -273,7 +273,7 @@ export default function DashboardTab({ onNavigate }) {
       {aiUsage && (
         <div className="stats-bento" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem', marginTop: '0.5rem' }}>
           <div className="bento-card">
-            <div className="bento-icon-wrapper" style={{ background: 'rgba(139, 92, 246, 0.08)', color: '#a78bfa' }}>
+            <div className="bento-icon-wrapper" style={{ background: 'var(--purple-bg)', color: 'var(--purple)' }}>
               <Cpu size={18} />
             </div>
             <div className="bento-info">
@@ -282,7 +282,7 @@ export default function DashboardTab({ onNavigate }) {
             </div>
           </div>
           <div className="bento-card">
-            <div className="bento-icon-wrapper" style={{ background: 'rgba(168, 85, 247, 0.08)', color: '#c084fc' }}>
+            <div className="bento-icon-wrapper" style={{ background: 'var(--purple-bg)', color: 'var(--purple)' }}>
               <Zap size={18} />
             </div>
             <div className="bento-info">
@@ -291,7 +291,7 @@ export default function DashboardTab({ onNavigate }) {
             </div>
           </div>
           <div className="bento-card">
-            <div className="bento-icon-wrapper" style={{ background: 'rgba(124, 58, 237, 0.08)', color: '#8b5cf6' }}>
+            <div className="bento-icon-wrapper" style={{ background: 'var(--purple-bg)', color: 'var(--purple)' }}>
               <Activity size={18} />
             </div>
             <div className="bento-info">
@@ -319,10 +319,10 @@ export default function DashboardTab({ onNavigate }) {
                       width: `${l.coverage}%`,
                       height: '100%',
                       background: l.coverage >= 80
-                        ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)'
+                        ? 'var(--green)'
                         : l.coverage >= 40
-                        ? 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)'
-                        : 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)',
+                        ? 'var(--yellow)'
+                        : 'var(--red)',
                       borderRadius: '5px',
                       transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
                     }}

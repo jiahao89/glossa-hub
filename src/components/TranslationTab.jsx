@@ -1846,7 +1846,7 @@ export default function TranslationTab({
                   backgroundColor: 'var(--bg-secondary)', 
                   border: '1px solid var(--border-color)', 
                   borderRadius: 'var(--radius-md)', 
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)', 
+                  boxShadow: 'var(--shadow-lg)', 
                   zIndex: 150, 
                   padding: '0.5rem' 
                 }}
@@ -2126,7 +2126,7 @@ export default function TranslationTab({
                           } else if (recStatus === 'REJECTED') {
                             return <span className="diff-tag" style={{ backgroundColor: 'var(--red)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }} title={rec.rejectReason || '已驳回'}>已驳回</span>;
                           } else if (recStatus === 'PUBLISHED') {
-                            return <span className="diff-tag" style={{ backgroundColor: '#8b5cf6', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已发布</span>;
+                            return <span className="diff-tag" style={{ backgroundColor: 'var(--purple)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已发布</span>;
                           }
                           return null;
                         })()}
@@ -2145,10 +2145,10 @@ export default function TranslationTab({
                       }, 0);
                       const pct = totalLangs > 0 ? Math.round((translatedCount / totalLangs) * 100) : 0;
                       // 颜色：0% 红、<50% 橙、<100% 蓝、100% 绿
-                      const color = translatedCount === 0 ? '#ef4444'
-                        : pct < 50 ? '#f59e0b'
-                        : pct < 100 ? '#3b82f6'
-                        : '#10b981';
+                      const color = translatedCount === 0 ? 'var(--red)'
+                        : pct < 50 ? 'var(--yellow)'
+                        : pct < 100 ? 'var(--accent)'
+                        : 'var(--green)';
                       return (
                         <td style={{ textAlign: 'center', padding: '0 0.5rem' }}>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -2188,7 +2188,7 @@ export default function TranslationTab({
                           {val ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                               <span className="truncate" style={{ maxWidth: isAiSource || isTmSource ? 'calc(100% - 14px)' : '100%' }}>{val}</span>
-                              {isAiSource && <Bot size={11} style={{ flexShrink: 0, color: '#a78bfa' }} />}
+                              {isAiSource && <Bot size={11} style={{ flexShrink: 0, color: 'var(--purple)' }} />}
                               {isTmSource && <Check size={11} style={{ flexShrink: 0, color: 'var(--green)' }} />}
                             </span>
                           ) : <span className="cell-empty">未翻译</span>}
@@ -2341,14 +2341,14 @@ export default function TranslationTab({
                   <button 
                     onClick={() => setActiveRightTab('tm')}
                     className={`btn ${activeRightTab === 'tm' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ flex: 1, height: '30px', fontSize: '0.8rem', padding: '0', background: activeRightTab === 'tm' ? 'var(--accent)' : 'transparent', color: activeRightTab === 'tm' ? '#fff' : 'var(--text-secondary)' }}
+                    style={{ flex: 1, height: '30px', fontSize: '0.8rem', padding: '0', background: activeRightTab === 'tm' ? 'var(--accent)' : 'transparent', color: activeRightTab === 'tm' ? 'var(--bg-primary)' : 'var(--text-secondary)' }}
                   >
                     🧠 跨版本参考 ({tmReferences.length})
                   </button>
                   <button 
                     onClick={() => setActiveRightTab('history')}
                     className={`btn ${activeRightTab === 'history' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ flex: 1, height: '30px', fontSize: '0.8rem', padding: '0', background: activeRightTab === 'history' ? 'var(--accent)' : 'transparent', color: activeRightTab === 'history' ? '#fff' : 'var(--text-secondary)' }}
+                    style={{ flex: 1, height: '30px', fontSize: '0.8rem', padding: '0', background: activeRightTab === 'history' ? 'var(--accent)' : 'transparent', color: activeRightTab === 'history' ? 'var(--bg-primary)' : 'var(--text-secondary)' }}
                   >
                     🕒 修改历史 ({snapshots.length})
                   </button>

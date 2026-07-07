@@ -44,6 +44,8 @@
   --red: #ef4444;
   --red-bg: rgba(239, 68, 68, 0.12);
   --red-soft: #fda4af;
+  --purple: #8b5cf6;
+  --purple-bg: rgba(139, 92, 246, 0.12);
   
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
@@ -81,6 +83,8 @@ html.light-mode {
   --red: #dc2626;
   --red-bg: rgba(220, 38, 38, 0.1);
   --red-soft: #f43f5e;
+  --purple: #7c3aed;
+  --purple-bg: rgba(124, 58, 237, 0.1);
   
   --text-primary: #0f172a;
   --text-secondary: #475569;
@@ -359,11 +363,11 @@ textarea:focus-visible {
 }
 
 .toolbar-action-btn.is-accent {
-  border-color: rgba(0, 242, 255, 0.3);
+  border-color: rgba(var(--accent-rgb), 0.3);
   color: var(--accent);
 }
 .toolbar-action-btn.is-accent:hover {
-  background-color: rgba(0, 242, 255, 0.1);
+  background-color: rgba(var(--accent-rgb), 0.1);
   border-color: var(--accent);
 }
 
@@ -564,7 +568,7 @@ textarea:focus-visible {
 }
 
 .data-table tr:hover {
-  background-color: rgba(255, 255, 255, 0.04);
+  background-color: var(--bg-hover);
 }
 
 .data-table tbody tr:hover {
@@ -875,8 +879,8 @@ textarea:focus-visible {
 }
 
 .alert-box-info {
-  background-color: rgba(0, 242, 255, 0.05);
-  border-color: rgba(0, 242, 255, 0.2);
+  background-color: rgba(var(--accent-rgb), 0.05);
+  border-color: rgba(var(--accent-rgb), 0.2);
   color: var(--text-primary);
 }
 
@@ -905,6 +909,11 @@ textarea:focus-visible {
 /* Login Portal */
 .login-screen {
   background: radial-gradient(circle at center, #1b2030 0%, #0e0e10 100%);
+}
+
+/* Login Portal - Light Mode */
+html.light-mode .login-screen {
+  background: radial-gradient(circle at center, #e0e7ff 0%, #f8fafc 100%);
 }
 
 .login-card {
@@ -943,7 +952,7 @@ textarea:focus-visible {
   color: var(--bg-primary);
   background-color: var(--accent);
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 242, 255, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 }
 
 /* Collapsed Sidebar overrides */
@@ -970,8 +979,8 @@ textarea:focus-visible {
 
 .stats-bento .bento-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(0, 242, 255, 0.25);
-  box-shadow: 0 0 0 1px var(--accent-glow), 0 8px 24px rgba(0, 0, 0, 0.35);
+  border-color: rgba(var(--accent-rgb), 0.25);
+  box-shadow: 0 0 0 1px var(--accent-glow), var(--shadow-lg);
 }
 
 .bento-icon-wrapper {

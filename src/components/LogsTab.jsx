@@ -408,22 +408,22 @@ export default function LogsTab() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', minHeight: '120px' }}>
 
                 {/* Left: Previous (DELETED) */}
-                <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                  <div style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--red)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--red-bg)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                  <div style={{ background: 'var(--red-bg)', color: 'var(--red)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid var(--red-bg)' }}>
                     修改前 (Previous Value)
                   </div>
-                  <div style={{ padding: '0.75rem', background: 'rgba(239, 68, 68, 0.05)', color: '#fda4af', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    {parsed.oldVal || <span style={{ fontStyle: 'italic', color: 'rgba(239,68,68,0.4)' }}>[空/未配置]</span>}
+                  <div style={{ padding: '0.75rem', background: 'var(--red-bg)', color: 'var(--red)', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {parsed.oldVal || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>[空/未配置]</span>}
                   </div>
                 </div>
 
                 {/* Right: Updated (ADDED) */}
-                <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                  <div style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--green)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--green-bg)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                  <div style={{ background: 'var(--green-bg)', color: 'var(--green)', padding: '0.5rem 0.75rem', fontWeight: 'bold', fontSize: '0.75rem', borderBottom: '1px solid var(--green-bg)' }}>
                     修改后 (New Value)
                   </div>
-                  <div style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.05)', color: 'var(--green-soft)', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    {parsed.newVal || <span style={{ fontStyle: 'italic', color: 'rgba(16,185,129,0.4)' }}>[已清空]</span>}
+                  <div style={{ padding: '0.75rem', background: 'var(--green-bg)', color: 'var(--green)', flex: 1, fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {parsed.newVal || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>[已清空]</span>}
                   </div>
                 </div>
 

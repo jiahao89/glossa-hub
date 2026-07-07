@@ -102,7 +102,7 @@ function ToastItem({ toast, onClose }) {
         borderLeftWidth: '4px',
         borderLeftColor: bg,
         borderRadius: '6px',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px var(--border-color)',
+        boxShadow: 'var(--shadow-lg), 0 0 0 1px var(--border-color)',
         fontSize: '0.875rem',
         color: 'var(--text-primary)',
         pointerEvents: 'auto',

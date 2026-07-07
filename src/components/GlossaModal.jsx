@@ -97,7 +97,7 @@ export default function GlossaModal({
   if (!isOpen) return null;
 
   const contentStyle = variant === 'simple'
-    ? { width: width || '400px', padding: '1.5rem', border: '1px solid var(--border-color)' }
+    ? { width: width || '400px', padding: '1.5rem', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }
     : { maxWidth: maxWidth || width, ...(width && { width }) };
 
   return (

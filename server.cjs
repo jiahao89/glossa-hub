@@ -1,3 +1,6 @@
+// Load .env file if present (for local development)
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -20,11 +23,11 @@ if (!JWT_SECRET) {
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'glossahub-dev-secret-do-not-use-in-prod';
 
-// Dify 默认配置：内置 API Key，用户无需自行配置即可使用。
-// 仅当连接异常时，用户在"引擎设置"页面覆盖此默认值。
+// Dify 默认配置：通过环境变量注入，不硬编码在源码中。
+// 部署时在 Render/本地 .env 设置 DIFY_BASE_URL 和 DIFY_API_KEY。
 const DEFAULT_DIFY_CONFIG = {
   baseUrl: process.env.DIFY_BASE_URL || 'https://api.dify.ai/v1',
-  apiKey: process.env.DIFY_API_KEY || 'app-aochEehgytnJciYeI3L1pqfj'
+  apiKey: process.env.DIFY_API_KEY || ''
 };
 
 // 获取生效的 Dify 配置：优先使用数据库中用户覆盖的配置，否则回退到默认
