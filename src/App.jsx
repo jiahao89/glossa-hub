@@ -3,6 +3,8 @@ import { apiFetch } from './utils/api.js';
 import DashboardTab from './components/DashboardTab';
 import { SkeletonTab } from './components/Skeleton';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
 // Lazy-load secondary tabs to reduce initial bundle
 const TranslationTab = lazy(() => import('./components/TranslationTab'));
 const VersionsTab = lazy(() => import('./components/VersionsTab'));
@@ -98,7 +100,7 @@ export default function App() {
     if (!token) return;
     async function loadDifyState() {
       try {
-        const res = await fetch('/api/projects/proj-default/dify', {
+        const res = await fetch(`${API_BASE}/api/projects/proj-default/dify`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
