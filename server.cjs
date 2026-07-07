@@ -85,22 +85,26 @@ async function initDatabase() {
       const { Pool } = require('pg');
       const { parse } = require('pg-connection-string');
       const dns = require('dns');
-      
-      // 强制 IPv4 解析，避免 Render 环境 IPv6 不可达 (ENETUNREACH)
-      dns.setDefaultResultOrder('ipv4first');
 
       const pgConfig = parse(pgUrl);
       
-      // 保留 DATABASE_URL 原始地址（Supabase pooler 地址已内置 IPv4 + 连接池）
-      // 不再硬编码重写为直连地址（直连地址会解析到 IPv6 导致 ENETUNREACH）
-
       const servername = pgConfig.host || undefined;
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
 
+      // 强制 IPv4 DNS 解析：Render 环境不支持 IPv6，dns.setDefaultResultOrder 无效
+      // 直接在 pg 连接配置中注入自定义 lookup 函数，保证每次连接都走 IPv4
+      pgConfig.lookup = (hostname, options, callback) => {
+        if (typeof options === 'function') {
+          callback = options;
+          options = {};
+        }
+        dns.lookup(hostname, { ...options, family: 4 }, callback);
+      };
+
       // 连接池参数：防止空闲连接被云端网络层回收导致 ECONNRESET
-      pgConfig.max = 5;                        // 减少最大连接数（Supabase 免费层限制）
-      pgConfig.idleTimeoutMillis = 30000;      // 30 秒空闲后自动关闭
-      pgConfig.connectionTimeoutMillis = 10000; // 10 秒连接超时
+      pgConfig.max = 5;
+      pgConfig.idleTimeoutMillis = 30000;
+      pgConfig.connectionTimeoutMillis = 10000;
 
       // 记录调试信息（不含密码）
       pgDebug = { host: pgConfig.host, port: pgConfig.port, user: pgConfig.user, database: pgConfig.database, sslServername: servername };
