@@ -121,6 +121,13 @@ async function initDatabase() {
         console.log(`🔧 Supabase 直连→Pooler 重写: ${projectRef} ➔ aws-1-ap-northeast-2.pooler.supabase.com:6543`);
       }
 
+      // 如果填入了错误的 aws-0- 连接池，自动将其修正为真实的 aws-1- 节点并使用 6543 端口
+      if (pgConfig.host === 'aws-0-ap-northeast-2.pooler.supabase.com') {
+        pgConfig.host = 'aws-1-ap-northeast-2.pooler.supabase.com';
+        pgConfig.port = '6543';
+        console.log('🔧 自动将 aws-0-ap-northeast-2.pooler.supabase.com 重定向至官方可用节点: aws-1-ap-northeast-2.pooler.supabase.com:6543');
+      }
+
       const servername = pgConfig.host || undefined;
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
 
