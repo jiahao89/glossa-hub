@@ -2596,9 +2596,9 @@ export default function TranslationTab({
               disabled={isTranslatingBatch || isSavingBatch || batchPreviewList.every(i => Object.keys(i.translations).length === 0)}
             >
               {isSavingBatch ? (
-                <><Loader2 size={14} className="animate-spin" /> 正在保存到本地数据库...</>
+                <><Loader2 size={14} className="animate-spin" /> 正在保存更新...</>
               ) : (
-                <><Check size={14} /> 确认并保存到本地数据库</>
+                <><Check size={14} /> 确认并保存更新</>
               )}
             </button>
           </>}
