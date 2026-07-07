@@ -27,7 +27,8 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS: ' + origin));
+      // 仅返回 false 拒绝跨域头，防止抛出 Error 导致 Express 渲染 500 HTML 报错页
+      callback(null, false);
     }
   }
 }));
