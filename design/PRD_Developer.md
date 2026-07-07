@@ -43,6 +43,9 @@ This document specifies the technical architecture, security requirements, and d
 *   `POST /api/glossary-tables/:tableId/terms`: Overwrite-imports parsed terms list and saves custom headers arrays in the table metadata.
 *   `GET /api/glossary-tables/:tableId/terms`: Returns terms list including the dynamic `fields` JSON map.
 
+### 2.5 AI Telemetry & Diagnostics
+*   `GET /api/dashboard/ai-usage`: Returns aggregated stats (today/this week tokens and elapsed times, alongside 7-day trend chart metrics).
+
 ---
 
 ## 3. Database Schema Layout
@@ -67,8 +70,14 @@ CREATE TABLE IF NOT EXISTS terms (
   owner TEXT,
   zh_cn TEXT NOT NULL,
   translations TEXT NOT NULL DEFAULT '{}', -- Saved as JSON String: {"EN":"...", "FR":"..."}
+  translations_meta TEXT DEFAULT '{}', -- Saved as JSON metadata: {"EN":{"source":"ai"}, "FR":{"source":"tm"}}
   created_at TEXT,
   updated_at TEXT,
+  is_locked INTEGER DEFAULT 0,
+  locked_by TEXT,
+  locked_at TEXT,
+  status TEXT DEFAULT 'DRAFT',
+  reject_reason TEXT,
   UNIQUE(version_id, kw)
 );
 ```
@@ -96,3 +105,15 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
   fields TEXT DEFAULT '{}' -- Saved as JSON map payload aligning headers
 );
 ```
+
+### 3.5 `ai_usage_logs` (AI usage telemetry)
+```sql
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+  id TEXT PRIMARY KEY,
+  timestamp TEXT NOT NULL,
+  total_tokens INTEGER NOT NULL,
+  elapsed_time INTEGER NOT NULL,
+  user_id TEXT
+);
+```
+
