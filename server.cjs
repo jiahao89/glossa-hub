@@ -88,8 +88,17 @@ async function initDatabase() {
 
       const pgConfig = parse(pgUrl);
 
-      // 不做任何地址重写 —— 完全尊重 DATABASE_URL 的值
-      // 只添加连接池健康参数
+      // 自动将 Supabase 直连地址重写为 Session Pooler (IPv4)
+      // 直连地址只解析到 IPv6，Render 不支持 IPv6 (ENETUNREACH)
+      // Session Pooler 端口 5432 走 IPv4，且兼容 prepared statements
+      const directMatch = pgConfig.host && pgConfig.host.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
+      if (directMatch) {
+        const projectRef = directMatch[1];
+        pgConfig.host = 'aws-0-ap-northeast-2.pooler.supabase.com';
+        pgConfig.port = '5432';
+        pgConfig.user = `postgres.${projectRef}`;
+        console.log(`🔧 Supabase 直连→Session Pooler 重写: ${projectRef}`);
+      }
 
       const servername = pgConfig.host || undefined;
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
