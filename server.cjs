@@ -1759,7 +1759,7 @@ app.post('/api/terms/batch-approve', authenticateToken, async (req, res) => {
 
 // 11. POST /api/projects/:projectId/dify - 保存项目的 Dify 配置
 app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) => {
-  const { projectId: _projectId } = req.params;
+  const { projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
   if (!baseUrl || !apiKey) {
@@ -1909,7 +1909,7 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req,
 
 // 13.5. POST /api/projects/:projectId/dify-test - 测试 Dify 连接性
 app.post('/api/projects/:projectId/dify-test', authenticateToken, async (req, res) => {
-  const { projectId: _projectId } = req.params;
+  const { projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
   const targetUrl = baseUrl || '';
