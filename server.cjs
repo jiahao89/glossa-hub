@@ -37,12 +37,10 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const DB_PATH = path.join(__dirname, 'glossahub.db');
 const pgUrl = process.env.DATABASE_URL;
-
 let dbType = 'sqlite';
 let sqliteDb = null;
 let pgPool = null;
-
-// SHA256 hashing helper for legacy password compatibility
+let pgError = null;// SHA256 hashing helper for legacy password compatibility
 function sha256(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
 }
@@ -104,6 +102,7 @@ async function initDatabase() {
       dbType = 'postgres';
       console.log('⚡ 成功连接到云端 PostgreSQL 数据库 (DATABASE_URL)');
     } catch (err) {
+      pgError = err.message;
       console.warn('⚠️ 连接 PostgreSQL 失败，自动切换为本地 SQLite 数据库:', err.message);
       await initSqlite();
     }
@@ -2506,7 +2505,8 @@ app.get('/api/debug-status', (req, res) => {
   res.json({
     dbType,
     port: PORT,
-    hasPgUrl: !!pgUrl
+    hasPgUrl: !!pgUrl,
+    pgError
   });
 });
 
