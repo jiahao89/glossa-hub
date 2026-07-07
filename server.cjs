@@ -84,24 +84,26 @@ async function initDatabase() {
     try {
       const { Pool } = require('pg');
       const { parse } = require('pg-connection-string');
+      const dns = require('dns');
       
+      // 强制 IPv4 解析，避免 Render 环境 IPv6 不可达 (ENETUNREACH)
+      dns.setDefaultResultOrder('ipv4first');
+
       const pgConfig = parse(pgUrl);
       
-      // 提取解析出的主机名作为 SNI servername，解决连接池 SSL 属性丢失问题
-      const servername = pgConfig.host || undefined;
-
-      // Supabase Supavisor 连接池要求用户名格式为 postgres.PROJECT_REF 才能识别租户
-      // 如果 DATABASE_URL 中用户名缺少项目标识，自动补全
-      if (pgConfig.host && pgConfig.host.includes('pooler.supabase.com') && pgConfig.user === 'postgres') {
-        pgConfig.user = 'postgres.seypmsanzhhbucnilcgl';
-        console.log('🔧 自动补全 Supabase 连接池用户名: postgres → postgres.seypmsanzhhbucnilcgl');
+      // 如果是 Supabase 连接池地址，自动重写为直连地址绕过 Supavisor 租户路由问题
+      if (pgConfig.host && pgConfig.host.includes('pooler.supabase.com')) {
+        pgConfig.host = 'db.seypmsanzhhbucnilcgl.supabase.co';
+        pgConfig.port = '5432';
+        pgConfig.user = 'postgres';
+        console.log('🔧 自动将 Supabase 连接池地址重写为直连地址: db.seypmsanzhhbucnilcgl.supabase.co:5432');
       }
 
-      // 强制覆盖 ssl 属性，绕过 pg 库在处理 connectionString 时的合并覆盖限制
+      const servername = pgConfig.host || undefined;
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
 
       // 记录调试信息（不含密码）
-      pgDebug = { host: pgConfig.host, port: pgConfig.port, user: pgConfig.user, database: pgConfig.database, sslServername: servername, urlPrefix: pgUrl.substring(0, 40) + '...' };
+      pgDebug = { host: pgConfig.host, port: pgConfig.port, user: pgConfig.user, database: pgConfig.database, sslServername: servername };
       console.log('🔍 PG 连接配置:', JSON.stringify(pgDebug));
 
       pgPool = new Pool(pgConfig);
