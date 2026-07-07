@@ -40,7 +40,8 @@ const pgUrl = process.env.DATABASE_URL;
 let dbType = 'sqlite';
 let sqliteDb = null;
 let pgPool = null;
-let pgError = null;// SHA256 hashing helper for legacy password compatibility
+let pgError = null;
+let pgDebug = null;// SHA256 hashing helper for legacy password compatibility
 function sha256(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
 }
@@ -91,6 +92,10 @@ async function initDatabase() {
 
       // 强制覆盖 ssl 属性，绕过 pg 库在处理 connectionString 时的合并覆盖限制
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
+
+      // 记录调试信息（不含密码）
+      pgDebug = { host: pgConfig.host, port: pgConfig.port, user: pgConfig.user, database: pgConfig.database, sslServername: servername, urlPrefix: pgUrl.substring(0, 40) + '...' };
+      console.log('🔍 PG 连接配置:', JSON.stringify(pgDebug));
 
       pgPool = new Pool(pgConfig);
       
@@ -2509,7 +2514,8 @@ app.get('/api/debug-status', (req, res) => {
     dbType,
     port: PORT,
     hasPgUrl: !!pgUrl,
-    pgError
+    pgError,
+    pgDebug
   });
 });
 
