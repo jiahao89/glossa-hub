@@ -116,3 +116,6 @@ npm run dev:all
 详细的部署和初始化操作，请查阅独立的云端部署指导书：
 👉 **[DEPLOYMENT.md](file:///Users/jacko/Desktop/Projects/glossa-hub/DEPLOYMENT.md)**。
 
+vercel:https://glossa-hub.vercel.app/
+render service id:srv-d966d8u7r5hc73fs1nvg
+render:https://glossa-hub.onrender.com

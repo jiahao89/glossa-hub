@@ -148,7 +148,7 @@ export default function App() {
         setLoginError(data.error || '登录验证失败，请核对凭证！');
       }
     } catch (err) {
-      setLoginError(`网络连接失败: ${err.message}`);
+      setLoginError(`网络连接失败: ${err.message} (当前请求地址: ${API_BASE}/api/auth/login)`);
     } finally {
       setLoggingIn(false);
     }
