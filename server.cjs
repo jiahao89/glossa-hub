@@ -88,27 +88,8 @@ async function initDatabase() {
 
       const pgConfig = parse(pgUrl);
 
-      // 自动将 Supabase 直连地址重写为 pooler 地址
-      // 直连地址 (db.{ref}.supabase.co:5432) 只解析到 IPv6，Render 不支持 IPv6 (ENETUNREACH)
-      // pooler 地址 (aws-0-{region}.pooler.supabase.com:6543) 走 IPv4，且内置连接池
-      const directMatch = pgConfig.host && pgConfig.host.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
-      if (directMatch) {
-        const projectRef = directMatch[1];
-        pgConfig.host = 'aws-0-ap-northeast-2.pooler.supabase.com';
-        pgConfig.port = '6543';
-        if (pgConfig.user === 'postgres') {
-          pgConfig.user = `postgres.${projectRef}`;
-        }
-        console.log(`🔧 Supabase 直连→pooler 重写: ${projectRef} → ${pgConfig.host}:${pgConfig.port} (user: ${pgConfig.user})`);
-      }
-
-      // pooler 地址也需要补全用户名
-      if (pgConfig.host && pgConfig.host.includes('pooler.supabase.com') && pgConfig.user === 'postgres') {
-        const refFromUrl = pgUrl.match(/postgres\.([a-z0-9]+)/i);
-        const refFromDb = pgConfig.host;
-        pgConfig.user = refFromUrl ? `postgres.${refFromUrl[1]}` : 'postgres.seypmsanzhhbucnilcgl';
-        console.log(`🔧 Supabase pooler 用户名补全: ${pgConfig.user}`);
-      }
+      // 不做任何地址重写 —— 完全尊重 DATABASE_URL 的值
+      // 只添加连接池健康参数
 
       const servername = pgConfig.host || undefined;
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
