@@ -261,7 +261,7 @@ export default function App() {
                 <Languages size={18} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
-                <span style={{ fontWeight: '700', fontSize: '1rem', background: 'linear-gradient(135deg, #ffffff 40%, var(--accent) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>GlossaHub</span>
+                <span style={{ fontWeight: '700', fontSize: '1rem', background: 'var(--logo-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>GlossaHub</span>
                 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>迈金词条管理平台</span>
               </div>
             </div>
