@@ -91,22 +91,27 @@ async function initDatabase() {
 
       const pgConfig = parse(pgUrl);
       
-      // 如果是 Supabase 连接池地址，自动重写为直连地址绕过 Supavisor 租户路由问题
-      if (pgConfig.host && pgConfig.host.includes('pooler.supabase.com')) {
-        pgConfig.host = 'db.seypmsanzhhbucnilcgl.supabase.co';
-        pgConfig.port = '5432';
-        pgConfig.user = 'postgres';
-        console.log('🔧 自动将 Supabase 连接池地址重写为直连地址: db.seypmsanzhhbucnilcgl.supabase.co:5432');
-      }
+      // 保留 DATABASE_URL 原始地址（Supabase pooler 地址已内置 IPv4 + 连接池）
+      // 不再硬编码重写为直连地址（直连地址会解析到 IPv6 导致 ENETUNREACH）
 
       const servername = pgConfig.host || undefined;
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
+
+      // 连接池参数：防止空闲连接被云端网络层回收导致 ECONNRESET
+      pgConfig.max = 5;                        // 减少最大连接数（Supabase 免费层限制）
+      pgConfig.idleTimeoutMillis = 30000;      // 30 秒空闲后自动关闭
+      pgConfig.connectionTimeoutMillis = 10000; // 10 秒连接超时
 
       // 记录调试信息（不含密码）
       pgDebug = { host: pgConfig.host, port: pgConfig.port, user: pgConfig.user, database: pgConfig.database, sslServername: servername };
       console.log('🔍 PG 连接配置:', JSON.stringify(pgDebug));
 
       pgPool = new Pool(pgConfig);
+
+      // 监听连接池错误，防止空闲连接报错导致进程崩溃
+      pgPool.on('error', (err) => {
+        console.error('⚠️ PG 连接池空闲连接错误 (已自动恢复):', err.message);
+      });
       
       // Test the pg connection
       await pgPool.query('SELECT 1');
