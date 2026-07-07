@@ -1094,6 +1094,39 @@
             <p><strong>状态与解决</strong>：我们已在 v0.3 的 `server.cjs` 代码中部署了 SNI 自动提取与填充的主机名补丁。现在 Render 重新发布后，系统能够自动建立安全的 SNI 通道，您不需要手动执行任何代码修改。</p>
           </div>
         </div>
+
+        <div class="faq-item">
+          <div class="faq-header" onclick="toggleFaq(this)">
+            <span>Q4: 数据库密码中含有 `@` 或者是特殊保留字符，导致解析失败、无法连接？</span>
+            <span class="faq-icon-arrow">▼</span>
+          </div>
+          <div class="faq-content">
+            <p><strong>原因</strong>：PostgreSQL 标准 URI 连接串以第一个 `@` 符号作为密码和主机名（Host）的分隔符，若密码本身带有 `@` 等字符，常规的 URL 解析库会发生字段错配，从而导致密码被硬性截断并报错。</p>
+            <p><strong>解决与状态</strong>：我们已在 `server.cjs` 后端解析层引入了<strong>贪婪正则切分与 URL 安全解码机制</strong>。系统会从右向左锁定最后一个 `@` 分隔符，自适应还原特殊字符，因此现在无论您的密码是否包含 `@`，系统在 Render 重新启动后都能成功验证通过。</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-header" onclick="toggleFaq(this)">
+            <span>Q5: 本地测试 Dify 翻译正常，但部署上线后总是报错提示“Dify 引擎未配置”？</span>
+            <span class="faq-icon-arrow">▼</span>
+          </div>
+          <div class="faq-content">
+            <p><strong>原因</strong>：本地 SQLite 数据库将 `dify_config` 字段作为 TEXT（字符串）形式返回，后端通过 `JSON.parse` 进行解析；而线上 Supabase PostgreSQL 中由于该列为 `jsonb` 类型，pg 驱动会直接返回已解析好的 JS 对象。如果对 Object 强行执行 `JSON.parse` 会触发 JS 语法异常并被 catch 捕获，造成配置为空的报错假象。</p>
+            <p><strong>解决与状态</strong>：后端中转 API 已经针对 `project.dify_config` 部署了<strong>类型自适应逻辑</strong>。如果检测到其已为对象则直接读取，否则再执行 `JSON.parse` 兼容文本，目前本地 SQLite 和云端 PostgreSQL 的 Dify 翻译皆可畅通运行。</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-header" onclick="toggleFaq(this)">
+            <span>Q6: 免费的 Supabase 云数据库因为 IPv6 限制在 Render 容器中报 `ENETUNREACH` 错误？</span>
+            <span class="faq-icon-arrow">▼</span>
+          </div>
+          <div class="faq-content">
+            <p><strong>原因</strong>：Supabase 的直连地址仅发布了 IPv6 记录，而 Render 等静态云容器目前仅支持 IPv4 出网，导致物理网络无法送达。</p>
+            <p><strong>解决与状态</strong>：本系统已强制挂载了 <strong>IPv4 DNS 优先级解析补丁</strong>。同时为了确保可用，代码在连接时会自动将直连地址在内存中重映射为您项目专属的官方池化域名：`aws-1-ap-northeast-2.pooler.supabase.com:6543`，完美绕过网络限制并接通。</p>
+          </div>
+        </div>
       </section>
       
     </main>

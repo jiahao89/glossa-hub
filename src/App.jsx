@@ -369,6 +369,17 @@ export default function App() {
             {!sidebarCollapsed && <span>翻译引擎设置</span>}
           </button>
 
+          {/* Operation Guide */}
+          <button 
+            onClick={() => setActiveTab('guide')}
+            className={`nav-item-btn ${activeTab === 'guide' ? 'active' : ''}`}
+            title="操作说明"
+            aria-label="操作说明"
+          >
+            <BookOpen size={16} />
+            {!sidebarCollapsed && <span>操作说明</span>}
+          </button>
+
         </nav>
 
         {/* Sidebar Footer Userbadge */}
@@ -477,6 +488,15 @@ export default function App() {
             {activeTab === 'languages' && <LanguagesTab />}
             {activeTab === 'logs' && <LogsTab />}
             {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} />}
+            {activeTab === 'guide' && (
+              <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <iframe
+                  src="/操作说明.html"
+                  style={{ width: '100%', height: '100%', flex: 1, border: 'none', background: 'var(--bg-darker)' }}
+                  title="操作说明"
+                />
+              </div>
+            )}
             </Suspense>
           </div>
         </div>
