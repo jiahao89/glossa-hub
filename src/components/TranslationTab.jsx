@@ -2119,14 +2119,15 @@ export default function TranslationTab({
                         {(() => {
                           const recStatus = rec.status || 'DRAFT';
                           // 合并显示：DRAFT 与 PENDING_REVIEW 统一为“待审核”
+                          const badgeBase = { backgroundColor: 'transparent', fontSize: '0.68rem', fontWeight: '400', padding: '0.05rem 0.35rem', borderWidth: '1px', borderStyle: 'solid', borderRadius: '3px', lineHeight: '1.4' };
                           if (recStatus === 'DRAFT' || recStatus === 'PENDING_REVIEW' || recStatus === 'TRANSLATING') {
-                            return <span className="diff-tag" style={{ backgroundColor: 'var(--yellow)', color: '#000', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>待审核</span>;
+                            return <span className="diff-tag" style={{ ...badgeBase, color: 'var(--yellow)', borderColor: 'var(--yellow)' }}>待审核</span>;
                           } else if (recStatus === 'APPROVED') {
-                            return <span className="diff-tag" style={{ backgroundColor: 'var(--green)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已审核</span>;
+                            return <span className="diff-tag" style={{ ...badgeBase, color: 'var(--green)', borderColor: 'var(--green)' }}>已审核</span>;
                           } else if (recStatus === 'REJECTED') {
-                            return <span className="diff-tag" style={{ backgroundColor: 'var(--red)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }} title={rec.rejectReason || '已驳回'}>已驳回</span>;
+                            return <span className="diff-tag" style={{ ...badgeBase, color: 'var(--red)', borderColor: 'var(--red)' }} title={rec.rejectReason || '已驳回'}>已驳回</span>;
                           } else if (recStatus === 'PUBLISHED') {
-                            return <span className="diff-tag" style={{ backgroundColor: 'var(--purple)', color: '#fff', fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>已发布</span>;
+                            return <span className="diff-tag" style={{ ...badgeBase, color: 'var(--purple)', borderColor: 'var(--purple)' }}>已发布</span>;
                           }
                           return null;
                         })()}
