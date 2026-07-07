@@ -82,6 +82,7 @@ async function initDatabase() {
   if (pgUrl) {
     try {
       const { Pool } = require('pg');
+      const { parse } = require('pg-connection-string');
       
       // 提取连接串的主机名作为 SNI servername，解决 Supabase 直连 (ENOIDENTIFIER) 问题
       let servername = undefined;
@@ -93,10 +94,11 @@ async function initDatabase() {
         if (match) servername = match[1];
       }
 
-      pgPool = new Pool({
-        connectionString: pgUrl,
-        ssl: pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false
-      });
+      const pgConfig = parse(pgUrl);
+      pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
+
+      pgPool = new Pool(pgConfig);
+      
       // Test the pg connection
       await pgPool.query('SELECT 1');
       dbType = 'postgres';
