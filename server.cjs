@@ -90,6 +90,13 @@ async function initDatabase() {
       // 提取解析出的主机名作为 SNI servername，解决连接池 SSL 属性丢失问题
       const servername = pgConfig.host || undefined;
 
+      // Supabase Supavisor 连接池要求用户名格式为 postgres.PROJECT_REF 才能识别租户
+      // 如果 DATABASE_URL 中用户名缺少项目标识，自动补全
+      if (pgConfig.host && pgConfig.host.includes('pooler.supabase.com') && pgConfig.user === 'postgres') {
+        pgConfig.user = 'postgres.seypmsanzhhbucnilcgl';
+        console.log('🔧 自动补全 Supabase 连接池用户名: postgres → postgres.seypmsanzhhbucnilcgl');
+      }
+
       // 强制覆盖 ssl 属性，绕过 pg 库在处理 connectionString 时的合并覆盖限制
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
 
