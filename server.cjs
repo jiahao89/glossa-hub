@@ -2311,36 +2311,67 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
 // 18b. GET /api/dashboard/ai-usage - P1-2: AI 用量统计
 app.get('/api/dashboard/ai-usage', authenticateToken, async (req, res) => {
   try {
-    // 今日用量
-    const todayStats = await db.query(`
-      SELECT
-        COUNT(*) AS call_count,
-        COALESCE(SUM(total_tokens), 0) AS total_tokens,
-        COALESCE(SUM(elapsed_time), 0) AS total_elapsed
-      FROM ai_usage_logs
-      WHERE created_at >= datetime('now', 'start of day')
-    `);
+    let todayStats, weekStats, dailyTrend;
 
-    // 本周用量
-    const weekStats = await db.query(`
-      SELECT
-        COUNT(*) AS call_count,
-        COALESCE(SUM(total_tokens), 0) AS total_tokens
-      FROM ai_usage_logs
-      WHERE created_at >= datetime('now', '-7 days')
-    `);
+    if (dbType === 'postgres') {
+      // PostgreSQL 兼容 SQL 语法
+      todayStats = await db.query(`
+        SELECT
+          COUNT(*) AS call_count,
+          COALESCE(SUM(total_tokens), 0) AS total_tokens,
+          COALESCE(SUM(elapsed_time), 0) AS total_elapsed
+        FROM ai_usage_logs
+        WHERE created_at >= CURRENT_DATE
+      `);
 
-    // 最近 7 天每日趋势
-    const dailyTrend = await db.query(`
-      SELECT
-        DATE(created_at) AS date,
-        COUNT(*) AS calls,
-        COALESCE(SUM(total_tokens), 0) AS tokens
-      FROM ai_usage_logs
-      WHERE created_at >= datetime('now', '-7 days')
-      GROUP BY DATE(created_at)
-      ORDER BY DATE(created_at) ASC
-    `);
+      weekStats = await db.query(`
+        SELECT
+          COUNT(*) AS call_count,
+          COALESCE(SUM(total_tokens), 0) AS total_tokens
+        FROM ai_usage_logs
+        WHERE created_at >= NOW() - INTERVAL '7 days'
+      `);
+
+      dailyTrend = await db.query(`
+        SELECT
+          TO_CHAR(created_at, 'YYYY-MM-DD') AS date,
+          COUNT(*) AS calls,
+          COALESCE(SUM(total_tokens), 0) AS tokens
+        FROM ai_usage_logs
+        WHERE created_at >= NOW() - INTERVAL '7 days'
+        GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD')
+        ORDER BY date ASC
+      `);
+    } else {
+      // SQLite 兼容 SQL 语法
+      todayStats = await db.query(`
+        SELECT
+          COUNT(*) AS call_count,
+          COALESCE(SUM(total_tokens), 0) AS total_tokens,
+          COALESCE(SUM(elapsed_time), 0) AS total_elapsed
+        FROM ai_usage_logs
+        WHERE created_at >= datetime('now', 'start of day')
+      `);
+
+      weekStats = await db.query(`
+        SELECT
+          COUNT(*) AS call_count,
+          COALESCE(SUM(total_tokens), 0) AS total_tokens
+        FROM ai_usage_logs
+        WHERE created_at >= datetime('now', '-7 days')
+      `);
+
+      dailyTrend = await db.query(`
+        SELECT
+          DATE(created_at) AS date,
+          COUNT(*) AS calls,
+          COALESCE(SUM(total_tokens), 0) AS tokens
+        FROM ai_usage_logs
+        WHERE created_at >= datetime('now', '-7 days')
+        GROUP BY DATE(created_at)
+        ORDER BY DATE(created_at) ASC
+      `);
+    }
 
     res.json({
       today: {
