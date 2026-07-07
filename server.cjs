@@ -20,6 +20,34 @@ if (!JWT_SECRET) {
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'glossahub-dev-secret-do-not-use-in-prod';
 
+// Dify 默认配置：内置 API Key，用户无需自行配置即可使用。
+// 仅当连接异常时，用户在"引擎设置"页面覆盖此默认值。
+const DEFAULT_DIFY_CONFIG = {
+  baseUrl: process.env.DIFY_BASE_URL || 'https://api.dify.ai/v1',
+  apiKey: process.env.DIFY_API_KEY || 'app-aochEehgytnJciYeI3L1pqfj'
+};
+
+// 获取生效的 Dify 配置：优先使用数据库中用户覆盖的配置，否则回退到默认
+async function getEffectiveDifyConfig(projectId) {
+  try {
+    const project = await db.queryOne('SELECT dify_config FROM projects WHERE id = $1', [projectId]);
+    if (project && project.dify_config) {
+      let cfg = {};
+      if (typeof project.dify_config === 'object') {
+        cfg = project.dify_config;
+      } else {
+        cfg = JSON.parse(project.dify_config || '{}');
+      }
+      if (cfg.baseUrl && cfg.apiKey) {
+        return { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, isCustom: true };
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return { ...DEFAULT_DIFY_CONFIG, isCustom: false };
+}
+
 // CORS 白名单限制
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
 app.use(cors({
@@ -751,12 +779,23 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
       '瑞典语': '瑞典', '挪威语': '挪威', '荷兰语': '荷兰'
     };
 
-    // Upsert terms in chunks of 200 records
-    const chunkSize = 200;
-    for (let i = 0; i < records.length; i += chunkSize) {
-      const chunk = records.slice(i, i + chunkSize);
-      
-      for (const rec of chunk) {
+    // 在单个事务内批量写入，避免逐条 autocommit 导致性能极差
+    const recordIds = records.map(r => r.recordId).filter(Boolean);
+
+    await db.transaction(async (tx) => {
+      // 清理已删除记录（在写入前执行）
+      if (records.length > 0 && recordIds.length > 0) {
+        const placeholders = recordIds.map((_, idx) => `$${idx + 2}`).join(',');
+        await tx.run(
+          `DELETE FROM terms WHERE version_id = $1 AND id NOT IN (${placeholders})`,
+          [tableId, ...recordIds]
+        );
+      } else if (records.length === 0) {
+        await tx.run('DELETE FROM terms WHERE version_id = $1', [tableId]);
+      }
+
+      // 批量 upsert
+      for (const rec of records) {
         const fields = rec.fields || {};
         const kw = fields['KW'] || '';
         const zh_cn = fields['CN（中文）'] || fields['中文'] || '';
@@ -790,7 +829,7 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
         const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
 
         if (dbType === 'postgres') {
-          await db.run(
+          await tx.run(
             `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
              ON CONFLICT (version_id, kw) DO UPDATE SET
@@ -807,33 +846,19 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
           // SQLite: 保留现有 meta（如果新 meta 为空）
           let finalMetaStr = transMetaStr;
           if (transMetaStr === '{}') {
-            const existing = await db.queryOne('SELECT translations_meta FROM terms WHERE id = $1', [termId]);
+            const existing = await tx.queryOne('SELECT translations_meta FROM terms WHERE id = $1', [termId]);
             if (existing && existing.translations_meta && existing.translations_meta !== '{}') {
               finalMetaStr = existing.translations_meta;
             }
           }
-          await db.run(
+          await tx.run(
             `INSERT OR REPLACE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
             [termId, tableId, kw, context, owner, zh_cn, translationsStr, finalMetaStr, req.user.id]
           );
         }
       }
-    }
-
-    // Clean up deleted records
-    if (records.length > 0) {
-      const recordIds = records.map(r => r.recordId).filter(Boolean);
-      if (recordIds.length > 0) {
-        const placeholders = recordIds.map((_, idx) => `$${idx + 2}`).join(',');
-        await db.run(
-          `DELETE FROM terms WHERE version_id = $1 AND id NOT IN (${placeholders})`,
-          [tableId, ...recordIds]
-        );
-      }
-    } else {
-      await db.run('DELETE FROM terms WHERE version_id = $1', [tableId]);
-    }
+    });
 
     res.json({ message: `同步成功！共同步 ${records.length} 条词条。` });
   } catch (err) {
@@ -1817,8 +1842,8 @@ app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) =>
   const { projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
-  if (!baseUrl || !apiKey) {
-    return res.status(400).json({ error: 'baseUrl 和 apiKey 不能为空' });
+  if (!baseUrl) {
+    return res.status(400).json({ error: 'baseUrl 不能为空' });
   }
 
   try {
@@ -1827,7 +1852,23 @@ app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) =>
       return res.status(404).json({ error: '项目不存在' });
     }
 
-    const newConfig = JSON.stringify({ baseUrl, apiKey });
+    // 读取已有配置，apiKey 为空时保留原值
+    let existingConfig = {};
+    if (project.dify_config && typeof project.dify_config === 'object') {
+      existingConfig = project.dify_config;
+    } else {
+      try {
+        existingConfig = JSON.parse(project.dify_config || '{}');
+      } catch {
+        existingConfig = {};
+      }
+    }
+    const finalApiKey = apiKey || existingConfig.apiKey || '';
+    if (!finalApiKey) {
+      return res.status(400).json({ error: 'apiKey 不能为空（尚未配置过密钥）' });
+    }
+
+    const newConfig = JSON.stringify({ baseUrl, apiKey: finalApiKey });
     await db.run(
       'UPDATE projects SET dify_config = $1 WHERE id = $2',
       [newConfig, projectId]
@@ -1843,21 +1884,12 @@ app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) =>
 app.get('/api/projects/:projectId/dify', authenticateToken, async (req, res) => {
   const { projectId } = req.params;
   try {
-    const project = await db.queryOne('SELECT dify_config FROM projects WHERE id = $1', [projectId]);
-    if (!project) {
-      return res.status(404).json({ error: '项目不存在' });
-    }
-
-    let config = {};
-    try {
-      config = JSON.parse(project.dify_config || '{}');
-    } catch {
-      config = {};
-    }
+    const config = await getEffectiveDifyConfig(projectId);
 
     res.json({
-      baseUrl: config.baseUrl || '',
-      apiKeyConfigured: !!config.apiKey
+      baseUrl: config.baseUrl,
+      apiKeyConfigured: !!config.apiKey,   // 默认配置内置，始终为 true
+      isCustom: config.isCustom            // 是否用户自定义覆盖
     });
   } catch (err) {
     console.error('读取 Dify 配置失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
@@ -1880,21 +1912,8 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req,
   const targetLangs = inputs.target_languages || inputs.languages || '';
 
   try {
-    const project = await db.queryOne('SELECT dify_config FROM projects WHERE id = $1', [projectId]);
-    if (!project) {
-      return res.status(404).json({ error: '项目不存在' });
-    }
-
-    let config = {};
-    try {
-      config = JSON.parse(project.dify_config || '{}');
-    } catch {
-      config = {};
-    }
-
-    if (!config.baseUrl || !config.apiKey) {
-      return res.status(400).json({ error: 'Dify 引擎未配置，请先在“引擎设置”配置 Dify API 地址与密钥！' });
-    }
+    // 使用统一配置获取函数：优先数据库覆盖，否则回退默认
+    const config = await getEffectiveDifyConfig(projectId);
 
     const cleanBaseUrl = config.baseUrl.replace(/\/$/, '');
     const url = `${cleanBaseUrl}/workflows/run`;
@@ -1967,8 +1986,10 @@ app.post('/api/projects/:projectId/dify-test', authenticateToken, async (req, re
   const { projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
-  const targetUrl = baseUrl || '';
-  const targetKey = apiKey || '';
+  // 使用统一配置：请求体 > 数据库覆盖 > 内置默认
+  const effective = await getEffectiveDifyConfig(projectId);
+  const targetUrl = baseUrl || effective.baseUrl;
+  const targetKey = apiKey || effective.apiKey;
 
   if (!targetUrl || !targetKey) {
     return res.status(400).json({ error: 'baseUrl 和 apiKey 不能为空' });

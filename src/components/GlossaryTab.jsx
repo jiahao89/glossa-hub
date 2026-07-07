@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './Toast';
 import Pagination from './Pagination';
-import { Plus, Trash2, Download, Upload, BookOpen, FileSpreadsheet, Search } from 'lucide-react';
+import { Plus, Trash2, Download, Upload, BookOpen, FileSpreadsheet, Search, Loader2 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 import GlossaModal from './GlossaModal';
@@ -13,7 +13,7 @@ export default function GlossaryTab() {
   const [terms, setTerms] = useState([]);
   const [loadingTables, setLoadingTables] = useState(true);
   const [loadingTerms, setLoadingTerms] = useState(false);
-  const [_error, setError] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   // Search keyword
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,7 +45,7 @@ export default function GlossaryTab() {
         setSelectedTableId(data[0].id);
       }
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setLoadingTables(false);
     }
@@ -60,7 +60,7 @@ export default function GlossaryTab() {
       const data = await res.json();
       setTerms(data);
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setLoadingTerms(false);
     }
@@ -77,6 +77,7 @@ export default function GlossaryTab() {
     } else {
       setTerms([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTableId]);
 
   const activeTable = tables.find(t => t.id === selectedTableId);
@@ -223,6 +224,7 @@ export default function GlossaryTab() {
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
+      setImporting(true);
       try {
         const text = evt.target.result;
         const csvRows = parseCSV(text);
@@ -300,13 +302,17 @@ export default function GlossaryTab() {
         });
         const data = await res.json();
         if (res.ok) {
-          toast.success(data.message || '导入成功！');
-          fetchTerms(selectedTableId);
+          toast.success(data.message || `导入成功！共 ${parsedTerms.length} 条术语`);
+          // 刷新表元数据（含新 headers）和术语列表
+          await fetchTables();
+          await fetchTerms(selectedTableId);
         } else {
           toast.error(`导入失败: ${data.error}`);
         }
       } catch (err) {
         toast.error(`导入发生错误: ${err.message}`);
+      } finally {
+        setImporting(false);
       }
     };
     reader.readAsText(file, 'utf-8');
@@ -409,9 +415,9 @@ export default function GlossaryTab() {
               添加术语
             </button>
 
-            <button onClick={() => fileInputRef.current.click()} className="btn btn-secondary" style={{ padding: '0.45rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}>
-              <Upload size={14} />
-              导入 CSV
+            <button onClick={() => fileInputRef.current.click()} disabled={importing} className="btn btn-secondary" style={{ padding: '0.45rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}>
+              {importing ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
+              {importing ? '导入中...' : '导入 CSV'}
             </button>
             <input 
               type="file" 

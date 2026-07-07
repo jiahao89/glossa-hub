@@ -1697,12 +1697,15 @@ export default function TranslationTab({
 
         setRecords(updatedRecords);
         
-        // Sync imported CSV data to SQLite in background
+        // Sync imported CSV data to backend
         await saveOfflineRecords(selectedTableId, updatedRecords);
         setModifiedCells(updatedCellsDict);
 
         onAddLog('导入 CSV', '', '', `更新了 ${localUpdateCount} 条，新增了 ${localAddCount} 条词条`);
         showStatus('success', `导入成功！更新 ${localUpdateCount} 条，新增 ${localAddCount} 条。`);
+
+        // 从服务端重新加载数据，确保前端与后端一致
+        await loadTableData(selectedTableId);
       } catch (err) {
         showStatus('danger', `解析并导入 CSV 失败: ${err.message}`);
       } finally {
