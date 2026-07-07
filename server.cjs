@@ -88,12 +88,24 @@ async function initDatabase() {
 
       const pgConfig = parse(pgUrl);
 
+      // 强力正则兜底解析：当密码含 @ 特殊字符且未完全 URL 编码时，内置 parse 会发生截断
+      // 我们通过贪婪匹配最后一个 @ 符号来精准提取出完整的密码与连接信息
+      const regexMatch = pgUrl.match(/postgres(?:ql)?:\/\/([^:]+):(.*)@([^:\/]+):([0-9]+)\/([^?]+)/);
+      if (regexMatch) {
+        pgConfig.user = regexMatch[1];
+        pgConfig.password = regexMatch[2];
+        pgConfig.host = regexMatch[3];
+        pgConfig.port = regexMatch[4];
+        pgConfig.database = regexMatch[5].split('?')[0];
+        console.log('📝 已通过正则安全还原可能存在截断的 PG 账号及密码信息');
+      }
+
       // 解密/还原被 URL 编码后的特殊字符密码（例如将 %40 还原回 @）
       if (pgConfig.password) {
         try {
           pgConfig.password = decodeURIComponent(pgConfig.password);
         } catch (decErr) {
-          // 忽略非法百分号格式，保留原密码
+          // 忽略
         }
       }
 
