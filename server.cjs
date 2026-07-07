@@ -2505,7 +2505,6 @@ app.delete('/api/glossary-tables/:tableId/terms/:termId', authenticateToken, asy
 app.get('/api/debug-status', (req, res) => {
   res.json({
     dbType,
-    difyConnected,
     port: PORT,
     hasPgUrl: !!pgUrl
   });
