@@ -2501,6 +2501,16 @@ app.delete('/api/glossary-tables/:tableId/terms/:termId', authenticateToken, asy
   }
 });
 
+// 15. GET /api/debug-status - 获取系统运行引擎与状态的免检调试路由
+app.get('/api/debug-status', (req, res) => {
+  res.json({
+    dbType,
+    difyConnected,
+    port: PORT,
+    hasPgUrl: !!pgUrl
+  });
+});
+
 // Start Server
 initDatabase().then(() => {
   ensureIndexes();
