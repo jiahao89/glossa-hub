@@ -51,7 +51,7 @@
 
    | 键 (Key) | 值 (Value) | 备注 |
    | :--- | :--- | :--- |
-   | `DATABASE_URL` | 刚才在 Supabase 复制 of `6543` 连接池串 | **连接池地址** (包含密码) |
+   | `DATABASE_URL` | 刚才在 Supabase 复制的 `6543` 连接池串 | **连接池地址** (包含密码) |
    | `JWT_SECRET` | 任意 32 位随机字符（如 `feTD7qUN5rIZGPrv`） | JWT 签名密钥 |
    | `NODE_ENV` | `production` | 运行环境 |
    | `CORS_ORIGINS` | `https://你的前端域名.vercel.app` | 允许的前端跨域（可在第三步部署完回填） |
