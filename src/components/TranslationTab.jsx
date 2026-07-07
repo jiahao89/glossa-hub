@@ -6,7 +6,7 @@ import EmptyState from './EmptyState';
 import { SkeletonTable } from './Skeleton';
 import Pagination from './Pagination';
 import GlossaModal from './GlossaModal';
-import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock, CheckCircle, Settings, Copy } from 'lucide-react';
+import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock, CheckCircle, Settings, Copy, Bot } from 'lucide-react';
 
 const DEFAULT_TARGET_LANGUAGES = [
   'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
@@ -106,6 +106,7 @@ export default function TranslationTab({
 
   // Modal States
   const [editModalRecord, setEditModalRecord] = useState(null); // Record being edited
+  const sessionMetaRef = useRef({}); // P1-1: 追踪编辑会话中的翻译来源 { lang: 'ai' | 'human' | 'tm' }
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addTargetTableId, setAddTargetTableId] = useState('');
   const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
@@ -193,6 +194,7 @@ export default function TranslationTab({
     Object.keys(refTrans).forEach(lang => {
       if (refTrans[lang] && refTrans[lang].trim() !== '') {
         mergedTrans[lang] = refTrans[lang];
+        sessionMetaRef.current[lang] = 'tm'; // P1-1: 标记为翻译记忆来源
       }
     });
     setEditModalRecord({
@@ -340,6 +342,7 @@ export default function TranslationTab({
     const formatted = recordsList.map(rec => ({
       recordId: rec.recordId,
       fields: rec.fields || {},
+      translationsMeta: rec.translationsMeta || {},
       createdAt: rec.createdAt || new Date().toISOString(),
       updatedAt: rec.updatedAt || new Date().toISOString()
     }));
@@ -610,6 +613,8 @@ export default function TranslationTab({
     TARGET_LANGUAGES.forEach(lang => {
       data.translations[lang] = getRecordValueByName(record, lang);
     });
+    // P1-1: 加载已有翻译来源标记并重置会话追踪
+    sessionMetaRef.current = { ...(record.translationsMeta || {}) };
     setEditModalRecord(data);
   };
 
@@ -772,6 +777,7 @@ export default function TranslationTab({
             return { 
               ...rec, 
               fields: updatedFields,
+              translationsMeta: { ...sessionMetaRef.current }, // P1-1: 保存翻译来源标记
               updatedAt: new Date().toISOString()
             };
           }
@@ -1165,6 +1171,7 @@ export default function TranslationTab({
 
       batchPreviewList.forEach(item => {
         const fields = {};
+        const batchMeta = {}; // P1-1: 批量翻译来源标记
         const rowModifiedDict = updatedCellsDict[item.recordId] || {};
         let hasNewTrans = false;
 
@@ -1172,6 +1179,7 @@ export default function TranslationTab({
           const fieldId = targetFieldMap[lang];
           if (fieldId && item.translations[lang]) {
             fields[fieldId] = item.translations[lang];
+            batchMeta[lang] = 'ai'; // P1-1: 标记为 AI 翻译
             rowModifiedDict[lang] = true;
             hasNewTrans = true;
           }
@@ -1180,7 +1188,8 @@ export default function TranslationTab({
         if (hasNewTrans) {
           recordsToUpdate.push({
             recordId: item.recordId,
-            fields
+            fields,
+            translationsMeta: batchMeta
           });
           updatedCellsDict[item.recordId] = rowModifiedDict;
         }
@@ -1198,6 +1207,7 @@ export default function TranslationTab({
                   ...rec.fields,
                   ...updateItem.fields
                 },
+                translationsMeta: { ...(rec.translationsMeta || {}), ...(updateItem.translationsMeta || {}) }, // P1-1: 合并翻译来源
                 updatedAt: new Date().toISOString()
               };
             }
@@ -1220,6 +1230,7 @@ export default function TranslationTab({
                 ...rec.fields,
                 ...updateItem.fields
               },
+              translationsMeta: { ...(rec.translationsMeta || {}), ...(updateItem.translationsMeta || {}) }, // P1-1: 合并翻译来源
               updatedAt: new Date().toISOString()
             };
           }
@@ -1489,6 +1500,7 @@ export default function TranslationTab({
         const val = findValueInDifyResult(lang, result);
         if (val !== undefined) {
           updatedTrans[lang] = val;
+          sessionMetaRef.current[lang] = 'ai'; // P1-1: 标记为 AI 翻译来源
         }
       });
       setEditModalRecord(prev => ({ ...prev, translations: updatedTrans }));
@@ -2152,7 +2164,11 @@ export default function TranslationTab({
                       const val = getRecordValueByName(rec, lang);
                       const isModified = rowModified[lang];
                       const isAdded = rowModified.isAdded;
-                      
+                      // P1-1: 翻译来源标记
+                      const source = rec.translationsMeta?.[lang];
+                      const isAiSource = source === 'ai';
+                      const isTmSource = source === 'tm';
+
                       let cellClass = '';
                       if (isModified) {
                         cellClass = 'cell-modified';
@@ -2164,9 +2180,15 @@ export default function TranslationTab({
                         <td 
                           key={lang} 
                           className={cellClass} 
-                          title={val}
+                          title={val ? `${val}${isAiSource ? ' (AI 翻译)' : isTmSource ? ' (翻译记忆)' : ''}` : undefined}
                         >
-                          {val || <span className="cell-empty">未翻译</span>}
+                          {val ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                              <span className="truncate" style={{ maxWidth: isAiSource || isTmSource ? 'calc(100% - 14px)' : '100%' }}>{val}</span>
+                              {isAiSource && <Bot size={11} style={{ flexShrink: 0, color: '#a78bfa' }} />}
+                              {isTmSource && <Check size={11} style={{ flexShrink: 0, color: 'var(--green)' }} />}
+                            </span>
+                          ) : <span className="cell-empty">未翻译</span>}
                         </td>
                       );
                     })}
@@ -2298,6 +2320,7 @@ export default function TranslationTab({
                         value={editModalRecord.translations[lang] || ''} 
                         onChange={(e) => {
                           const trans = { ...editModalRecord.translations, [lang]: e.target.value };
+                          sessionMetaRef.current[lang] = 'human'; // P1-1: 标记为人工编辑
                           setEditModalRecord({ ...editModalRecord, translations: trans });
                         }}
                         disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}

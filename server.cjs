@@ -182,6 +182,7 @@ function initSqliteTables() {
           owner TEXT,
           zh_cn TEXT NOT NULL,
           translations TEXT NOT NULL DEFAULT '{}',
+          translations_meta TEXT NOT NULL DEFAULT '{}',
           created_at TEXT,
           updated_at TEXT,
           updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -205,6 +206,22 @@ function initSqliteTables() {
           translations TEXT NOT NULL DEFAULT '{}',
           created_at TEXT,
           created_by TEXT REFERENCES users(id) ON DELETE SET NULL
+        )
+      `);
+
+      // 6b. ai_usage_logs (P1-2: AI 用量追踪)
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS ai_usage_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          project_id TEXT NOT NULL,
+          term_kw TEXT,
+          zh_cn TEXT,
+          target_languages TEXT,
+          total_tokens INTEGER DEFAULT 0,
+          elapsed_time REAL DEFAULT 0,
+          status TEXT,
+          created_at TEXT DEFAULT (datetime('now'))
         )
       `);
 
@@ -311,7 +328,10 @@ function initSqliteTables() {
                                   // Safely alter terms table for v1.3 workflow
                                   sqliteDb.run("ALTER TABLE terms ADD COLUMN status TEXT DEFAULT 'DRAFT'", () => {
                                     sqliteDb.run("ALTER TABLE terms ADD COLUMN reject_reason TEXT", () => {
-                                      resolve();
+                                      // P1-1: 翻译来源标记列
+                                      sqliteDb.run("ALTER TABLE terms ADD COLUMN translations_meta TEXT DEFAULT '{}'", () => {
+                                        resolve();
+                                      });
                                     });
                                   });
                                 });
@@ -580,6 +600,17 @@ app.get('/api/tables/:tableId/records', authenticateToken, async (req, res) => {
       }
 
       // Reconstruct translation columns matching old Bitable schema
+      let transMeta = {};
+      try {
+        let metaTemp = term.translations_meta;
+        while (typeof metaTemp === 'string' && metaTemp.trim() !== '') {
+          metaTemp = JSON.parse(metaTemp);
+        }
+        if (typeof metaTemp === 'object' && metaTemp !== null) {
+          transMeta = metaTemp;
+        }
+      } catch { transMeta = {}; }
+
       return {
         recordId: term.id,
         createdAt: term.created_at,
@@ -589,6 +620,7 @@ app.get('/api/tables/:tableId/records', authenticateToken, async (req, res) => {
         lockedAt: term.locked_at || '',
         status: term.status || 'DRAFT',
         rejectReason: term.reject_reason || '',
+        translationsMeta: transMeta,
         fields: {
           KW: term.kw,
           'CN（中文）': term.zh_cn,
@@ -687,24 +719,36 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
         const translationsStr = JSON.stringify(normalizedTrans);
         const termId = rec.recordId || crypto.randomUUID();
 
+        // P1-1: 翻译来源标记
+        const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
+
         if (dbType === 'postgres') {
           await db.run(
-            `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, updated_by, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
              ON CONFLICT (version_id, kw) DO UPDATE SET
                context = EXCLUDED.context,
                owner = EXCLUDED.owner,
                zh_cn = EXCLUDED.zh_cn,
                translations = EXCLUDED.translations,
+               translations_meta = COALESCE(NULLIF(EXCLUDED.translations_meta, '{}'), terms.translations_meta),
                updated_at = NOW(),
                updated_by = EXCLUDED.updated_by`,
-            [termId, tableId, kw, context, owner, zh_cn, translationsStr, req.user.id]
+            [termId, tableId, kw, context, owner, zh_cn, translationsStr, transMetaStr, req.user.id]
           );
         } else {
+          // SQLite: 保留现有 meta（如果新 meta 为空）
+          let finalMetaStr = transMetaStr;
+          if (transMetaStr === '{}') {
+            const existing = await db.queryOne('SELECT translations_meta FROM terms WHERE id = $1', [termId]);
+            if (existing && existing.translations_meta && existing.translations_meta !== '{}') {
+              finalMetaStr = existing.translations_meta;
+            }
+          }
           await db.run(
-            `INSERT OR REPLACE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, updated_by, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'))`,
-            [termId, tableId, kw, context, owner, zh_cn, translationsStr, req.user.id]
+            `INSERT OR REPLACE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
+            [termId, tableId, kw, context, owner, zh_cn, translationsStr, finalMetaStr, req.user.id]
           );
         }
       }
@@ -981,7 +1025,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, async (req, res
 // 10. PUT /api/terms/:termId - 带乐观锁并发校验的词条更新接口 (多人协同新增)
 app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
   const { termId } = req.params;
-  const { kw, context, owner, zh_cn, translations, oldUpdatedAt } = req.body;
+  const { kw, context, owner, zh_cn, translations, translationsMeta, oldUpdatedAt } = req.body;
 
   if (!oldUpdatedAt) {
     return res.status(400).json({ error: '必须包含旧修改时间戳 (oldUpdatedAt) 以进行并发校验' });
@@ -1057,16 +1101,16 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
     if (dbType === 'postgres') {
       await db.run(
         `UPDATE terms 
-         SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, status = $6, reject_reason = NULL, updated_at = NOW(), updated_by = $7
-         WHERE id = $8`,
-        [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, nextStatus, req.user.id, termId]
+         SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
+         WHERE id = $9`,
+        [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId]
       );
     } else {
       await db.run(
         `UPDATE terms 
-         SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, status = $6, reject_reason = NULL, updated_at = datetime('now'), updated_by = $7
-         WHERE id = $8`,
-        [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, nextStatus, req.user.id, termId]
+         SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = datetime('now'), updated_by = $8
+         WHERE id = $9`,
+        [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId]
       );
     }
 
@@ -1757,10 +1801,16 @@ app.get('/api/projects/:projectId/dify', authenticateToken, async (req, res) => 
 app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req, res) => {
   const { projectId } = req.params;
   const { inputs } = req.body;
+  const userId = req.user?.id || null;
 
   if (!inputs) {
     return res.status(400).json({ error: '缺少 inputs 输入参数' });
   }
+
+  // P1-2: 提取翻译上下文用于用量记录
+  const termKw = inputs.kw || inputs.keyword || '';
+  const zhCn = inputs.zh_cn || inputs.chinese || inputs.text || '';
+  const targetLangs = inputs.target_languages || inputs.languages || '';
 
   try {
     const project = await db.queryOne('SELECT dify_config FROM projects WHERE id = $1', [projectId]);
@@ -1811,6 +1861,15 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req,
     if (data.status === 'failed') {
       return res.status(500).json({ error: `Dify 工作流执行失败: ${data.error || '未知错误'}` });
     }
+
+    // P1-2: 记录 AI 用量（非阻塞，不影响翻译流程）
+    const usageTokens = data.data?.total_tokens || 0;
+    const usageElapsed = data.data?.elapsed_time || 0;
+    const usageStatus = data.data?.status || 'success';
+    db.query(
+      'INSERT INTO ai_usage_logs (user_id, project_id, term_kw, zh_cn, target_languages, total_tokens, elapsed_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [userId, projectId, termKw, zhCn.slice(0, 200), targetLangs, usageTokens, usageElapsed, usageStatus]
+    ).catch(() => {});
 
     const outputs = data.data?.outputs;
     if (!outputs) {
@@ -2077,6 +2136,10 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     let filledCells = 0;
     let fullyTranslatedCount = 0;
 
+    // P1-3: 按语种覆盖率统计累加器
+    const langFilledMap = {};
+    langNames.forEach(l => { langFilledMap[l] = 0; });
+
     const versionStatsMap = {};
     versions.forEach(v => {
       versionStatsMap[v.id] = { id: v.id, name: v.version_name, totalTerms: 0, filledCells: 0, fullyTranslatedTerms: 0 };
@@ -2090,7 +2153,7 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
       let termFilledCount = 0;
       for (const lang of langNames) {
         const val = trans[lang];
-        if (val && val.toString().trim() !== '') { filledCells++; termFilledCount++; }
+        if (val && val.toString().trim() !== '') { filledCells++; termFilledCount++; langFilledMap[lang]++; }
       }
 
       const isFull = termFilledCount === langCount && langCount > 0;
@@ -2111,6 +2174,14 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     });
 
     const globalCoverage = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
+
+    // P1-3: 按语种覆盖率构建
+    const langProgress = langNames.map(l => ({
+      lang: l,
+      filled: langFilledMap[l],
+      total: termCount,
+      coverage: termCount > 0 ? Math.round((langFilledMap[l] / termCount) * 100) : 0
+    }));
 
     const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
     const recentLogsRaw = await db.query(
@@ -2138,10 +2209,63 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
       coverage: globalCoverage,
       fullyTranslatedCount,
       tableProgress,
+      langProgress,
       recentLogs
     });
   } catch (err) {
     console.error('获取看板统计数据失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// 18b. GET /api/dashboard/ai-usage - P1-2: AI 用量统计
+app.get('/api/dashboard/ai-usage', authenticateToken, async (req, res) => {
+  try {
+    // 今日用量
+    const todayStats = await db.query(`
+      SELECT
+        COUNT(*) AS call_count,
+        COALESCE(SUM(total_tokens), 0) AS total_tokens,
+        COALESCE(SUM(elapsed_time), 0) AS total_elapsed
+      FROM ai_usage_logs
+      WHERE created_at >= datetime('now', 'start of day')
+    `);
+
+    // 本周用量
+    const weekStats = await db.query(`
+      SELECT
+        COUNT(*) AS call_count,
+        COALESCE(SUM(total_tokens), 0) AS total_tokens
+      FROM ai_usage_logs
+      WHERE created_at >= datetime('now', '-7 days')
+    `);
+
+    // 最近 7 天每日趋势
+    const dailyTrend = await db.query(`
+      SELECT
+        DATE(created_at) AS date,
+        COUNT(*) AS calls,
+        COALESCE(SUM(total_tokens), 0) AS tokens
+      FROM ai_usage_logs
+      WHERE created_at >= datetime('now', '-7 days')
+      GROUP BY DATE(created_at)
+      ORDER BY DATE(created_at) ASC
+    `);
+
+    res.json({
+      today: {
+        calls: todayStats[0]?.call_count || 0,
+        tokens: todayStats[0]?.total_tokens || 0,
+        elapsed: todayStats[0]?.total_elapsed || 0
+      },
+      week: {
+        calls: weekStats[0]?.call_count || 0,
+        tokens: weekStats[0]?.total_tokens || 0
+      },
+      dailyTrend: dailyTrend.map(d => ({ date: d.date, calls: d.calls, tokens: d.tokens }))
+    });
+  } catch (err) {
+    console.error('获取 AI 用量统计失败:', err);
+    res.status(500).json({ error: '服务器内部错误' });
   }
 });
 

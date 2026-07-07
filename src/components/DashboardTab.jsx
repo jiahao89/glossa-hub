@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Database, FileText, CheckCircle, BarChart3, Activity, Clock, User } from 'lucide-react';
+import { Database, FileText, CheckCircle, BarChart3, Activity, Clock, User, Languages, Cpu, Zap } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { Skeleton } from './Skeleton';
 
@@ -45,17 +45,24 @@ function formatLogTime(timestampStr) {
 
 export default function DashboardTab({ onNavigate }) {
   const [stats, setStats] = useState(null);
+  const [aiUsage, setAiUsage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchStats = async () => {
     try {
-      const res = await apiFetch('/api/dashboard/stats');
-      if (!res.ok) {
+      const [statsRes, usageRes] = await Promise.all([
+        apiFetch('/api/dashboard/stats'),
+        apiFetch('/api/dashboard/ai-usage').catch(() => null)
+      ]);
+      if (!statsRes.ok) {
         throw new Error('拉取看板数据失败');
       }
-      const data = await res.json();
+      const data = await statsRes.json();
       setStats(data);
+      if (usageRes && usageRes.ok) {
+        setAiUsage(await usageRes.json());
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -261,6 +268,77 @@ export default function DashboardTab({ onNavigate }) {
         </div>
 
       </div>
+
+      {/* P1-2: AI 用量监控卡片 */}
+      {aiUsage && (
+        <div className="stats-bento" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem', marginTop: '0.5rem' }}>
+          <div className="bento-card">
+            <div className="bento-icon-wrapper" style={{ background: 'rgba(139, 92, 246, 0.08)', color: '#a78bfa' }}>
+              <Cpu size={18} />
+            </div>
+            <div className="bento-info">
+              <span className="bento-label">今日 AI 翻译调用</span>
+              <span className="bento-value" style={{ fontSize: '1.5rem' }}>{aiUsage.today.calls} <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>次</span></span>
+            </div>
+          </div>
+          <div className="bento-card">
+            <div className="bento-icon-wrapper" style={{ background: 'rgba(168, 85, 247, 0.08)', color: '#c084fc' }}>
+              <Zap size={18} />
+            </div>
+            <div className="bento-info">
+              <span className="bento-label">今日 Token 消耗</span>
+              <span className="bento-value" style={{ fontSize: '1.5rem' }}>{aiUsage.today.tokens > 1000 ? `${(aiUsage.today.tokens / 1000).toFixed(1)}K` : aiUsage.today.tokens} <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>tokens</span></span>
+            </div>
+          </div>
+          <div className="bento-card">
+            <div className="bento-icon-wrapper" style={{ background: 'rgba(124, 58, 237, 0.08)', color: '#8b5cf6' }}>
+              <Activity size={18} />
+            </div>
+            <div className="bento-info">
+              <span className="bento-label">本周累计</span>
+              <span className="bento-value" style={{ fontSize: '1.5rem' }}>{aiUsage.week.calls} <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>次 / {aiUsage.week.tokens > 1000 ? `${(aiUsage.week.tokens / 1000).toFixed(1)}K` : aiUsage.week.tokens} tokens</span></span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* P1-3: 按语种覆盖率 */}
+      {stats.langProgress && stats.langProgress.length > 0 && (
+        <div className="panel-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', marginTop: '1.5rem', overflow: 'hidden' }}>
+          <h3 style={{ margin: '0 0 1.25rem 0', fontSize: '1.1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Languages size={16} style={{ color: 'var(--accent)' }} />
+            <span>按语种翻译覆盖率</span>
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {stats.langProgress.map(l => (
+              <div key={l.lang} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ minWidth: '100px', fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>{l.lang}</span>
+                <div style={{ flex: 1, height: '10px', background: 'var(--bg-tertiary)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
+                  <div
+                    style={{
+                      width: `${l.coverage}%`,
+                      height: '100%',
+                      background: l.coverage >= 80
+                        ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)'
+                        : l.coverage >= 40
+                        ? 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)'
+                        : 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)',
+                      borderRadius: '5px',
+                      transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                  />
+                </div>
+                <span style={{ minWidth: '60px', fontSize: '0.8rem', fontWeight: '600', color: l.coverage >= 80 ? 'var(--green)' : l.coverage >= 40 ? 'var(--yellow)' : 'var(--red)' }}>
+                  {l.coverage}%
+                </span>
+                <span style={{ minWidth: '80px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                  {l.filled}/{l.total}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
