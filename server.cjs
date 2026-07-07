@@ -84,33 +84,12 @@ async function initDatabase() {
       const { Pool } = require('pg');
       const { parse } = require('pg-connection-string');
       
-      let finalPgUrl = pgUrl;
-      let servername = undefined;
+      const pgConfig = parse(pgUrl);
+      
+      // 提取解析出的主机名作为 SNI servername，解决连接池 SSL 属性丢失问题
+      const servername = pgConfig.host || undefined;
 
-      // 如果是 Supabase 数据库连接，强制在内存中将其重写校准为标准的物理直连 5432 端口格式，绕过任何 Pooler SSL 兼容问题
-      if (pgUrl.includes('supabase')) {
-        servername = 'db.seypmsanzhhbucnilcgl.supabase.co';
-        try {
-          const urlObj = new URL(pgUrl);
-          urlObj.hostname = servername;
-          urlObj.port = '5432';
-          urlObj.username = 'postgres';
-          urlObj.search = '';
-          finalPgUrl = urlObj.toString();
-        } catch (urlErr) {
-          console.warn('⚠️ 自动重写 Supabase 连接串失败，将降级使用原始串:', urlErr.message);
-        }
-      } else {
-        try {
-          const urlObj = new URL(pgUrl);
-          servername = urlObj.hostname;
-        } catch (urlErr) {
-          const match = pgUrl.match(/@([^:\/]+)/);
-          if (match) servername = match[1];
-        }
-      }
-
-      const pgConfig = parse(finalPgUrl);
+      // 强制覆盖 ssl 属性，绕过 pg 库在处理 connectionString 时的合并覆盖限制
       pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
 
       pgPool = new Pool(pgConfig);
