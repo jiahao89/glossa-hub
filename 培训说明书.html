@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GlossaHub 协同翻译平台 - 团队培训使用说明书</title>
+  
+  <!-- 引入现代科技感字体 Outfit & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    /* ==========================================
+       1. 设计系统与变量定义 (Design Tokens)
+       ========================================== */
+    :root {
+      --bg-darker: #0b0f19;
+      --bg-dark: #121826;
+      --bg-card: #1d2436;
+      --bg-card-hover: #262f47;
+      
+      --cyan: #06b6d4;
+      --cyan-glow: rgba(6, 182, 212, 0.4);
+      --blue: #3b82f6;
+      --blue-glow: rgba(59, 130, 246, 0.4);
+      
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dark: #6b7280;
+      
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.2);
+      --red: #ef4444;
+      --red-glow: rgba(239, 68, 68, 0.2);
+      --amber: #f59e0b;
+      
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(6, 182, 212, 0.2);
+      
+      --font-title: 'Outfit', 'Inter', -apple-system, sans-serif;
+      --font-body: 'Inter', -apple-system, sans-serif;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    /* 明亮模式覆盖 (Light Mode Overrides) */
+    body.light-mode {
+      --bg-darker: #f0f4f8;
+      --bg-dark: #ffffff;
+      --bg-card: #f8fafc;
+      --bg-card-hover: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-dark: #64748b;
+      --border-color: rgba(15, 23, 42, 0.08);
+      --border-glow: rgba(6, 182, 212, 0.1);
+    }
+
+    /* ==========================================
+       2. 全局样式与排版 (Global Reset)
+       ========================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      scrollbar-width: thin;
+      scrollbar-color: var(--cyan) var(--bg-darker);
+    }
+
+    body {
+      background-color: var(--bg-darker);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      overflow-x: hidden;
+      transition: var(--transition);
+    }
+
+    /* 滚动条美化 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-darker);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--cyan);
+      border-radius: 4px;
+    }
+
+    a {
+      color: var(--cyan);
+      text-decoration: none;
+      transition: var(--transition);
+    }
+    a:hover {
+      text-shadow: 0 0 8px var(--cyan-glow);
+    }
+
+    /* ==========================================
+       3. 页面网格布局 (Grid System)
+       ========================================== */
+    .app-container {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+
+    @media (max-width: 1024px) {
+      .app-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ==========================================
+       4. 侧边导航栏 (Sidebar Styling)
+       ========================================== */
+    aside {
+      background-color: var(--bg-dark);
+      border-right: 1px solid var(--border-color);
+      padding: 2.5rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      z-index: 10;
+      transition: var(--transition);
+    }
+
+    @media (max-width: 1024px) {
+      aside {
+        height: auto;
+        position: relative;
+        padding: 1.5rem;
+      }
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 3rem;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 800;
+      font-family: var(--font-title);
+      font-size: 1.25rem;
+      box-shadow: 0 4px 20px rgba(6, 182, 212, 0.4);
+    }
+
+    .brand-name {
+      font-family: var(--font-title);
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to right, #ffffff, var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    body.light-mode .brand-name {
+      background: linear-gradient(to right, #0f172a, var(--blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .nav-item a {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.85rem 1rem;
+      color: var(--text-muted);
+      border-radius: 10px;
+      font-weight: 500;
+      border: 1px solid transparent;
+      transition: var(--transition);
+    }
+
+    .nav-item.active a, .nav-item a:hover {
+      color: var(--text-main);
+      background-color: var(--bg-card);
+      border-color: var(--border-color);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .nav-item.active a::before {
+      content: '';
+      width: 4px;
+      height: 16px;
+      background-color: var(--cyan);
+      position: absolute;
+      left: 1rem;
+      border-radius: 2px;
+      box-shadow: 0 0 10px var(--cyan);
+    }
+
+    .theme-toggle-container {
+      margin-top: auto;
+      padding-top: 2rem;
+    }
+    
+    @media (max-width: 1024px) {
+      .theme-toggle-container {
+        margin-top: 1.5rem;
+        padding-top: 0;
+      }
+    }
+
+    .theme-btn {
+      width: 100%;
+      padding: 0.75rem;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      transition: var(--transition);
+    }
+
+    .theme-btn:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 0 15px var(--border-glow);
+    }
+
+    /* ==========================================
+       5. 主内容区域 (Main Content Area)
+       ========================================== */
+    main {
+      padding: 3.5rem 5% 5rem 5%;
+      overflow-y: auto;
+      height: 100vh;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        padding: 2rem 1.5rem;
+        height: auto;
+      }
+    }
+
+    header {
+      margin-bottom: 4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .badge-cloud {
+      align-self: flex-start;
+      padding: 0.4rem 1rem;
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(59, 130, 246, 0.1));
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      border-radius: 100px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .badge-cloud::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background-color: var(--cyan);
+      border-radius: 50%;
+      display: inline-block;
+      animation: pulse 1.5s infinite;
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.9); opacity: 0.6; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0.6; }
+    }
+
+    .title-area h1 {
+      font-family: var(--font-title);
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.2;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #ffffff 30%, var(--cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    body.light-mode .title-area h1 {
+      background: linear-gradient(135deg, #0f172a 30%, var(--blue) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .title-area p {
+      color: var(--text-muted);
+      font-size: 1.15rem;
+    }
+
+    /* 实时交互过滤框 */
+    .search-box {
+      position: relative;
+      max-width: 500px;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 1rem 1.5rem 1rem 3.25rem;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      color: var(--text-main);
+      font-size: 1rem;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .search-input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.15);
+      background-color: var(--bg-card-hover);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 1.25rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    /* ==========================================
+       6. 培训卡片章节设计 (Sections Cards)
+       ========================================== */
+    .section-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 3rem 2.5rem;
+      margin-bottom: 3.5rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    @media (max-width: 768px) {
+      .section-card {
+        padding: 2rem 1.5rem;
+      }
+    }
+
+    .section-card:hover {
+      border-color: var(--border-glow);
+      box-shadow: 0 15px 40px rgba(6, 182, 212, 0.05);
+      transform: translateY(-2px);
+    }
+    
+    .section-card.highlight {
+      border-color: var(--cyan);
+      box-shadow: 0 0 30px rgba(6, 182, 212, 0.1);
+    }
+
+    .section-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 150px;
+      height: 150px;
+      background: radial-gradient(circle, var(--cyan-glow) 0%, transparent 70%);
+      opacity: 0.1;
+      pointer-events: none;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1.25rem;
+    }
+
+    .section-icon {
+      width: 50px;
+      height: 50px;
+      background: rgba(6, 182, 212, 0.1);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--cyan);
+      font-size: 1.5rem;
+    }
+
+    .section-header h2 {
+      font-family: var(--font-title);
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .section-card h3 {
+      font-family: var(--font-title);
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 1.75rem 0 1rem 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .section-card h3::before {
+      content: '';
+      width: 4px;
+      height: 14px;
+      background-color: var(--blue);
+      display: inline-block;
+      border-radius: 2px;
+    }
+
+    .section-card p {
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      font-size: 1rem;
+    }
+
+    /* List styling */
+    .feature-list {
+      list-style: none;
+      margin: 1.5rem 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .feature-item {
+      background-color: var(--bg-darker);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.25rem;
+      display: flex;
+      gap: 1rem;
+      transition: var(--transition);
+    }
+
+    .feature-item:hover {
+      border-color: var(--border-glow);
+      background-color: var(--bg-card-hover);
+    }
+
+    .feature-item-num {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .feature-item-content h4 {
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+      font-size: 0.95rem;
+    }
+
+    .feature-item-content p {
+      font-size: 0.85rem;
+      margin-bottom: 0;
+      line-height: 1.4;
+    }
+
+    /* ==========================================
+       7. 权限模拟器交互挂件 (Simulator Widget)
+       ========================================== */
+    .simulator-container {
+      background-color: var(--bg-darker);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 2rem;
+      margin: 2rem 0;
+    }
+
+    .simulator-controls {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .selector-label {
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .role-select {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 0.6rem 1.5rem 0.6rem 1rem;
+      border-radius: 10px;
+      outline: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: var(--transition);
+    }
+
+    .role-select:focus {
+      border-color: var(--cyan);
+    }
+
+    /* 虚拟控制台界面 */
+    .virtual-panel {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 1.5rem;
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+    }
+
+    .virtual-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding-bottom: 0.75rem;
+    }
+
+    .role-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .role-badge.admin {
+      background-color: var(--green-glow);
+      color: var(--green);
+      border: 1px solid var(--green);
+    }
+
+    .role-badge.user {
+      background-color: rgba(59, 130, 246, 0.15);
+      color: var(--blue);
+      border: 1px solid var(--blue);
+    }
+
+    .role-badge.viewer {
+      background-color: rgba(156, 163, 175, 0.15);
+      color: var(--text-muted);
+      border: 1px solid var(--text-dark);
+    }
+
+    .virtual-toolbar {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .v-btn {
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      border: 1px solid transparent;
+      transition: var(--transition);
+    }
+
+    .v-btn.primary {
+      background-color: var(--cyan);
+      color: white;
+    }
+
+    .v-btn.outline {
+      background-color: transparent;
+      border-color: var(--border-color);
+      color: var(--text-main);
+    }
+
+    .v-btn.danger {
+      background-color: transparent;
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    /* 按钮置灰 */
+    .v-btn.disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+      border-color: var(--border-color);
+    }
+
+    /* 交互回馈弹窗或提示 */
+    .v-console-feedback {
+      background-color: rgba(0,0,0,0.4);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: var(--green);
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+    }
+
+    .v-console-feedback.error {
+      color: var(--red);
+      animation: shake 0.3s ease-in-out;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-4px); }
+      40%, 80% { transform: translateX(4px); }
+    }
+
+    /* ==========================================
+       8. 部署三端架构图 (Topology)
+       ========================================== */
+    .topology-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 3rem 1rem;
+      background-color: var(--bg-darker);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      margin: 2rem 0;
+      flex-wrap: wrap;
+      gap: 2rem;
+    }
+
+    .topo-node {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      width: 200px;
+      text-align: center;
+      transition: var(--transition);
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      position: relative;
+    }
+
+    .topo-node:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 0 25px var(--cyan-glow);
+      transform: translateY(-5px);
+    }
+
+    .topo-node-icon {
+      font-size: 2rem;
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+
+    .topo-node h4 {
+      font-weight: 700;
+      font-family: var(--font-title);
+      margin-bottom: 0.35rem;
+    }
+
+    .topo-node span {
+      font-size: 0.75rem;
+      color: var(--cyan);
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .topo-arrow {
+      color: var(--text-dark);
+      font-size: 1.5rem;
+      font-weight: bold;
+      animation: pulse-arrow 1.5s infinite;
+    }
+
+    @keyframes pulse-arrow {
+      0%, 100% { opacity: 0.3; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+    }
+
+    @media (max-width: 768px) {
+      .topo-arrow {
+        transform: rotate(90deg);
+      }
+    }
+
+    /* ==========================================
+       9. 手风琴常见问题设计 (Accordion FAQ)
+       ========================================== */
+    .faq-item {
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      margin-bottom: 1rem;
+      overflow: hidden;
+      transition: var(--transition);
+    }
+
+    .faq-header {
+      background-color: var(--bg-card);
+      padding: 1.25rem 1.5rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      user-select: none;
+      transition: var(--transition);
+    }
+
+    .faq-header:hover {
+      background-color: var(--bg-card-hover);
+    }
+
+    .faq-icon-arrow {
+      transition: var(--transition);
+      display: inline-block;
+    }
+
+    .faq-content {
+      background-color: var(--bg-darker);
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      padding: 0 1.5rem;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .faq-item.open .faq-content {
+      max-height: 500px;
+      opacity: 1;
+      padding: 1.5rem;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .faq-item.open .faq-icon-arrow {
+      transform: rotate(180deg);
+      color: var(--cyan);
+    }
+
+    /* ==========================================
+       10. 辅助功能类 (Utility Classes)
+       ========================================== */
+    .text-center { text-align: center; }
+    .mt-4 { margin-top: 1.5rem; }
+    .mb-4 { margin-bottom: 1.5rem; }
+    
+    /* 警告与通知 */
+    .alert-box {
+      padding: 1.25rem;
+      border-radius: 12px;
+      border-left: 4px solid;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+
+    .alert-box.important {
+      background-color: var(--red-glow);
+      border-color: var(--red);
+      color: var(--text-main);
+    }
+
+    .alert-box.tip {
+      background-color: rgba(6, 182, 212, 0.05);
+      border-color: var(--cyan);
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- 1. 侧边栏导航 (Sidebar) -->
+    <aside>
+      <div class="brand">
+        <div class="brand-logo">G</div>
+        <span class="brand-name">GlossaHub</span>
+      </div>
+      
+      <ul class="nav-list">
+        <li class="nav-item active" data-target="sec-intro"><a href="#sec-intro">📋 平台介绍与架构</a></li>
+        <li class="nav-item" data-target="sec-roles"><a href="#sec-roles">👥 角色权限与模拟</a></li>
+        <li class="nav-item" data-target="sec-features"><a href="#sec-features">✨ v0.3 核心新功能</a></li>
+        <li class="nav-item" data-target="sec-workflow"><a href="#sec-workflow">🔄 典型业务工作流</a></li>
+        <li class="nav-item" data-target="sec-faq"><a href="#sec-faq">❓ 常见故障诊断</a></li>
+      </ul>
+      
+      <div class="theme-toggle-container">
+        <button class="theme-btn" id="theme-toggle-btn">
+          <span id="theme-icon">🌙</span>
+          <span id="theme-text">切换明亮模式</span>
+        </button>
+      </div>
+    </aside>
+    
+    <!-- 2. 主页面内容 (Main Content) -->
+    <main>
+      
+      <!-- 头部大屏 -->
+      <header>
+        <div class="badge-cloud">云端 0.3 黄金稳定版本部署就绪</div>
+        <div class="title-area">
+          <h1>GlossaHub 协同翻译平台使用说明书</h1>
+          <p>面向开发人员、PM、以及翻译人员的极速上手指南</p>
+        </div>
+        
+        <!-- 实时检索框 -->
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="search-input" placeholder="输入关键字搜索培训内容 (例如: 权限, 404, 来源)...">
+        </div>
+      </header>
+      
+      <!-- 章节 1：平台介绍 -->
+      <section id="sec-intro" class="section-card">
+        <div class="section-header">
+          <div class="section-icon">📋</div>
+          <h2>零、 平台介绍与部署架构</h2>
+        </div>
+        <p>GlossaHub 是一款专门面向<strong>迈金智能骑行产品线（码表、App、外设等）</strong>多语言词条的多人协同管理与智能预翻译平台。它为全生命周期的词条录入、工作流审核、版本增量比对、以及最终同步导出提供了全套解决方案。</p>
+        
+        <h3>云端部署拓扑 (三端分离)</h3>
+        <p>点击各节点，可以查看其在云端架构中的主要职责：</p>
+        
+        <div class="topology-container">
+          <div class="topo-node" onclick="showTopoInfo('vercel')">
+            <span class="topo-node-icon">🌐</span>
+            <h4>Vercel 前端</h4>
+            <span>静态 SPA 托管 / CDN</span>
+          </div>
+          <div class="topo-arrow">➔</div>
+          <div class="topo-node" onclick="showTopoInfo('render')">
+            <span class="topo-node-icon">🔌</span>
+            <h4>Render 后端</h4>
+            <span>Express Node API / Telemetry</span>
+          </div>
+          <div class="topo-arrow">➔</div>
+          <div class="topo-node" onclick="showTopoInfo('supabase')">
+            <span class="topo-node-icon">🗄️</span>
+            <h4>Supabase PG</h4>
+            <span>PostgreSQL 关系云库</span>
+          </div>
+        </div>
+        
+        <!-- 拓扑信息交互显示 -->
+        <div class="v-console-feedback text-center mt-4" id="topo-display" style="justify-content: center;">
+          点击上方架构节点查看云部署职责与域名信息...
+        </div>
+      </section>
+      
+      <!-- 章节 2：角色权限与模拟 -->
+      <section id="sec-roles" class="section-card">
+        <div class="section-header">
+          <div class="section-icon">👥</div>
+          <h2>一、 全局角色权限与交互模拟</h2>
+        </div>
+        <p>为了防止词条在临近版本封包定稿时被译员或开发意外改动，系统采用了双重权限防护机制：</p>
+        
+        <ul class="feature-list">
+          <li class="feature-item">
+            <div class="feature-item-num">1</div>
+            <div class="feature-item-content">
+              <h4>系统级全局角色 (users.role)</h4>
+              <p>在库中为账号配置全局 <strong>admin</strong>（超级管理员）或 <strong>user</strong>（普通译员），控制锁定、审批以及保存 Dify Key 等敏感接口。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">2</div>
+            <div class="feature-item-content">
+              <h4>项目级成员角色 (project_members.role)</h4>
+              <p>针对具体产品项目隔离。分为 <strong>owner</strong>（项目所有者）、<strong>editor</strong>（编辑者）和 <strong>viewer</strong>（只读查看，UI 操作全部变灰）。</p>
+            </div>
+          </li>
+        </ul>
+        
+        <h3>🎮 交互式权限模拟器 (点击角色测试 UI 变化)</h3>
+        <p>在下方下拉框中切换您的测试角色，然后在控制台中点击对应的 GlossaHub 按钮测试 UI 的反馈与拦截机制：</p>
+        
+        <div class="simulator-container">
+          <div class="simulator-controls">
+            <span class="selector-label">切换当前登录角色:</span>
+            <select class="role-select" id="sim-role-select" onchange="updateSimRole()">
+              <option value="admin">管理员 (admin) - 系统超级管理员</option>
+              <option value="user">普通译员 (user) - 开发/协同翻译</option>
+              <option value="viewer">只读审核 (viewer) - 仅限导出查看</option>
+            </select>
+          </div>
+          
+          <div class="virtual-panel">
+            <div class="virtual-header">
+              <span>GlossaHub 虚拟操作控制台</span>
+              <span class="role-badge admin" id="sim-role-badge">ADMIN</span>
+            </div>
+            
+            <div class="virtual-toolbar">
+              <button class="v-btn primary" onclick="triggerSimAction('translate')">🪄 一键 AI 翻译</button>
+              <button class="v-btn outline" id="btn-sim-lock" onclick="triggerSimAction('lock')">🔒 锁定行记录</button>
+              <button class="v-btn outline" id="btn-sim-approve" onclick="triggerSimAction('approve')">✅ 批量审批通过</button>
+              <button class="v-btn outline" id="btn-sim-dify" onclick="triggerSimAction('dify')">⚙️ 全局配置 (Dify Key)</button>
+              <button class="v-btn danger" id="btn-sim-delete" onclick="triggerSimAction('delete')">🗑️ 批量删除选中</button>
+            </div>
+            
+            <div class="v-console-feedback" id="sim-feedback">
+              系统控制台就绪，请点击按钮开始测试...
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- 章节 3：v0.3 核心功能 -->
+      <section id="sec-features" class="section-card">
+        <div class="section-header">
+          <div class="section-icon">✨</div>
+          <h2>二、 v0.3 版本升级核心新功能</h2>
+        </div>
+        <p>在最新迭代的 v0.3 版本中，平台提供了质量控制、成本统计及多人防写冲突的五大特性：</p>
+        
+        <ul class="feature-list">
+          <li class="feature-item">
+            <div class="feature-item-num">1</div>
+            <div class="feature-item-content">
+              <h4>🔒 行级防冲突锁定 (Row Locking)</h4>
+              <p>临近定包时，管理员可直接对指定行上锁。上锁后，普通用户双击编辑将被彻底屏蔽，后端接口对于非管理员修改也会抛出 403。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">2</div>
+            <div class="feature-item-content">
+              <h4>🏷️ 翻译来源角标 (Telemetry Badges)</h4>
+              <p>多语言字段附带清晰来源标识：<strong>ai</strong> (机器人)、<strong>tm</strong> (翻译记忆库)、<strong>human</strong> (人工审核)。当人工二次微调后，来源会自动无缝升级为 human。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">3</div>
+            <div class="feature-item-content">
+              <h4>📈 AI 用量 Token 大盘 (Analytics)</h4>
+              <p>仪表盘顶部引入消耗监控，实时展示累积 Token 与最近 7 天的消耗走势折线图，方便监控大模型翻译的成本开销。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">4</div>
+            <div class="feature-item-content">
+              <h4>📊 语种就绪进度矩阵 (Progress Metric)</h4>
+              <p>红黄绿三色长柱形进度条，实时展示 16 种迈金出海语种的翻译覆盖就绪情况，哪里缺翻译、缺多少一目了然。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">5</div>
+            <div class="feature-item-content">
+              <h4>🔄 比对差异一键写回飞书 (Sync Back)</h4>
+              <p>支持多版本差异比对（自动规整省略号、弯直双引号等假差异）。插件模式下，一键即可把增量差异写回到飞书多维表格单元格中。</p>
+            </div>
+          </li>
+        </ul>
+      </section>
+      
+      <!-- 章节 4：工作流 -->
+      <section id="sec-workflow" class="section-card">
+        <div class="section-header">
+          <div class="section-icon">🔄</div>
+          <h2>三. 典型协同业务工作流推荐</h2>
+        </div>
+        <p>推荐迈金多人高效协作的 **“四步发版工作流”**：</p>
+        
+        <div class="alert-box tip">
+          <strong>开发录入 (DRAFT) ➔ AI预翻译 (PENDING) ➔ 人工校验与审批 (APPROVED) ➔ 锁定行并同步回飞书 (PUBLISHED)</strong>
+        </div>
+        
+        <ol class="feature-list" style="grid-template-columns: 1fr;">
+          <li class="feature-item">
+            <div class="feature-item-num">A</div>
+            <div class="feature-item-content">
+              <h4>开发人员：词条录入</h4>
+              <p>开发人员（全局 `user` 角色）在网页端或飞书组件里快速建立新页面词条，录入 `KW` 和 `CN(中文)`。此时词条状态默认为 <strong>`DRAFT` (草稿)</strong>。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">B</div>
+            <div class="feature-item-content">
+              <h4>翻译团队/大模型：AI 智能翻译</h4>
+              <p>选中新增行，一键点击批量 AI 预翻译。系统自动填入 16 个语种翻译，打上 `ai` 来源角标。词条状态流转为 <strong>`PENDING_REVIEW` (待审核)</strong>。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">C</div>
+            <div class="feature-item-content">
+              <h4>项目负责人/译员：人工定稿与审批</h4>
+              <p>对 AI 翻译不满意的字词进行双击编辑微调（微标自动更新为 `human`），确定合格后点击 **“批量审批通过”**。词条状态升级为 <strong>`APPROVED` (已审批)</strong>。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">D</div>
+            <div class="feature-item-content">
+              <h4>项目负责人：一键锁定与同步</h4>
+              <p>将已定稿的行勾选并 **“锁定”**（防改）。点击 **“一键同步”**，把本地数据库所有已审批的词条全量同步并更新到飞书云端表格，完成出海发包。</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+      
+      <!-- 章节 5：故障诊断 -->
+      <section id="sec-faq" class="section-card">
+        <div class="section-header">
+          <div class="section-icon">❓</div>
+          <h2>四、 常见问题与故障诊断 FAQ</h2>
+        </div>
+        <p>在部署与使用过程中，如遇到以下常见错误，请参考对应排查步骤解决：</p>
+        
+        <div class="faq-item">
+          <div class="faq-header" onclick="toggleFaq(this)">
+            <span>Q1: 登录报错 `Unexpected token 'T', "The page c"... is not valid JSON`？</span>
+            <span class="faq-icon-arrow">▼</span>
+          </div>
+          <div class="faq-content">
+            <p><strong>原因</strong>：前端请求没有被送往后端（请求了 Vercel 的静态服务，返回了以 `The page could not be found` 开头的 404 HTML 页）。</p>
+            <p><strong>解决步骤</strong>：</p>
+            <ol style="margin-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <li>登录 Vercel 项目页面 ➔ Settings ➔ Environment Variables。</li>
+              <li>检查是否正确添加了 **`VITE_API_BASE_URL`**，值必须是您的 Render 后端 API 域名：`https://glossa-hub.onrender.com` (注意：<strong>末尾绝对不能带有斜杠 `/`</strong>)。</li>
+              <li>添加或修改后，<strong>必须进入 Vercel 的 Deployments 菜单，对最新那次部署选择 Redeploy (重新部署)</strong>，否则新环境变量不会被打包进静态文件。</li>
+              <li>如环境变量无误，说明您的请求在公网遭到了**本地科学上网/网络代理工具（如 Clash、Surge 等）**的拦截（导致 90ms 瞬间本地返回错误页）。请暂时关闭代理或切换为“直连模式”，强制刷新页面即可解决。</li>
+            </ol>
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-header" onclick="toggleFaq(this)">
+            <span>Q2: 环境变量 `CORS_ORIGINS` 怎么配置？结尾需要斜杠吗？</span>
+            <span class="faq-icon-arrow">▼</span>
+          </div>
+          <div class="faq-content">
+            <p><strong>原因</strong>：后端 CORS 跨域校验是严格的字符串比对。浏览器在跨域发送请求时携带的 `Origin` 头是 **`https://glossa-hub.vercel.app` (永远不带斜杠)**。</p>
+            <p><strong>解决步骤</strong>：</p>
+            <ol style="margin-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <li>登录 Render.com 控制台 ➔ 进入您的后端 API 选项卡。</li>
+              <li>检查 `CORS_ORIGINS` 环境变量值。如果是带有 `/`（如 `https://glossa-hub.vercel.app/`），请点击 Edit，<strong>将末尾的斜杠物理删掉</strong>。</li>
+              <li>点击 Save 储存，Render 自动热重启完毕后即放行跨域。</li>
+            </ol>
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-header" onclick="toggleFaq(this)">
+            <span>Q3: 在 Render 日志中看到 `no tenant identifier provided (external_id or sni_hostname required)` 自动降级为 SQLite 是什么情况？</span>
+            <span class="faq-icon-arrow">▼</span>
+          </div>
+          <div class="faq-content">
+            <p><strong>原因</strong>：这是 Supabase 实例的 SSL SNI 校验机制限制，如果连接池在 TLS 握手时没收到 servername，会拒绝外网握手连接。</p>
+            <p><strong>状态与解决</strong>：我们已在 v0.3 的 `server.cjs` 代码中部署了 SNI 自动提取与填充的主机名补丁。现在 Render 重新发布后，系统能够自动建立安全的 SNI 通道，您不需要手动执行任何代码修改。</p>
+          </div>
+        </div>
+      </section>
+      
+    </main>
+  </div>
+
+  <script>
+    /* ==========================================
+       J1. 明亮/暗黑模式切换 (Theme Toggle)
+       ========================================== */
+    const themeBtn = document.getElementById('theme-toggle-btn');
+    const themeIcon = document.getElementById('theme-icon');
+    const themeText = document.getElementById('theme-text');
+    const body = document.body;
+
+    themeBtn.addEventListener('click', () => {
+      body.classList.toggle('light-mode');
+      const isLight = body.classList.contains('light-mode');
+      themeIcon.textContent = isLight ? '☀️' : '🌙';
+      themeText.textContent = isLight ? '切换暗黑模式' : '切换明亮模式';
+    });
+
+    /* ==========================================
+       J2. 实时检索与卡片过滤 (Search & Filter)
+       ========================================== */
+    const searchInput = document.getElementById('search-input');
+    const cards = document.querySelectorAll('.section-card');
+
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      
+      cards.forEach(card => {
+        const text = card.textContent.toLowerCase();
+        if (text.includes(query)) {
+          card.style.display = 'block';
+          if (query !== '') {
+            card.classList.add('highlight');
+          } else {
+            card.classList.remove('highlight');
+          }
+        } else {
+          card.style.display = 'none';
+          card.classList.remove('highlight');
+        }
+      });
+    });
+
+    /* ==========================================
+       J3. 侧边栏活动菜单定位 (Active Sidebar Sync)
+       ========================================== */
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(item => {
+      item.addEventListener('click', () => {
+        navItems.forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+      });
+    });
+
+    /* ==========================================
+       J4. 常见问题手风琴收展 (Accordion Toggle)
+       ========================================== */
+    function toggleFaq(header) {
+      const faqItem = header.parentElement;
+      const isOpen = faqItem.classList.contains('open');
+      
+      // 先把所有其他的收起来
+      document.querySelectorAll('.faq-item').forEach(item => {
+        item.classList.remove('open');
+      });
+      
+      // 如果原本没开，就把它打开
+      if (!isOpen) {
+        faqItem.classList.add('open');
+      }
+    }
+
+    /* ==========================================
+       J5. 拓扑图交互反馈 (Topology Node Click)
+       ========================================== */
+    function showTopoInfo(node) {
+      const display = document.getElementById('topo-display');
+      display.classList.remove('error');
+      
+      const info = {
+        vercel: "【Vercel 前端】: 负责托管由 Vite 编译出来的静态静态单页应用。拥有全球极速 CDN 加速节点，国内秒开，是用户的直接操作页面入口。域名如: https://glossa-hub.vercel.app",
+        render: "【Render 后端】: 常驻运行的 Node.js Express 接口服务。负责所有 API 处理、AI 预翻译对接以及 Telemetry 监控数据统计。域名如: https://glossa-hub.onrender.com",
+        supabase: "【Supabase 数据库】: 云端的 PostgreSQL 数据库。保存所有用户权限凭证、锁定信息、语种表和 11 张核心关系表，保障数据永久保存。主机: db.seypmsanzhhbucnilcgl.supabase.co"
+      };
+      
+      display.textContent = info[node];
+    }
+
+    /* ==========================================
+       J6. 权限模拟器行为状态机 (Privilege Simulator)
+       ========================================== */
+    const simRoleSelect = document.getElementById('sim-role-select');
+    const simRoleBadge = document.getElementById('sim-role-badge');
+    const feedback = document.getElementById('sim-feedback');
+    
+    // UI elements inside simulator
+    const btnLock = document.getElementById('btn-sim-lock');
+    const btnApprove = document.getElementById('btn-sim-approve');
+    const btnDify = document.getElementById('btn-sim-dify');
+    const btnDelete = document.getElementById('btn-sim-delete');
+
+    function updateSimRole() {
+      const role = simRoleSelect.value;
+      
+      // Update badge UI
+      simRoleBadge.className = `role-badge ${role}`;
+      simRoleBadge.textContent = role.toUpperCase();
+      
+      // Reset feedback console
+      feedback.textContent = `当前身份已成功切换为: [${role.toUpperCase()}]，点击上方任意按钮测试权限！`;
+      feedback.classList.remove('error');
+      
+      // Sync simulated disabled buttons state in HTML UI
+      if (role === 'admin') {
+        btnLock.classList.remove('disabled');
+        btnApprove.classList.remove('disabled');
+        btnDify.classList.remove('disabled');
+        btnDelete.classList.remove('disabled');
+      } else if (role === 'user') {
+        btnLock.classList.add('disabled');
+        btnApprove.classList.add('disabled');
+        btnDify.classList.add('disabled');
+        btnDelete.classList.remove('disabled'); // user can delete selected rows in standard Bitable
+      } else if (role === 'viewer') {
+        btnLock.classList.add('disabled');
+        btnApprove.classList.add('disabled');
+        btnDify.classList.add('disabled');
+        btnDelete.classList.add('disabled');
+      }
+    }
+
+    function triggerSimAction(action) {
+      const role = simRoleSelect.value;
+      feedback.classList.remove('error');
+      
+      const permissions = {
+        admin: { translate: true, lock: true, approve: true, dify: true, delete: true },
+        user: { translate: true, lock: false, approve: false, dify: false, delete: true },
+        viewer: { translate: false, lock: false, approve: false, dify: false, delete: false }
+      };
+
+      const actionNames = {
+        translate: "🪄 一键 AI 预翻译",
+        lock: "🔒 锁定行记录",
+        approve: "✅ 批量审批通过",
+        dify: "⚙️ 全局配置 (Dify Key)",
+        delete: "🗑️ 批量删除选中"
+      };
+
+      const hasPermission = permissions[role][action];
+
+      if (hasPermission) {
+        feedback.className = "v-console-feedback";
+        const msg = {
+          translate: "⚡ [成功] AI 预翻译工作流启动成功，16 种目标语种自动填充完毕，状态置为 PENDING_REVIEW！",
+          lock: "⚡ [成功] 词条行成功锁定！非管理员用户将无法在 UI 上编辑此行数据，后端已建立物理锁防线！",
+          approve: "⚡ [成功] 批量审批通过！所勾选词条状态已变更归档为 APPROVED，一键同步回飞书就绪！",
+          dify: "⚡ [成功] 密钥配置成功保存到 Supabase config 存储！AI 大模型通道全线已通！",
+          delete: "⚡ [成功] 批量删除成功！所勾选的词条数据已成功从 Supabase 物理删除！"
+        };
+        feedback.textContent = msg[action];
+      } else {
+        feedback.className = "v-console-feedback error";
+        feedback.textContent = `❌ [拒绝 - 403 FORBIDDEN]: 权限校验失败。当前角色 [${role.toUpperCase()}] 无权操作 [${actionNames[action]}]。`;
+        
+        // Triggers haptic shake feedback on simulated console container
+        const consoleEl = document.querySelector('.virtual-panel');
+        consoleEl.classList.remove('shake-anim');
+        void consoleEl.offsetWidth; // Trigger reflow to restart animation
+        consoleEl.style.animation = 'shake 0.3s ease-in-out';
+        setTimeout(() => { consoleEl.style.animation = ''; }, 300);
+      }
+    }
+
+    // Initialize Simulator UI state on load
+    updateSimRole();
+  </script>
+</body>
+</html>
