@@ -253,14 +253,20 @@ function initSqliteTables() {
       `, (err) => {
         if (err) return reject(err);
 
-        // Pre-populate Magene internal users (王赵云 & 史东升)
+        // Pre-populate Magene internal users (王赵云 & 史东升等 8 位管理员)
         const passHash = hashPassword('magene123');
         sqliteDb.run(`
           INSERT OR IGNORE INTO users (id, username, password_hash, name, role, created_at)
           VALUES 
-          ('user-wangzhaoyun', 'wangzhaoyun', ?, '王赵云', 'admin', datetime('now')),
-          ('user-shidongsheng', 'shidongsheng', ?, '史东升', 'admin', datetime('now'))
-        `, [passHash, passHash], (insErr) => {
+          ('user-wangzhaoyun', 'wangzhaoyun', ?, 'wangzhaoyun', 'admin', datetime('now')),
+          ('user-shidongsheng', 'shidongsheng', ?, 'shidongsheng', 'admin', datetime('now')),
+          ('user-liuchenlu', 'liuchenlu', ?, 'liuchenlu', 'admin', datetime('now')),
+          ('user-liuyuanyuan', 'liuyuanyuan', ?, 'liuyuanyuan', 'admin', datetime('now')),
+          ('user-bizihao', 'bizihao', ?, 'bizihao', 'admin', datetime('now')),
+          ('user-shengyongbang', 'shengyongbang', ?, 'shengyongbang', 'admin', datetime('now')),
+          ('user-lanyiwei', 'lanyiwei', ?, 'lanyiwei', 'admin', datetime('now')),
+          ('user-jiahao', 'jiahao', ?, 'jiahao', 'admin', datetime('now'))
+        `, [passHash, passHash, passHash, passHash, passHash, passHash, passHash, passHash], (insErr) => {
           if (insErr) console.error('⚠️ 预置 SQLite 用户失败:', insErr.message);
 
           // Pre-populate default project
