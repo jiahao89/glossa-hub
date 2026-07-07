@@ -88,6 +88,15 @@ async function initDatabase() {
 
       const pgConfig = parse(pgUrl);
 
+      // 解密/还原被 URL 编码后的特殊字符密码（例如将 %40 还原回 @）
+      if (pgConfig.password) {
+        try {
+          pgConfig.password = decodeURIComponent(pgConfig.password);
+        } catch (decErr) {
+          // 忽略非法百分号格式，保留原密码
+        }
+      }
+
       // 自动将 Supabase 直连地址重写为 Session Pooler (IPv4)
       // 直连地址只解析到 IPv6，Render 不支持 IPv6 (ENETUNREACH)
       // Session Pooler 端口 5432 走 IPv4，且兼容 prepared statements
