@@ -109,16 +109,16 @@ async function initDatabase() {
         }
       }
 
-      // 自动将 Supabase 直连地址重写为 Session Pooler (IPv4)
+      // 自动将 Supabase 直连地址重写为 Session/Transaction Pooler (IPv4)
       // 直连地址只解析到 IPv6，Render 不支持 IPv6 (ENETUNREACH)
-      // Session Pooler 端口 5432 走 IPv4，且兼容 prepared statements
+      // 官方为该项目分配了 aws-1-ap-northeast-2.pooler.supabase.com:6543 终点
       const directMatch = pgConfig.host && pgConfig.host.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
       if (directMatch) {
         const projectRef = directMatch[1];
-        pgConfig.host = 'aws-0-ap-northeast-2.pooler.supabase.com';
-        pgConfig.port = '5432';
+        pgConfig.host = 'aws-1-ap-northeast-2.pooler.supabase.com';
+        pgConfig.port = '6543';
         pgConfig.user = `postgres.${projectRef}`;
-        console.log(`🔧 Supabase 直连→Session Pooler 重写: ${projectRef}`);
+        console.log(`🔧 Supabase 直连→Pooler 重写: ${projectRef} ➔ aws-1-ap-northeast-2.pooler.supabase.com:6543`);
       }
 
       const servername = pgConfig.host || undefined;
