@@ -14,6 +14,16 @@ const DEFAULT_TARGET_LANGUAGES = [
   'CZ(捷克)', '瑞典', '挪威', '荷兰'
 ];
 
+function escapeXml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 export default function TranslationTab({ 
   difyConnected = false,
   onAddLog: onAddLogOriginal, 
@@ -151,6 +161,10 @@ export default function TranslationTab({
   const [batchApproveStatus, setBatchApproveStatus] = useState('APPROVED');
   const [batchApproveRejectReason, setBatchApproveRejectReason] = useState('');
   const [rollingBackId, setRollingBackId] = useState('');
+
+  // CSV 增量导入预览状态
+  const [importDiff, setImportDiff] = useState(null); // { added: [], modified: [], unchanged: [], removed: [], csvRecords: [] }
+  const [importPreviewOpen, setImportPreviewOpen] = useState(false);
 
   const currentUser = useMemo(() => {
     try {
@@ -817,30 +831,27 @@ export default function TranslationTab({
         }
       });
 
-      let updatedRecordsList = [];
-      setRecords(prev => {
-        updatedRecordsList = prev.map(rec => {
-          if (rec.recordId === editModalRecord.recordId) {
-            const updatedFields = { ...rec.fields };
-            TARGET_LANGUAGES.forEach(lang => {
-              updatedFields[lang] = editModalRecord.translations[lang] || '';
-            });
-            updatedFields['KW'] = editModalRecord.KW;
-            updatedFields['CN（中文）'] = editModalRecord.中文;
-            updatedFields['所在页面'] = editModalRecord.所在页面;
-            updatedFields['字号类别'] = editModalRecord.字号类别;
-            
-            return { 
-              ...rec, 
-              fields: updatedFields,
-              translationsMeta: { ...sessionMetaRef.current }, // P1-1: 保存翻译来源标记
-              updatedAt: new Date().toISOString()
-            };
-          }
-          return rec;
-        });
-        return updatedRecordsList;
+      const updatedRecordsList = recordsRef.current.map(rec => {
+        if (rec.recordId === editModalRecord.recordId) {
+          const updatedFields = { ...rec.fields };
+          TARGET_LANGUAGES.forEach(lang => {
+            updatedFields[lang] = editModalRecord.translations[lang] || '';
+          });
+          updatedFields['KW'] = editModalRecord.KW;
+          updatedFields['CN（中文）'] = editModalRecord.中文;
+          updatedFields['所在页面'] = editModalRecord.所在页面;
+          updatedFields['字号类别'] = editModalRecord.字号类别;
+          
+          return { 
+            ...rec, 
+            fields: updatedFields,
+            translationsMeta: { ...sessionMetaRef.current },
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return rec;
       });
+      setRecords(updatedRecordsList);
 
       // Sync changes to SQLite in background
       await saveOfflineRecords(selectedTableId, updatedRecordsList);
@@ -1043,10 +1054,8 @@ export default function TranslationTab({
 
       let updatedRecordsList = [];
       if (addTargetTableId === selectedTableId) {
-        setRecords(prev => {
-          updatedRecordsList = [...prev, newRecObj];
-          return updatedRecordsList;
-        });
+        updatedRecordsList = [...recordsRef.current, newRecObj];
+        setRecords(updatedRecordsList);
       } else {
         const res = await apiFetch(`/api/tables/${addTargetTableId}/records`);
         let currentTerms = [];
@@ -1253,24 +1262,22 @@ export default function TranslationTab({
 
       let updatedRecordsList = [];
       if (batchTargetTableId === selectedTableId) {
-        setRecords(prev => {
-          updatedRecordsList = prev.map(rec => {
-            const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
-            if (updateItem) {
-              return {
-                ...rec,
-                fields: {
-                  ...rec.fields,
-                  ...updateItem.fields
-                },
-                translationsMeta: { ...(rec.translationsMeta || {}), ...(updateItem.translationsMeta || {}) }, // P1-1: 合并翻译来源
-                updatedAt: new Date().toISOString()
-              };
-            }
-            return rec;
-          });
-          return updatedRecordsList;
+        updatedRecordsList = recordsRef.current.map(rec => {
+          const updateItem = recordsToUpdate.find(r => r.recordId === rec.recordId);
+          if (updateItem) {
+            return {
+              ...rec,
+              fields: {
+                ...rec.fields,
+                ...updateItem.fields
+              },
+              translationsMeta: { ...(rec.translationsMeta || {}), ...(updateItem.translationsMeta || {}) },
+              updatedAt: new Date().toISOString()
+            };
+          }
+          return rec;
         });
+        setRecords(updatedRecordsList);
       } else {
         const res = await apiFetch(`/api/tables/${batchTargetTableId}/records`);
         let currentTerms = [];
@@ -1581,11 +1588,8 @@ export default function TranslationTab({
     try {
       const idsToDelete = Array.from(selectedRecordIds);
 
-      let updatedRecordsList = [];
-      setRecords(prev => {
-        updatedRecordsList = prev.filter(rec => !selectedRecordIds.has(rec.recordId));
-        return updatedRecordsList;
-      });
+      const updatedRecordsList = recordsRef.current.filter(rec => !selectedRecordIds.has(rec.recordId));
+      setRecords(updatedRecordsList);
       
       // Sync deletions to SQLite in background
       await saveOfflineRecords(selectedTableId, updatedRecordsList);
@@ -1625,11 +1629,8 @@ export default function TranslationTab({
     try {
       const idsToDelete = emptyRecords.map(r => r.recordId);
 
-      let updatedRecordsList = [];
-      setRecords(prev => {
-        updatedRecordsList = prev.filter(rec => !idsToDelete.includes(rec.recordId));
-        return updatedRecordsList;
-      });
+      const updatedRecordsList = recordsRef.current.filter(rec => !idsToDelete.includes(rec.recordId));
+      setRecords(updatedRecordsList);
 
       // Sync cleanup to SQLite in background
       await saveOfflineRecords(selectedTableId, updatedRecordsList);
@@ -1654,170 +1655,294 @@ export default function TranslationTab({
     fileInputRef.current.click();
   };
 
-  const handleCsvImportSelected = (e) => {
-    const file = e.target.files[0];
+  const handleCsvImportSelected = (event) => {
+    const file = event.target.files[0];
     if (!file) return;
+    if (!selectedTableId) {
+      showStatus('danger', '请先选择一个数据表！');
+      event.target.value = '';
+      return;
+    }
 
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (readerEvent) => {
       try {
         setLoading(true);
-        const text = event.target.result;
+        const text = readerEvent.target.result;
         const parsedRows = parseCSV(text);
 
         if (parsedRows.length < 2) {
-          toast.error('CSV 文件数据不足（缺少表头或数据）');
+          showStatus('danger', 'CSV 文件中没有有效数据！');
           return;
         }
 
         const headers = parsedRows[0];
-        const rows = parsedRows.slice(1);
+        // 过滤完全空白的行
+        const rows = parsedRows.slice(1).filter(r => r.some(c => (c || '').trim() !== ''));
 
-        // Map column indexes
-        const findHeaderIndex = (possibleNames) => {
-          const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
-          const normalizedPossibles = possibleNames.map(p => normalize(p));
-          return headers.findIndex(h => normalizedPossibles.includes(normalize(h)));
-        };
-
-        const kwIdx = findHeaderIndex(['KW', 'KW (Key)', 'KW(Key)', 'KW（Key）', 'kw']);
-        const zhIdx = findHeaderIndex(['CN（中文）', '中文', 'CN(中文)', 'CN (中文)', 'zh']);
-        const pageIdx = findHeaderIndex(['所在页面', '页面', '词条所在界面（注意是界面不是模块！！）']);
-        const ownerIdx = findHeaderIndex(['字号类别', '字号', '类别', '负责人']);
-
-        if (kwIdx === -1 || zhIdx === -1) {
-          toast.error('CSV 结构非法：必须包含 "KW" 和 "CN（中文）" 列！');
+        if (rows.length === 0) {
+          showStatus('danger', 'CSV 文件中没有有效数据！');
           return;
         }
 
-        const updatedRecords = [...recordsRef.current];
-        let localUpdateCount = 0;
-        let localAddCount = 0;
-        const updatedCellsDict = { ...modifiedCells };
+        // Map CSV header indexes to internal field names
+        const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
+        const colMap = []; // [{ idx, fieldName }]
+        headers.forEach((h, idx) => {
+          if (!h) return;
+          const nh = normalize(h);
+          let fieldName = null;
+          if (nh.includes('kw') || h.includes('词条')) fieldName = 'KW';
+          else if (h.includes('中文') || nh.includes('cn') || nh.includes('cn(中文)')) fieldName = 'CN（中文）';
+          else if (h.includes('所在页面') || h.includes('页面')) fieldName = '所在页面';
+          else if (h.includes('字号') || h.includes('类别') || h.includes('负责人')) fieldName = '字号类别';
+          else {
+            // 匹配目标语种列
+            const langMatch = TARGET_LANGUAGES.find(lang =>
+              lang.includes(h) || h.includes(lang) ||
+              normalize(lang).includes(nh) || nh.includes(normalize(lang))
+            );
+            if (langMatch) fieldName = langMatch;
+          }
+          if (fieldName) colMap.push({ idx, fieldName });
+        });
 
-        rows.forEach((row) => {
-          const kw = row[kwIdx]?.trim();
-          const zh = row[zhIdx]?.trim();
-          if (!kw || !zh) return;
+        const kwCol = colMap.find(c => c.fieldName === 'KW');
+        if (!kwCol) {
+          showStatus('danger', 'CSV 结构非法：必须包含 "KW" 列！');
+          return;
+        }
 
+        // Build CSV record objects
+        const csvRecords = rows.map((row, ridx) => {
           const fields = {};
-          fields['KW'] = kw;
-          fields['CN（中文）'] = zh;
-          fields['所在页面'] = (pageIdx !== -1 && row[pageIdx]) ? row[pageIdx] : '';
-          fields['字号类别'] = (ownerIdx !== -1 && row[ownerIdx]) ? row[ownerIdx] : '';
-
-          TARGET_LANGUAGES.forEach(lang => {
-            const csvLangIdx = headers.findIndex(h => h.trim() === lang);
-            if (csvLangIdx !== -1) {
-              fields[lang] = row[csvLangIdx] || '';
-            } else {
-              fields[lang] = '';
-            }
+          colMap.forEach(({ idx, fieldName }) => {
+            const v = row[idx];
+            if (v !== undefined) fields[fieldName] = v;
           });
+          return {
+            recordId: `csv-import-${ridx}`,
+            fields,
+            kw: (fields['KW'] || '').trim(),
+          };
+        }).filter(r => r.kw);
 
-          const existingIdx = updatedRecords.findIndex(r => r.fields.KW === kw);
-          if (existingIdx !== -1) {
-            const existingRecordObj = updatedRecords[existingIdx];
-            TARGET_LANGUAGES.forEach(lang => {
-              const csvLangIdx = headers.findIndex(h => h.trim() === lang);
-              if (csvLangIdx !== -1) {
-                const csvVal = row[csvLangIdx] || '';
-                const oldVal = existingRecordObj.fields[lang] || '';
-                if (csvVal !== oldVal) {
-                  if (!updatedCellsDict[existingRecordObj.recordId]) {
-                    updatedCellsDict[existingRecordObj.recordId] = {};
-                  }
-                  updatedCellsDict[existingRecordObj.recordId][lang] = true;
-                }
+        if (csvRecords.length === 0) {
+          showStatus('danger', 'CSV 文件中没有有效的 KW 词条！');
+          return;
+        }
+
+        // Diff against current records
+        const currentByKw = {};
+        const currentRecords = recordsRef.current;
+        currentRecords.forEach(rec => {
+          const kw = (getRecordValueByName(rec, 'KW') || '').trim();
+          if (kw) currentByKw[kw] = rec;
+        });
+
+        const added = [];
+        const modified = [];
+        const unchanged = [];
+        const usedKws = new Set();
+
+        csvRecords.forEach(csvRec => {
+          const existing = currentByKw[csvRec.kw];
+          if (!existing) {
+            added.push(csvRec);
+            usedKws.add(csvRec.kw);
+          } else {
+            usedKws.add(csvRec.kw);
+            const changes = {};
+            const allFields = ['所在页面', '字号类别', 'KW', 'CN（中文）', ...TARGET_LANGUAGES];
+            allFields.forEach(field => {
+              const csvVal = (csvRec.fields[field] || '').trim();
+              const curVal = (getRecordValueByName(existing, field) || '').trim();
+              if (csvVal !== curVal) {
+                changes[field] = { old: curVal, new: csvVal };
               }
             });
-            updatedRecords[existingIdx] = {
-              ...updatedRecords[existingIdx],
-              fields: {
-                ...updatedRecords[existingIdx].fields,
-                ...fields
-              },
-              updatedAt: new Date().toISOString()
-            };
-            localUpdateCount++;
-          } else {
-            const newRecordId = crypto.randomUUID();
-            updatedCellsDict[newRecordId] = { isAdded: true };
-            updatedRecords.push({
-              recordId: newRecordId,
-              fields,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            });
-            localAddCount++;
+            if (Object.keys(changes).length > 0) {
+              modified.push({ ...csvRec, existingRecord: existing, changes });
+            } else {
+              unchanged.push(csvRec);
+            }
           }
         });
 
-        setRecords(updatedRecords);
-        
-        // Sync imported CSV data to backend
-        await saveOfflineRecords(selectedTableId, updatedRecords);
-        setModifiedCells(updatedCellsDict);
+        const removed = currentRecords.filter(rec => {
+          const kw = (getRecordValueByName(rec, 'KW') || '').trim();
+          return kw && !usedKws.has(kw);
+        });
 
-        onAddLog('导入 CSV', '', '', `更新了 ${localUpdateCount} 条，新增了 ${localAddCount} 条词条`);
-        showStatus('success', `导入成功！更新 ${localUpdateCount} 条，新增 ${localAddCount} 条。`);
+        if (added.length === 0 && modified.length === 0) {
+          showStatus('info', `没有检测到变化（${unchanged.length} 条一致，${removed.length} 条不在CSV中）`);
+          return;
+        }
 
-        // 从服务端重新加载数据，确保前端与后端一致
-        await loadTableData(selectedTableId);
+        setImportDiff({ added, modified, unchanged, removed, csvRecords });
+        setImportPreviewOpen(true);
       } catch (err) {
-        showStatus('danger', `解析并导入 CSV 失败: ${err.message}`);
+        showStatus('danger', `解析 CSV 失败: ${err.message}`);
       } finally {
         setLoading(false);
         // Reset file input
-        e.target.value = '';
+        event.target.value = '';
       }
     };
 
     reader.readAsText(file, 'utf-8');
   };
 
-  // CSV Export
-  const handleExportCSV = () => {
+  // CSV 增量导入确认：将 added + modified 合并进当前 records，并标记 modifiedCells
+  const handleConfirmImport = async () => {
+    if (!importDiff) return;
+
+    const currentRecords = recordsRef.current;
+    const currentByKw = {};
+    currentRecords.forEach(rec => {
+      const kw = (getRecordValueByName(rec, 'KW') || '').trim();
+      if (kw) currentByKw[kw] = rec;
+    });
+
+    const newModifiedCells = { ...modifiedCells };
+
+    const updatedRecords = currentRecords.map(rec => {
+      const kw = (getRecordValueByName(rec, 'KW') || '').trim();
+      const modItem = importDiff.modified.find(m => m.kw === kw);
+      if (modItem) {
+        const updatedFields = { ...rec.fields };
+        Object.entries(modItem.changes).forEach(([field, { new: newVal }]) => {
+          updatedFields[field] = newVal;
+          if (!newModifiedCells[rec.recordId]) newModifiedCells[rec.recordId] = {};
+          newModifiedCells[rec.recordId][field] = true;
+        });
+        return { ...rec, fields: updatedFields, updatedAt: new Date().toISOString() };
+      }
+      return rec;
+    });
+
+    // Add new records
+    importDiff.added.forEach((rec, idx) => {
+      const newRecordId = `new-import-${Date.now()}-${idx}`;
+      const newRec = {
+        recordId: newRecordId,
+        fields: { ...rec.fields },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isNew: true,
+      };
+      newModifiedCells[newRecordId] = { isAdded: true };
+      TARGET_LANGUAGES.forEach(lang => {
+        if (rec.fields[lang]) newModifiedCells[newRecordId][lang] = true;
+      });
+      ['所在页面', '字号类别', 'KW', 'CN（中文）'].forEach(f => {
+        if (rec.fields[f]) newModifiedCells[newRecordId][f] = true;
+      });
+      updatedRecords.push(newRec);
+    });
+
+    setRecords(updatedRecords);
+    setModifiedCells(newModifiedCells);
+    setImportPreviewOpen(false);
+    setImportDiff(null);
+
+    await saveOfflineRecords(selectedTableId, updatedRecords);
+
+    const summary = `新增 ${importDiff.added.length} 条，修改 ${importDiff.modified.length} 条`;
+    onAddLog('CSV增量导入', '', '', summary);
+    showStatus('success', `导入成功！${summary}`);
+  };
+
+  // XLS (Excel XML) Export with cell background highlighting
+  const handleExportXLS = () => {
+    if (!selectedTableId) {
+      showStatus('danger', '请先选择一个数据表！');
+      return;
+    }
+    if (!filteredRecords || filteredRecords.length === 0) {
+      showStatus('danger', '当前没有可导出的数据，请先加载数据表！');
+      return;
+    }
     try {
       const headers = ['所在页面', '字号类别', 'KW', 'CN（中文）', ...TARGET_LANGUAGES];
-      
-      const csvData = filteredRecords.map(rec => {
-        const row = [
-          getRecordValueByName(rec, '所在页面'),
-          getRecordValueByName(rec, '字号类别'),
-          getRecordValueByName(rec, 'KW'),
-          getRecordValueByName(rec, 'CN（中文）')
-        ];
-        
-        TARGET_LANGUAGES.forEach(lang => {
-          row.push(getRecordValueByName(rec, lang));
+      const stdFields = ['所在页面', '字号类别', 'KW', 'CN（中文）'];
+      const allFields = [...stdFields, ...TARGET_LANGUAGES];
+
+      // Build Excel XML rows
+      const rows = filteredRecords.map(rec => {
+        const rowModified = modifiedCells[rec.recordId] || {};
+        const isNew = rowModified.isAdded === true;
+
+        const cells = [];
+        allFields.forEach(field => {
+          const value = getRecordValueByName(rec, field) || '';
+          // Determine highlight: row-level if new, cell-level if modified
+          const cellModified = rowModified[field];
+          const styleId = isNew ? 'newRow' : (cellModified ? 'highlight' : null);
+          cells.push({ value, styleId });
         });
-        
-        return row;
+
+        return cells;
       });
 
-      const csvContent = arrayToCSV(headers, csvData);
-      
-      // Download link trigger
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      // Generate Excel XML
+      const headerRow = headers.map(h => `<Cell><Data ss:Type="String">${escapeXml(h)}</Data></Cell>`).join('');
+
+      const dataRows = rows.map(cells => {
+        const cellXml = cells.map(c => {
+          const styleAttr = c.styleId ? ` ss:StyleID="${c.styleId}"` : '';
+          return `<Cell${styleAttr}><Data ss:Type="String">${escapeXml(c.value)}</Data></Cell>`;
+        }).join('');
+        return `<Row>${cellXml}</Row>`;
+      }).join('');
+
+      const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Font ss:FontName="Calibri" ss:Size="11"/>
+  </Style>
+  <Style ss:ID="highlight">
+   <Interior ss:Color="#FFF2CC" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="11"/>
+  </Style>
+  <Style ss:ID="newRow">
+   <Interior ss:Color="#FEF9C3" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Export">
+  <Table>
+   <Row>${headerRow}</Row>
+   ${dataRows}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+      const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      
+
       const activeTableMeta = tables.find(t => t.id === selectedTableId);
       const tableName = activeTableMeta ? activeTableMeta.name : 'export';
-      
+
       link.setAttribute('href', url);
-      link.setAttribute('download', `GlossaHub_export_${tableName}.csv`);
+      link.setAttribute('download', `GlossaHub_export_${tableName}.xls`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      
-      onAddLog(`导出当前视图 CSV (表格: ${tableName})`);
-      showStatus('success', 'CSV 导出成功！');
+
+      onAddLog(`导出当前视图 XLS (表格: ${tableName})`);
+      showStatus('success', 'XLS 导出成功！');
     } catch (err) {
-      showStatus('danger', `导出 CSV 失败: ${err.message}`);
+      showStatus('danger', `导出 XLS 失败: ${err.message}`);
     }
   };
 
@@ -1982,8 +2107,8 @@ export default function TranslationTab({
             <button onClick={handleTriggerImport} className="btn btn-secondary" title="导入 CSV">
               <FileInput size={14} /> 导入
             </button>
-            <button onClick={handleExportCSV} className="btn btn-secondary" title="导出 CSV">
-              <FileOutput size={14} /> 导出
+            <button onClick={handleExportXLS} className="btn btn-secondary" title="导出 XLS">
+              <FileOutput size={14} /> 导出xls
             </button>
           </div>
 
@@ -3236,6 +3361,62 @@ export default function TranslationTab({
                 </div>
               )}
             </div>
+        </GlossaModal>
+      )}
+      {/* Modal 7: CSV 增量导入预览 */}
+      {importPreviewOpen && importDiff && (
+        <GlossaModal
+          isOpen={true}
+          onClose={() => { setImportPreviewOpen(false); setImportDiff(null); }}
+          title="CSV 导入预览"
+          maxWidth="700px"
+        >
+          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--green)' }}>新增 {importDiff.added.length} 条</span>
+              <span style={{ color: 'var(--yellow)' }}>修改 {importDiff.modified.length} 条</span>
+              <span style={{ color: 'var(--text-muted)' }}>无变化 {importDiff.unchanged.length} 条</span>
+              {importDiff.removed.length > 0 && <span style={{ color: 'var(--red)' }}>CSV外 {importDiff.removed.length} 条</span>}
+            </div>
+
+            {importDiff.added.length > 0 && (
+              <div style={{ marginBottom: '1rem' }}>
+                <h4 style={{ color: 'var(--green)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>新增词条</h4>
+                {importDiff.added.map((rec, i) => (
+                  <div key={`add-${i}`} style={{ background: 'var(--green-bg)', border: '1px solid var(--green)', borderRadius: '4px', padding: '0.4rem 0.6rem', marginBottom: '0.3rem', fontSize: '0.8rem' }}>
+                    <strong>{rec.kw}</strong> - {rec.fields['CN（中文）'] || ''}
+                    <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem', fontSize: '0.7rem' }}>
+                      {Object.entries(rec.fields).filter(([k]) => k !== 'KW' && k !== 'CN（中文）').map(([k, v]) => `${k}: ${v}`).join(', ')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {importDiff.modified.length > 0 && (
+              <div>
+                <h4 style={{ color: 'var(--yellow)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>修改词条</h4>
+                {importDiff.modified.map((rec, i) => (
+                  <div key={`mod-${i}`} style={{ background: 'var(--yellow-bg)', border: '1px solid var(--yellow)', borderRadius: '4px', padding: '0.4rem 0.6rem', marginBottom: '0.3rem', fontSize: '0.8rem' }}>
+                    <strong>{rec.kw}</strong>
+                    {Object.entries(rec.changes).map(([field, { old, new: newVal }]) => (
+                      <div key={field} style={{ marginLeft: '0.5rem', fontSize: '0.75rem', marginTop: '0.2rem' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>{field}:</span>{' '}
+                        <span style={{ color: 'var(--red)', textDecoration: 'line-through' }}>{old || '（空）'}</span>{' '}
+                        <span style={{ color: 'var(--text-muted)' }}>→</span>{' '}
+                        <span style={{ color: 'var(--green)', fontWeight: 500 }}>{newVal || '（空）'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+            <button onClick={() => { setImportPreviewOpen(false); setImportDiff(null); }} className="btn btn-secondary">取消</button>
+            <button onClick={handleConfirmImport} className="btn btn-primary">确认导入 ({importDiff.added.length + importDiff.modified.length} 条)</button>
+          </div>
         </GlossaModal>
       )}
     </div>
