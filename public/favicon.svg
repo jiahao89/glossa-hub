@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
   <defs>
-    <!-- 左上气泡蓝紫色渐变 -->
-    <linearGradient id="blue-bubble-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#3b82f6" />
-      <stop offset="100%" stop-color="#1d4ed8" />
-    </linearGradient>
-    
-    <!-- 右下气泡明亮青色渐变 -->
+    <!-- 左上气泡使用明亮青色渐变（让中文“文”处于高亮位置） -->
     <linearGradient id="cyan-bubble-grad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#00f2ff" />
       <stop offset="100%" stop-color="#0891b2" />
+    </linearGradient>
+    
+    <!-- 右下气泡使用深蓝色渐变（让外文“A”处于偏深色的位置） -->
+    <linearGradient id="blue-bubble-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
     </linearGradient>
     
     <!-- 用于凸显层级的深色投影阴影 -->
@@ -21,8 +21,8 @@
   <!-- 柔和的深灰色圆角方形底，保证在浅色和深色浏览器 Tab 下都极为清晰 -->
   <rect width="32" height="32" rx="8" fill="#121826" />
 
-  <!-- 1. 左上角气泡（代表源词条 “文”） -->
-  <path d="M6 3 h12 a3 3 0 0 1 3 3 v10 a3 3 0 0 1 -3 3 h-7 l-4 4 v-4 h-1 a3 3 0 0 1 -3 -3 v-10 a3 3 0 0 1 3 -3 z" fill="url(#blue-bubble-grad)" />
+  <!-- 1. 左上角气泡（现在使用明亮青色渐变，并绘制中文 “文”） -->
+  <path d="M6 3 h12 a3 3 0 0 1 3 3 v10 a3 3 0 0 1 -3 3 h-7 l-4 4 v-4 h-1 a3 3 0 0 1 -3 -3 v-10 a3 3 0 0 1 3 -3 z" fill="url(#cyan-bubble-grad)" />
   
   <!-- 手绘极简 “文” 字路径 -->
   <path d="M12 5.5 L12 7" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" />
@@ -30,8 +30,8 @@
   <path d="M12 8 C11.2 10.2 9.5 12 8 13" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
   <path d="M10.5 9 C11.5 10.8 13.2 12.2 15.5 13" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 
-  <!-- 2. 右下角气泡（代表翻译目标 “A”）- 带投影叠在上方 -->
-  <path d="M14 11 h12 a3 3 0 0 1 3 3 v10 a3 3 0 0 1 -3 3 h-1 v4 l-4 -4 h-7 a3 3 0 0 1 -3 -3 v-10 a3 3 0 0 1 3 -3 z" fill="url(#cyan-bubble-grad)" filter="url(#bubble-shadow)" />
+  <!-- 2. 右下角气泡（现在使用深蓝色渐变，并绘制字母 “A”）- 带投影叠在上方 -->
+  <path d="M14 11 h12 a3 3 0 0 1 3 3 v10 a3 3 0 0 1 -3 3 h-1 v4 l-4 -4 h-7 a3 3 0 0 1 -3 -3 v-10 a3 3 0 0 1 3 -3 z" fill="url(#blue-bubble-grad)" filter="url(#bubble-shadow)" />
 
   <!-- 手绘极简 “A” 字母路径 -->
   <path d="M16.5 21.5 L20 14.5 L23.5 21.5" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
