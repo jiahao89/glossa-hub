@@ -48,6 +48,7 @@ export default function DashboardTab({ onNavigate }) {
   const [aiUsage, setAiUsage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [coverageTab, setCoverageTab] = useState('translation');
 
   const fetchStats = async () => {
     try {
@@ -176,7 +177,7 @@ export default function DashboardTab({ onNavigate }) {
             <BarChart3 size={20} />
           </div>
           <div className="bento-info">
-            <span className="bento-label">全语种翻译格子覆盖率</span>
+            <span className="bento-label">全语种翻译完成率</span>
             <span className="bento-value">{stats.coverage}% <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>{stats.filledCells}/{stats.totalCells} 格</span></span>
           </div>
         </div>
@@ -305,41 +306,116 @@ export default function DashboardTab({ onNavigate }) {
         </div>
       )}
 
-      {/* P1-3: 按语种覆盖率 */}
+      {/* P1-3: 按语种覆盖率 + 审核覆盖率 Tab */}
       {stats.langProgress && stats.langProgress.length > 0 && (
         <div className="panel-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', marginTop: '1.5rem', overflow: 'hidden' }}>
-          <h3 style={{ margin: '0 0 1.25rem 0', fontSize: '1.1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Languages size={16} style={{ color: 'var(--accent)' }} />
-            <span>按语种翻译覆盖率</span>
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {stats.langProgress.map(l => (
-              <div key={l.lang} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ minWidth: '100px', fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>{l.lang}</span>
-                <div style={{ flex: 1, height: '10px', background: 'var(--bg-tertiary)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
-                  <div
-                    style={{
-                      width: `${l.coverage}%`,
-                      height: '100%',
-                      background: l.coverage >= 80
-                        ? 'var(--green)'
-                        : l.coverage >= 40
-                        ? 'var(--yellow)'
-                        : 'var(--red)',
-                      borderRadius: '5px',
-                      transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
-                    }}
-                  />
-                </div>
-                <span style={{ minWidth: '60px', fontSize: '0.8rem', fontWeight: '600', color: l.coverage >= 80 ? 'var(--green)' : l.coverage >= 40 ? 'var(--yellow)' : 'var(--red)' }}>
-                  {l.coverage}%
-                </span>
-                <span style={{ minWidth: '80px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {l.filled}/{l.total}
-                </span>
-              </div>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Languages size={16} style={{ color: 'var(--accent)' }} />
+              <span>按语种覆盖率</span>
+            </h3>
+            {/* Tab 切换 */}
+            <div style={{ display: 'flex', gap: '0', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }}>
+              <button
+                onClick={() => setCoverageTab('translation')}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '0.8rem',
+ fontWeight: coverageTab === 'translation' ? '600' : '400',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  background: coverageTab === 'translation' ? 'var(--bg-primary)' : 'transparent',
+                  color: coverageTab === 'translation' ? 'var(--accent)' : 'var(--text-secondary)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                翻译覆盖率
+              </button>
+              <button
+                onClick={() => setCoverageTab('review')}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '0.8rem',
+ fontWeight: coverageTab === 'review' ? '600' : '400',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  background: coverageTab === 'review' ? 'var(--bg-primary)' : 'transparent',
+                  color: coverageTab === 'review' ? 'var(--accent)' : 'var(--text-secondary)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                审核覆盖率
+              </button>
+            </div>
           </div>
+
+          {/* Tab 内容 */}
+          {coverageTab === 'translation' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {stats.langProgress.map(l => (
+                <div key={l.lang} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <span style={{ minWidth: '100px', fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>{l.lang}</span>
+                  <div style={{ flex: 1, height: '10px', background: 'var(--bg-tertiary)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
+                    <div
+                      style={{
+                        width: `${l.coverage}%`,
+                        height: '100%',
+                        background: l.coverage >= 80
+                          ? 'var(--green)'
+                          : l.coverage >= 40
+                          ? 'var(--yellow)'
+                          : 'var(--red)',
+                        borderRadius: '5px',
+                        transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    />
+                  </div>
+                  <span style={{ minWidth: '60px', fontSize: '0.8rem', fontWeight: '600', color: l.coverage >= 80 ? 'var(--green)' : l.coverage >= 40 ? 'var(--yellow)' : 'var(--red)' }}>
+                    {l.coverage}%
+                  </span>
+                  <span style={{ minWidth: '80px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    {l.filled}/{l.total}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {/* 总览 */}
+              <div style={{ marginBottom: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                已审核词条: <strong style={{ color: 'var(--accent)' }}>{stats.reviewedTermCount || 0}</strong> / {stats.termCount} 条
+                ({stats.reviewCoverage || 0}%)
+              </div>
+              {(stats.langReviewProgress || []).map(l => (
+                <div key={l.lang} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <span style={{ minWidth: '100px', fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>{l.lang}</span>
+                  <div style={{ flex: 1, height: '10px', background: 'var(--bg-tertiary)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
+                    <div
+                      style={{
+                        width: `${l.coverage}%`,
+                        height: '100%',
+                        background: l.coverage >= 80
+                          ? 'var(--green)'
+                          : l.coverage >= 40
+                          ? 'var(--yellow)'
+                          : 'var(--red)',
+                        borderRadius: '5px',
+                        transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    />
+                  </div>
+                  <span style={{ minWidth: '60px', fontSize: '0.8rem', fontWeight: '600', color: l.coverage >= 80 ? 'var(--green)' : l.coverage >= 40 ? 'var(--yellow)' : 'var(--red)' }}>
+                    {l.coverage}%
+                  </span>
+                  <span style={{ minWidth: '80px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    {l.filled}/{l.total}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

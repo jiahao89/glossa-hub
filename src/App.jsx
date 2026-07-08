@@ -285,7 +285,11 @@ export default function App() {
         {/* Sidebar Header Brand */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', borderBottom: '1px solid var(--border-color)', height: '60px' }}>
           {!sidebarCollapsed && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div
+              onClick={() => window.open('/产品介绍.html', '_blank')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+              title="GlossaHub"
+            >
               <div style={{ color: 'var(--accent)' }}>
                 <Languages size={18} />
               </div>

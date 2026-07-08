@@ -2240,7 +2240,7 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
 
     const versions = await db.query("SELECT id, version_name FROM versions WHERE project_id = $1", ['proj-default']);
     const terms = await db.query(
-      `SELECT t.id, t.version_id, t.translations FROM terms t
+      `SELECT t.id, t.version_id, t.translations, t.status FROM terms t
        JOIN versions v ON t.version_id = v.id
        WHERE v.project_id = $1`,
       ['proj-default']
@@ -2256,6 +2256,11 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     const langFilledMap = {};
     langNames.forEach(l => { langFilledMap[l] = 0; });
 
+    // 审核覆盖率: 按语种统计已审核(APPROVED/PUBLISHED)的词条数
+    const langReviewedMap = {};
+    langNames.forEach(l => { langReviewedMap[l] = 0; });
+    let reviewedTerms = 0;
+
     const versionStatsMap = {};
     versions.forEach(v => {
       versionStatsMap[v.id] = { id: v.id, name: v.version_name, totalTerms: 0, filledCells: 0, fullyTranslatedTerms: 0 };
@@ -2270,6 +2275,15 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
       for (const lang of langNames) {
         const val = trans[lang];
         if (val && val.toString().trim() !== '') { filledCells++; termFilledCount++; langFilledMap[lang]++; }
+      }
+
+      // 审核覆盖率: 若词条状态为 APPROVED/PUBLISHED，视为已审核，每个语种都计数
+      const isReviewed = t.status === 'APPROVED' || t.status === 'PUBLISHED';
+      if (isReviewed) {
+        reviewedTerms++;
+        for (const lang of langNames) {
+          langReviewedMap[lang]++;
+        }
       }
 
       const isFull = termFilledCount === langCount && langCount > 0;
@@ -2299,6 +2313,15 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
       coverage: termCount > 0 ? Math.round((langFilledMap[l] / termCount) * 100) : 0
     }));
 
+    // 审核覆盖率: 按语种统计已审核词条中有翻译的覆盖率
+    const langReviewProgress = langNames.map(l => ({
+      lang: l,
+      filled: langReviewedMap[l],
+      total: termCount,
+      coverage: termCount > 0 ? Math.round((langReviewedMap[l] / termCount) * 100) : 0
+    }));
+    const reviewCoverage = termCount > 0 ? Math.round((reviewedTerms / termCount) * 100) : 0;
+
     const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
     const recentLogsRaw = await db.query(
       `SELECT l.*, u.name AS operator_name FROM ${logsTable} l
@@ -2326,6 +2349,9 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
       fullyTranslatedCount,
       tableProgress,
       langProgress,
+      langReviewProgress,
+      reviewedTermCount: reviewedTerms,
+      reviewCoverage,
       recentLogs
     });
   } catch (err) {

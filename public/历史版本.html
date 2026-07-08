@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GlossaHub 产品介绍与协作展示</title>
+  <!-- Modern Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Styling System / CSS variables */
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-secondary: #111827;
+      --bg-tertiary: #1f2937;
+      --text-primary: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --accent-cyan: #06b6d4;
+      --accent-purple: #a855f7;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+      --accent-gradient: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+      --glass-bg: rgba(255, 255, 255, 0.03);
+      --glass-border: rgba(255, 255, 255, 0.06);
+      --glass-border-focus: rgba(6, 182, 212, 0.4);
+      --font-display: 'Outfit', 'Inter', -apple-system, sans-serif;
+      --font-sans: 'Inter', -apple-system, sans-serif;
+      --shadow-lg: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      position: relative;
+    }
+
+    /* Ambient background glows */
+    .glow-1 {
+      position: absolute;
+      top: -10%;
+      left: -10%;
+      width: 40vw;
+      height: 40vw;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, rgba(0,0,0,0) 70%);
+      filter: blur(80px);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .glow-2 {
+      position: absolute;
+      bottom: -10%;
+      right: -10%;
+      width: 40vw;
+      height: 40vw;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, rgba(0,0,0,0) 70%);
+      filter: blur(80px);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* Layout Header & Progress */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.5rem 3rem;
+      z-index: 10;
+      background: linear-gradient(to bottom, rgba(10, 14, 23, 0.8) 0%, rgba(10, 14, 23, 0) 100%);
+      backdrop-filter: blur(4px);
+    }
+
+    .logo {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.5rem;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .logo-badge {
+      font-size: 0.7rem;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      color: var(--accent-cyan);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      padding: 0.1rem 0.5rem;
+      border-radius: 20px;
+      letter-spacing: 0.05em;
+    }
+
+    .nav-hints {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .key-badge {
+      background: var(--bg-secondary);
+      border: 1px solid var(--glass-border);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-family: monospace;
+      color: var(--text-primary);
+    }
+
+    /* Slides Container */
+    .slides-container {
+      flex: 1;
+      position: relative;
+      width: 100%;
+      z-index: 5;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 2rem 6rem;
+      opacity: 0;
+      pointer-events: none; /* Block clicks on inactive slides */
+      transform: scale(0.98) translateY(10px);
+      transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
+                  transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto; /* Enable clicks only on the active slide */
+      transform: scale(1) translateY(0);
+    }
+
+    /* Typography inside slides */
+    .slide-title {
+      font-family: var(--font-display);
+      font-size: 3rem;
+      font-weight: 700;
+      margin-bottom: 0.8rem;
+      line-height: 1.2;
+    }
+
+    .slide-title span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .slide-subtitle {
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+      margin-bottom: 2.5rem;
+      max-width: 800px;
+      line-height: 1.6;
+    }
+
+    /* Grid Layout systems for Feature cards */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+      width: 100%;
+    }
+
+    .bento-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      width: 100%;
+    }
+
+    .bento-card {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: var(--glass-blur);
+      border-radius: 12px;
+      padding: 1.8rem;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .bento-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: var(--accent-gradient);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .bento-card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(6, 182, 212, 0.3);
+      box-shadow: var(--shadow-lg);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .bento-card:hover::before {
+      opacity: 1;
+    }
+
+    .card-icon {
+      font-size: 2rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.8rem;
+      color: var(--text-primary);
+    }
+
+    .card-desc {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* Slide 1 - Cover */
+    .cover-content {
+      align-items: center;
+      text-align: center;
+    }
+
+    .cover-title {
+      font-family: var(--font-display);
+      font-size: 4.8rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.5rem;
+      line-height: 1.1;
+    }
+
+    .cover-title span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .cover-subtitle {
+      font-size: 1.5rem;
+      color: var(--text-secondary);
+      max-width: 800px;
+      margin-bottom: 3.5rem;
+      line-height: 1.6;
+    }
+
+    .cover-btn {
+      background: var(--accent-gradient);
+      border: none;
+      color: white;
+      padding: 1rem 2.2rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(6, 182, 212, 0.4);
+      transition: all 0.3s ease;
+    }
+
+    .cover-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(6, 182, 212, 0.6);
+    }
+
+    /* Slide 2 - Pain points */
+    .pain-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+    }
+
+    .pain-box {
+      border-radius: 12px;
+      padding: 2.2rem;
+      backdrop-filter: var(--glass-blur);
+    }
+
+    .pain-box.before {
+      background: rgba(239, 68, 68, 0.02);
+      border: 1px solid rgba(239, 68, 68, 0.15);
+    }
+
+    .pain-box.after {
+      background: rgba(16, 185, 129, 0.02);
+      border: 1px solid rgba(16, 185, 129, 0.15);
+    }
+
+    .pain-badge {
+      display: inline-block;
+      padding: 0.3rem 0.8rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+    }
+
+    .pain-badge.before {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--accent-red);
+    }
+
+    .pain-badge.after {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--accent-green);
+    }
+
+    .pain-list {
+      list-style: none;
+    }
+
+    .pain-list li {
+      margin-bottom: 1.2rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.8rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .pain-list.before li span::before {
+      content: '✕';
+      color: var(--accent-red);
+      font-weight: bold;
+    }
+
+    .pain-list.after li span::before {
+      content: '✓';
+      color: var(--accent-green);
+      font-weight: bold;
+    }
+
+    /* Slide 4 - Architecture */
+    .arch-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 1rem;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 2rem;
+      backdrop-filter: var(--glass-blur);
+    }
+
+    .arch-svg {
+      width: 100%;
+      max-width: 800px;
+      height: auto;
+    }
+
+    /* Slide 5 - Interactive App Demo Mockup */
+    .app-mockup {
+      background: var(--bg-secondary);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex: 1;
+      margin-top: 0.5rem;
+    }
+
+    .mockup-header {
+      background: #1f2937;
+      padding: 0.6rem 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .mockup-dots {
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .mockup-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .mockup-toolbar {
+      padding: 0.8rem 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #111827;
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .mockup-btn {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--glass-border);
+      color: var(--text-primary);
+      padding: 0.4rem 0.8rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .mockup-btn:hover {
+      background: #374151;
+      border-color: var(--accent-cyan);
+    }
+
+    .mockup-btn.primary {
+      background: var(--accent-cyan);
+      color: #000;
+      font-weight: 600;
+      border: none;
+    }
+
+    .mockup-btn.primary:hover {
+      background: #22d3ee;
+    }
+
+    .mockup-table-container {
+      flex: 1;
+      overflow-y: auto;
+      background: #0f172a;
+    }
+
+    .mockup-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+
+    .mockup-table th {
+      background: #1e293b;
+      padding: 0.8rem 1rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+      border-bottom: 1px solid var(--glass-border);
+      position: sticky;
+      top: 0;
+    }
+
+    .mockup-table td {
+      padding: 0.7rem 1rem;
+      border-bottom: 1px dashed rgba(255,255,255,0.05);
+      color: var(--text-primary);
+      transition: background-color 0.2s ease;
+    }
+
+    .mockup-table tr:hover {
+      background: rgba(255,255,255,0.02);
+    }
+
+    .mockup-table tr.modified td {
+      border-left: 3px solid var(--accent-red);
+    }
+
+    /* Highlight cell animations */
+    .highlight-cell {
+      position: relative;
+    }
+
+    .highlight-cell.changed::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border: 1px solid var(--accent-red);
+      background: rgba(239, 68, 68, 0.1);
+      pointer-events: none;
+      animation: pulse 1.5s ease-out infinite alternate;
+    }
+
+    .empty-cell {
+      color: rgba(255, 255, 255, 0.2);
+      font-style: italic;
+    }
+
+    .status-banner {
+      background: rgba(16, 185, 129, 0.1);
+      border-top: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--accent-green);
+      font-size: 0.75rem;
+      padding: 0.4rem 1.2rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.3; }
+      100% { opacity: 0.8; }
+    }
+
+    /* Slide 6 - Value Metrics */
+    .metrics-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      margin-top: 1rem;
+    }
+
+    .metric-card {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      text-align: center;
+      backdrop-filter: var(--glass-blur);
+    }
+
+    .metric-num {
+      font-family: var(--font-display);
+      font-size: 4rem;
+      font-weight: 800;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-label {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.8rem;
+    }
+
+    .metric-desc {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* Slide 7 - Closing */
+    .closing-card {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 4rem;
+      text-align: center;
+      max-width: 800px;
+      margin: 0 auto;
+      backdrop-filter: var(--glass-blur);
+    }
+
+    /* Footer Controls */
+    footer {
+      padding: 1.5rem 3rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      position: relative;
+    }
+
+    .progress-bar-container {
+      flex: 1;
+      height: 4px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      margin: 0 3rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      background: var(--accent-gradient);
+      width: 14.28%; /* dynamic */
+      transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .slide-number {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      color: var(--text-secondary);
+    }
+
+    .slide-number span {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .controls-btn-group {
+      display: flex;
+      gap: 0.8rem;
+    }
+
+    .control-btn {
+      background: var(--bg-secondary);
+      border: 1px solid var(--glass-border);
+      color: var(--text-primary);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      transition: all 0.3s ease;
+    }
+
+    .control-btn:hover {
+      background: var(--accent-gradient);
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Glow Backgrounds -->
+  <div class="glow-1"></div>
+  <div class="glow-2"></div>
+
+  <!-- Header Section -->
+  <header>
+    <div class="logo">
+      GlossaHub <span class="logo-badge">迈金智能翻译</span>
+    </div>
+    <div class="nav-hints">
+      <span>使用键盘 <span class="key-badge">←</span> / <span class="key-badge">→</span> 键切换幻灯片</span>
+    </div>
+  </header>
+
+  <!-- Slides Container -->
+  <div class="slides-container">
+
+    <!-- Slide 1: Cover -->
+    <div class="slide active cover-content" id="slide-1">
+      <h1 class="cover-title">迈金词条智能翻译<br>与<span>版本协作中台系统</span></h1>
+      <p class="cover-subtitle">整合飞书 Bitable 实时同步缓存、Dify AI 检索式大模型流与全量审计日志，为迈金科技量身定制的词条平台</p>
+      <button class="cover-btn" onclick="nextSlide()">立即开启展示</button>
+    </div>
+
+    <!-- Slide 2: Pain Points -->
+    <div class="slide" id="slide-2">
+      <h2 class="slide-title">传统多语言文案管理的<span>核心痛点</span></h2>
+      <p class="slide-subtitle">词条修改零碎、多语言翻译反复核对、发版比对困难，容易造成线上黑屏或数据混乱</p>
+      
+      <div class="pain-container">
+        <div class="pain-box before">
+          <div class="pain-badge before">改造前：手动低效 & 隐藏隐患</div>
+          <ul class="pain-list before">
+            <li><span></span> <b>多表割裂</b>：不同表格数据不互通，修改翻译需在数十张子表手动复制，极易错漏。</li>
+            <li><span></span> <b>重复录入</b>：缺乏语义查重机制，容易录入拼写相近的冗余同义词。</li>
+            <li><span></span> <b>AI 幻觉</b>：直接使用公开大模型翻译，专有名词（如“踏频”）常错译，需人工二次核对。</li>
+            <li><span></span> <b>发版比对抓瞎</b>：发版时没有自动差分，手动核对 CSV 差异时，因为中英文全半角符号细微变化导致开发配置黑屏。</li>
+          </ul>
+        </div>
+        
+        <div class="pain-box after">
+          <div class="pain-badge after">改造后：智能敏捷 & 统一风控</div>
+          <ul class="pain-list after">
+            <li><span></span> <b>一键全量缓存</b>：拉取飞书全部子表秒级归档至 SQLite 本地库，保证数据绝对统一。</li>
+            <li><span></span> <b>词条语义防重</b>：Jaccard 语义相似度检查，对高相似词条录入实时同义词预警拦截。</li>
+            <li><span></span> <b>知识库对齐 AI</b>：Dify RAG 工作流严格遵照迈金本地术语词库翻译，确保“零幻觉”输出。</li>
+            <li><span></span> <b>科学版本比对</b>：基于 KW + 次序复合键对比，自动排除标点与假差异，秒级输出 ADD/DEL/MOD。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 3: Core Features -->
+    <div class="slide" id="slide-3">
+      <h2 class="slide-title">GlossaHub 核心功能<span>四大版图</span></h2>
+      <p class="slide-subtitle">打造飞书在线环境与本地轻量运行时协作的无缝连接闭环</p>
+      
+      <div class="bento-grid">
+        <div class="bento-card">
+          <div class="card-icon">⚡</div>
+          <h3 class="card-title">双向多模同步机制</h3>
+          <p class="card-desc">自动捕获飞书端的新增、编辑和删除事件，并以 1.5 秒防抖静默同步至本地；支持一键全量同步，自动清理无效已删表格数据。</p>
+        </div>
+        
+        <div class="bento-card">
+          <div class="card-icon">🤖</div>
+          <h3 class="card-title">知识库优先 AI 翻译</h3>
+          <p class="card-desc">对接 Dify 引擎，翻译前强制检索迈金专业名词库。大模型严格照抄术语译文，支持批量一键扫描回填空白翻译项。</p>
+        </div>
+        
+        <div class="bento-card">
+          <div class="card-icon">⚖️</div>
+          <h3 class="card-title">多版本科学差异比对</h3>
+          <p class="card-desc">在任意两个飞书数据表版本之间进行精准比对，自动过滤省略号（… 与 ...）、弯直引号及多余空格带来的无意义假差异。</p>
+        </div>
+        
+        <div class="bento-card">
+          <div class="card-icon">🕒</div>
+          <h3 class="card-title">无限制本地审计日志</h3>
+          <p class="card-desc">本地 SQLite 数据库永久保存团队所有人的翻译修改记录。支持对多维表格子表版本、修改时间区间进行精细化筛选查询。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 4: Architecture -->
+    <div class="slide" id="slide-4">
+      <h2 class="slide-title">GlossaHub <span>技术架构图</span></h2>
+      <p class="slide-subtitle">飞书多维表格（前端） + 本地 SQLite 缓存（后端） + Dify LLM 工作流三位一体数据流图</p>
+      
+      <div class="arch-container">
+        <!-- Embedded Architectural SVG -->
+        <svg class="arch-svg" viewBox="0 0 800 350" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Bitable Node -->
+          <rect x="50" y="110" width="160" height="80" rx="8" fill="#1e293b" stroke="var(--accent-cyan)" stroke-width="2" />
+          <text x="130" y="145" fill="#fff" font-family="var(--font-sans)" font-size="14" font-weight="600" text-anchor="middle">飞书多维表格</text>
+          <text x="130" y="168" fill="var(--accent-cyan)" font-family="var(--font-sans)" font-size="11" text-anchor="middle">飞书云端在线协同</text>
+
+          <!-- Arrow Bitable -> SQLite -->
+          <path d="M210 135 L330 135" stroke="var(--accent-cyan)" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-cyan)" />
+          <text x="270" y="125" fill="var(--text-secondary)" font-family="var(--font-sans)" font-size="10" text-anchor="middle">实时监听同步</text>
+
+          <!-- Arrow SQLite -> Bitable -->
+          <path d="M330 165 L210 165" stroke="var(--accent-cyan)" stroke-width="2" marker-end="url(#arrow-cyan)" />
+          <text x="270" y="185" fill="var(--accent-cyan)" font-family="var(--font-sans)" font-size="10" text-anchor="middle">秒级数据写入</text>
+
+          <!-- Local SQLite Cache -->
+          <rect x="330" y="110" width="160" height="80" rx="8" fill="#1e293b" stroke="var(--accent-purple)" stroke-width="2" />
+          <text x="410" y="145" fill="#fff" font-family="var(--font-sans)" font-size="14" font-weight="600" text-anchor="middle">本地 SQLite 缓存</text>
+          <text x="410" y="168" fill="var(--accent-purple)" font-family="var(--font-sans)" font-size="11" text-anchor="middle">全量归一化缓存</text>
+
+          <!-- Arrow SQLite -> Dify -->
+          <path d="M490 135 L610 135" stroke="var(--accent-purple)" stroke-width="2" marker-end="url(#arrow-purple)" />
+          <text x="550" y="125" fill="var(--text-secondary)" font-family="var(--font-sans)" font-size="10" text-anchor="middle">批量翻译扫描</text>
+
+          <!-- Arrow Dify -> SQLite -->
+          <path d="M610 165 L490 165" stroke="var(--accent-purple)" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-purple)" />
+          <text x="550" y="185" fill="var(--accent-purple)" font-family="var(--font-sans)" font-size="10" text-anchor="middle">翻译自动回填</text>
+
+          <!-- Dify Node -->
+          <rect x="610" y="110" width="160" height="80" rx="8" fill="#1e293b" stroke="var(--accent-purple)" stroke-width="2" />
+          <text x="690" y="145" fill="#fff" font-family="var(--font-sans)" font-size="14" font-weight="600" text-anchor="middle">Dify AI 翻译工作流</text>
+          <text x="690" y="168" fill="var(--accent-purple)" font-family="var(--font-sans)" font-size="11" text-anchor="middle">迈金术语知识库</text>
+
+          <!-- SQLite database cylinder icon -->
+          <path d="M410 215 L410 260" stroke="var(--accent-purple)" stroke-width="2" />
+          <ellipse cx="410" cy="275" rx="30" ry="15" fill="#1e293b" stroke="var(--accent-purple)" stroke-width="2" />
+          <path d="M380 275 L380 305 A30 15 0 0 0 440 305 L440 275" fill="none" stroke="var(--accent-purple)" stroke-width="2" />
+          <text x="410" y="325" fill="var(--accent-purple)" font-family="var(--font-sans)" font-size="12" font-weight="600" text-anchor="middle">database.sqlite</text>
+
+          <!-- Markers definitions -->
+          <defs>
+            <marker id="arrow-cyan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent-cyan)" />
+            </marker>
+            <marker id="arrow-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent-purple)" />
+            </marker>
+          </defs>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Slide 5: Interactive Mini-App Demo -->
+    <div class="slide" id="slide-5">
+      <h2 class="slide-title">在线交互模拟展示：<span>体验核心功能</span></h2>
+      <p class="slide-subtitle">下面是一个仿真的翻译列表看板，您可以亲自点击上方按钮，体验“一键翻译回填”及“修改触发置顶”效果</p>
+      
+      <!-- Mini Mock App -->
+      <div class="app-mockup">
+        <div class="mockup-header">
+          <div class="mockup-dots">
+            <span class="mockup-dot" style="background:#ef4444"></span>
+            <span class="mockup-dot" style="background:#f59e0b"></span>
+            <span class="mockup-dot" style="background:#10b981"></span>
+          </div>
+          <span style="font-size:0.75rem; color:var(--text-secondary)">GlossaHub Live Demonstration Module</span>
+          <span style="width:40px"></span>
+        </div>
+
+        <div class="mockup-toolbar">
+          <div style="display:flex; gap:0.6rem; align-items:center">
+            <button class="mockup-btn primary" id="btn-batch-ai" onclick="runMockAiTranslate()">
+              ⚡ 批量 AI 翻译 (模拟)
+            </button>
+            <button class="mockup-btn" id="btn-reset-demo" onclick="resetMockData()">
+              🔄 重置模拟数据
+            </button>
+          </div>
+
+          <div style="display:flex; gap:0.6rem; align-items:center">
+            <span style="font-size:0.8rem; color:var(--text-secondary)">排序规则:</span>
+            <button class="mockup-btn" id="sort-change" onclick="toggleMockSort('changeFirst')" style="border-color:var(--accent-cyan); color:var(--accent-cyan)">
+              ★ 变更/新增优先
+            </button>
+            <button class="mockup-btn" id="sort-default" onclick="toggleMockSort('default')">
+              默认顺序
+            </button>
+          </div>
+        </div>
+
+        <div class="mockup-table-container">
+          <table class="mockup-table">
+            <thead>
+              <tr>
+                <th style="width: 25%">词条ID (KW)</th>
+                <th style="width: 25%">中文源词</th>
+                <th style="width: 25%">English</th>
+                <th style="width: 25%">Español (西班牙语)</th>
+              </tr>
+            </thead>
+            <tbody id="mockup-table-body">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="status-banner">
+          <div>当前表: <b>C706码表多语言文案2.1</b> (在线演示数据共 4 条)</div>
+          <div>Dify 智能接口状态: <span style="color:var(--accent-green)">🟢 已联通</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 6: Value Metrics -->
+    <div class="slide" id="slide-6">
+      <h2 class="slide-title">GlossaHub 的<span>核心交付价值</span></h2>
+      <p class="slide-subtitle">为迈金产品经理、翻译协同团队与开发人员带来的卓越提升指标</p>
+      
+      <div class="metrics-container">
+        <div class="metric-card">
+          <div class="metric-num">90%</div>
+          <div class="metric-label">翻译发布效能提升</div>
+          <div class="metric-desc">告别单条人工复制、翻译、再排版导入流程。一键多线程批量翻译秒级回填，自动去重过滤。</div>
+        </div>
+        
+        <div class="metric-card">
+          <div class="metric-num">100%</div>
+          <div class="metric-label">专业术语一致性</div>
+          <div class="metric-desc">通过 Dify 对比上下文强绑定术语库，严格对齐英文、西班牙语、日语等核心词条，告别翻译歧义与错误。</div>
+        </div>
+        
+        <div class="metric-card">
+          <div class="metric-num">0 故障</div>
+          <div class="metric-label">发布黑屏与错误率</div>
+          <div class="metric-desc">通过版本严格差分比对（ADD/DEL/MOD）和标点符号假差异自动清洗，保证交付给终端开发的 CSV 数据绝对无损。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 7: Closing -->
+    <div class="slide" id="slide-7">
+      <div class="closing-card">
+        <h2 class="slide-title" style="font-size:3.5rem; margin-bottom:1.5rem">谢谢观赏！</h2>
+        <p class="slide-subtitle" style="margin: 0 auto 3rem auto">GlossaHub 平台通过规范数据流向与赋能 AI 智能预翻译，保障了迈金码表翻译工作的高效运行。</p>
+        <button class="cover-btn" onclick="goToSlide(1)">重新返回首页</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer Controls -->
+  <footer>
+    <div class="slide-number">
+      幻灯片 <span id="current-page">1</span> / <span id="total-pages">7</span>
+    </div>
+    
+    <div class="progress-bar-container">
+      <div class="progress-bar-fill" id="progress-bar"></div>
+    </div>
+
+    <div class="controls-btn-group">
+      <button class="control-btn" onclick="prevSlide()">←</button>
+      <button class="control-btn" onclick="nextSlide()">→</button>
+    </div>
+  </footer>
+
+  <!-- Script for interactivity and simulation -->
+  <script>
+    // Global Error Logger for diagnostics
+    window.onerror = function(message, source, lineno, colno, error) {
+      alert("⚠️ JavaScript Error:\n" + message + "\nLine: " + lineno + "\nCol: " + colno);
+      return false;
+    };
+    console.log("GlossaHub slide script loaded successfully");
+
+    // 1. Slide Navigation Logic
+    let currentSlide = 1;
+    const totalSlides = 7;
+
+    function updateProgressBar() {
+      const percentage = (currentSlide / totalSlides) * 100;
+      document.getElementById('progress-bar').style.width = percentage + '%';
+      document.getElementById('current-page').innerText = currentSlide;
+    }
+
+    function goToSlide(slideNum) {
+      if (slideNum < 1 || slideNum > totalSlides) return;
+      
+      // Hide old active slide
+      document.getElementById(`slide-${currentSlide}`).classList.remove('active');
+      
+      // Set new active slide
+      currentSlide = slideNum;
+      document.getElementById(`slide-${currentSlide}`).classList.add('active');
+      
+      updateProgressBar();
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        goToSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        goToSlide(currentSlide - 1);
+      }
+    }
+
+    // Keyboard controls
+    document.addEventListener('keydown', (e) => {
+      // Avoid navigating if user is interacting with an input/textarea
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
+      
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.code === 'Space' || e.code === 'ArrowRight' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.code === 'ArrowLeft' || e.key === 'PageUp') {
+        prevSlide();
+      }
+    });
+
+    // 2. Interactive Mock App Logic inside Slide 5
+    let mockRecords = [];
+    let mockModified = {}; // { recordId: true }
+    let mockSortBy = 'changeFirst'; // 'changeFirst' | 'default'
+
+    // Seed mock data
+    const initialMockRecords = [
+      { id: 'rec_1', index: 0, kw: 'KW_GLOBAL_UNIT_HR', zh: '心率', en: 'Heart Rate', es: 'Ritmo Cardíaco', updatedAt: 100 },
+      { id: 'rec_2', index: 1, kw: 'KW_RIDE_CADENCE', zh: '踏频', en: '', es: '', updatedAt: 200 },
+      { id: 'rec_3', index: 2, kw: 'KW_SETTING_FACTORY_RESET', zh: '恢复出厂设置', en: 'Factory Reset', es: '', updatedAt: 300 },
+      { id: 'rec_4', index: 3, kw: 'KW_RIDE_POWER', zh: '功率', en: '', es: '', updatedAt: 400 }
+    ];
+
+    function resetMockData() {
+      mockRecords = JSON.parse(JSON.stringify(initialMockRecords));
+      mockModified = {};
+      renderMockTable();
+    }
+
+    // Sort mockup data based on the rules we fixed in actual application
+    function getSortedMockRecords() {
+      const list = [...mockRecords];
+      if (mockSortBy === 'changeFirst') {
+        return list.sort((a, b) => {
+          // 1. Session edits float to top
+          const isModA = mockModified[a.id] ? 1 : 0;
+          const isModB = mockModified[b.id] ? 1 : 0;
+          if (isModA !== isModB) {
+            return isModB - isModA;
+          }
+
+          // 2. Sort by updatedAt timestamp descending
+          if (a.updatedAt !== b.updatedAt) {
+            return b.updatedAt - a.updatedAt;
+          }
+
+          // 3. Fallback to index descending (newer added rows float to top)
+          return b.index - a.index;
+        });
+      }
+      // 'default' sorting - natural index ascending
+      return list.sort((a, b) => a.index - b.index);
+    }
+
+    function renderMockTable() {
+      const container = document.getElementById('mockup-table-body');
+      container.innerHTML = '';
+      
+      const sortedList = getSortedMockRecords();
+
+      sortedList.forEach(rec => {
+        const isRowModified = mockModified[rec.id];
+        const tr = document.createElement('tr');
+        if (isRowModified) tr.classList.add('modified');
+
+        tr.innerHTML = `
+          <td style="font-family:monospace; color:var(--accent-cyan)">${rec.kw}</td>
+          <td><b>${rec.zh}</b></td>
+          <td class="highlight-cell ${isRowModified && !initialMockRecords.find(r=>r.id===rec.id).en && rec.en ? 'changed' : ''}">
+            ${rec.en ? rec.en : '<span class="empty-cell">未翻译</span>'}
+          </td>
+          <td class="highlight-cell ${isRowModified && !initialMockRecords.find(r=>r.id===rec.id).es && rec.es ? 'changed' : ''}">
+            ${rec.es ? rec.es : '<span class="empty-cell">未翻译</span>'}
+          </td>
+        `;
+        
+        // Add double click simulator
+        tr.ondblclick = () => simulateRowEdit(rec.id);
+        container.appendChild(tr);
+      });
+    }
+
+    // Simulate batch translation
+    function runMockAiTranslate() {
+      document.getElementById('btn-batch-ai').innerText = '🤖 智能翻译调用中...';
+      document.getElementById('btn-batch-ai').disabled = true;
+
+      setTimeout(() => {
+        mockRecords.forEach(rec => {
+          let changed = false;
+          if (rec.id === 'rec_2') {
+            rec.en = 'Cadence';
+            rec.es = 'Cadencia';
+            changed = true;
+          }
+          if (rec.id === 'rec_3') {
+            rec.es = 'Restablecimiento de fábrica';
+            changed = true;
+          }
+          if (rec.id === 'rec_4') {
+            rec.en = 'Power';
+            rec.es = 'Potencia';
+            changed = true;
+          }
+
+          if (changed) {
+            mockModified[rec.id] = true;
+            rec.updatedAt = Date.now(); // update timestamp
+          }
+        });
+
+        renderMockTable();
+        document.getElementById('btn-batch-ai').innerText = '⚡ 批量 AI 翻译 (模拟)';
+        document.getElementById('btn-batch-ai').disabled = false;
+      }, 800);
+    }
+
+    // Toggle Sort
+    function toggleMockSort(mode) {
+      mockSortBy = mode;
+      document.getElementById('sort-change').style.borderColor = mode === 'changeFirst' ? 'var(--accent-cyan)' : 'var(--glass-border)';
+      document.getElementById('sort-change').style.color = mode === 'changeFirst' ? 'var(--accent-cyan)' : 'var(--text-primary)';
+      document.getElementById('sort-default').style.borderColor = mode === 'default' ? 'var(--accent-cyan)' : 'var(--glass-border)';
+      document.getElementById('sort-default').style.color = mode === 'default' ? 'var(--text-primary)' : 'var(--text-secondary)';
+      renderMockTable();
+    }
+
+    // Double click to simulate row edit
+    function simulateRowEdit(id) {
+      const rec = mockRecords.find(r => r.id === id);
+      if (!rec) return;
+
+      const newZh = prompt(`【模拟编辑词条】修改词条 "${rec.kw}" 的中文源词：`, rec.zh);
+      if (newZh === null || newZh.trim() === '') return;
+
+      rec.zh = newZh.trim();
+      mockModified[rec.id] = true;
+      rec.updatedAt = Date.now(); // update time to top
+
+      renderMockTable();
+    }
+
+    // Initial setup
+    resetMockData();
+    updateProgressBar();
+  </script>
+</body>
+</html>

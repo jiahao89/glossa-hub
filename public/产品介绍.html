@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GlossaHub - AI 驱动的多语言词条协同翻译平台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ===== 设计令牌（与主应用一致）===== */
+    :root {
+      --bg-primary: #0e0e10;
+      --bg-secondary: #16161a;
+      --bg-tertiary: #202024;
+      --bg-hover: #2a2a30;
+      --accent: #00f2ff;
+      --accent-rgb: 0, 242, 255;
+      --accent-glow: rgba(0, 242, 255, 0.15);
+      --green: #10b981;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --purple: #8b5cf6;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #7c899c;
+      --border-color: #2a2a32;
+      --font-title: 'Outfit', -apple-system, sans-serif;
+      --font-body: 'Inter', -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      line-height: 1.6;
+    }
+
+    /* ===== 背景网格纹理 ===== */
+    .bg-grid {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(0, 242, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 242, 255, 0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+    .bg-glow {
+      position: fixed; z-index: 0; pointer-events: none;
+      border-radius: 50%; filter: blur(120px); opacity: 0.08;
+    }
+    .bg-glow.cyan { width: 600px; height: 600px; background: var(--accent); top: -200px; right: -100px; }
+    .bg-glow.purple { width: 500px; height: 500px; background: var(--purple); bottom: -150px; left: -100px; }
+
+    /* ===== 顶部品牌栏 ===== */
+    .topbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.75rem 2rem;
+      background: rgba(14, 14, 16, 0.8);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+    }
+    .topbar-brand { display: flex; align-items: center; gap: 0.6rem; }
+    .brand-logo {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-family: var(--font-title); font-weight: 800; font-size: 1rem;
+      box-shadow: 0 4px 16px rgba(0, 242, 255, 0.3);
+    }
+    .brand-text {
+      font-family: var(--font-title); font-weight: 700; font-size: 1.1rem;
+      background: linear-gradient(135deg, #fff 40%, var(--accent) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .topbar-tag {
+      font-size: 0.7rem; color: var(--accent); font-weight: 600;
+      padding: 0.2rem 0.6rem; border: 1px solid rgba(0, 242, 255, 0.3);
+      border-radius: 100px; background: rgba(0, 242, 255, 0.05);
+      cursor: pointer; text-decoration: none; transition: all 0.2s;
+    }
+    .topbar-tag:hover {
+      background: rgba(0, 242, 255, 0.15); border-color: rgba(0, 242, 255, 0.6);
+    }
+
+    /* ===== 页码标识 ===== */
+    .page-num {
+      position: fixed; top: 50%; right: 1.5rem; transform: translateY(-50%);
+      z-index: 50; writing-mode: vertical-rl;
+      font-family: var(--font-title); font-size: 0.75rem; font-weight: 600;
+      color: var(--text-muted); letter-spacing: 2px;
+    }
+    .page-num .current { color: var(--accent); }
+
+    /* ===== 翻页容器 ===== */
+    .slides-wrapper { position: relative; z-index: 1; width: 100%; height: 100vh; overflow: hidden; }
+    .slide {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 5rem 2rem 5rem;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.5s ease, transform 0.5s ease;
+      transform: translateX(30px);
+    }
+    .slide.active { opacity: 1; pointer-events: auto; transform: translateX(0); }
+    .slide.prev { transform: translateX(-30px); }
+
+    /* ===== 底部导航 ===== */
+    .nav-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center; gap: 1.5rem;
+      padding: 1rem 2rem;
+      background: rgba(14, 14, 16, 0.8);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border-color);
+    }
+    .nav-arrow {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-color);
+      color: var(--text-secondary); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; transition: all 0.2s;
+    }
+    .nav-arrow:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+    .nav-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
+    .nav-dots { display: flex; gap: 0.5rem; }
+    .nav-dot {
+      width: 8px; height: 8px; border-radius: 4px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-color);
+      cursor: pointer; transition: all 0.3s;
+    }
+    .nav-dot.active { width: 24px; background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+
+    /* ===== 通用样式 ===== */
+    .slide-title {
+      font-family: var(--font-title); font-size: 2.2rem; font-weight: 800;
+      letter-spacing: -0.5px; margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .slide-subtitle { font-size: 1rem; color: var(--text-secondary); margin-bottom: 2.5rem; max-width: 600px; text-align: center; }
+
+    /* ===== Page 1: 封面 ===== */
+    .cover-logo {
+      width: 80px; height: 80px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-family: var(--font-title); font-weight: 900; font-size: 2.5rem;
+      box-shadow: 0 8px 40px rgba(0, 242, 255, 0.4);
+      margin-bottom: 1.5rem;
+    }
+    .cover-title {
+      font-family: var(--font-title); font-size: 3.5rem; font-weight: 900;
+      letter-spacing: -2px;
+      background: linear-gradient(135deg, #fff 20%, var(--accent) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .cover-sub { font-size: 1.2rem; color: var(--text-secondary); margin-top: 0.5rem; }
+    .cover-slogan { font-size: 0.9rem; color: var(--text-muted); margin-top: 1rem; }
+    .scroll-hint {
+      margin-top: 3rem; color: var(--text-muted); font-size: 0.8rem;
+      display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+      animation: bounce 2s infinite;
+    }
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
+
+    /* ===== 卡片网格 ===== */
+    .card-grid { display: grid; gap: 1.25rem; max-width: 960px; width: 100%; }
+    .card-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .card-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .info-card {
+      background: var(--bg-secondary); border: 1px solid var(--border-color);
+      border-radius: 12px; padding: 1.5rem;
+      transition: all 0.3s; cursor: default;
+    }
+    .info-card:hover { border-color: rgba(0, 242, 255, 0.3); box-shadow: 0 0 20px var(--accent-glow); transform: translateY(-3px); }
+    .card-icon { font-size: 1.8rem; margin-bottom: 0.75rem; }
+    .card-title { font-family: var(--font-title); font-weight: 600; font-size: 0.95rem; margin-bottom: 0.35rem; }
+    .card-desc { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; }
+
+    /* ===== 痛点卡片 ===== */
+    .pain-card { border-left: 3px solid var(--red); }
+    .pain-card .card-icon { color: var(--red); }
+
+    /* ===== 解决方案辐射图 ===== */
+    .solution-wrap { display: flex; align-items: center; justify-content: center; gap: 2rem; max-width: 900px; }
+    .solution-center {
+      width: 160px; height: 160px; border-radius: 50%;
+      background: var(--bg-secondary); border: 2px solid var(--accent);
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      font-family: var(--font-title); font-weight: 700; font-size: 0.9rem; color: var(--accent);
+      box-shadow: 0 0 40px var(--accent-glow); flex-shrink: 0;
+    }
+    .solution-items { display: flex; flex-direction: column; gap: 1rem; }
+    .solution-item {
+      background: var(--bg-secondary); border: 1px solid var(--border-color);
+      border-radius: 10px; padding: 1rem 1.25rem;
+      display: flex; align-items: center; gap: 0.75rem;
+      transition: all 0.3s;
+    }
+    .solution-item:hover { border-color: var(--accent); transform: translateX(4px); }
+    .solution-item .icon { font-size: 1.3rem; }
+    .solution-item .text { font-size: 0.85rem; }
+    .solution-item .text strong { display: block; margin-bottom: 0.15rem; }
+    .solution-item .text span { color: var(--text-muted); font-size: 0.75rem; }
+
+    /* ===== 流程图 ===== */
+    .flow-row { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; }
+    .flow-step {
+      background: var(--bg-secondary); border: 1px solid var(--border-color);
+      border-radius: 12px; padding: 1.25rem 1.5rem; text-align: center;
+      min-width: 180px; transition: all 0.3s;
+    }
+    .flow-step:hover { border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow); }
+    .flow-step .step-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .flow-step .step-title { font-family: var(--font-title); font-weight: 600; font-size: 0.9rem; margin-bottom: 0.2rem; }
+    .flow-step .step-status { font-size: 0.7rem; color: var(--accent); font-weight: 600; }
+    .flow-step .step-desc { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.4rem; }
+    .flow-arrow { color: var(--text-muted); font-size: 1.3rem; margin: 0 0.5rem; }
+
+    /* ===== 架构节点 ===== */
+    .arch-row { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; }
+    .arch-node {
+      background: var(--bg-secondary); border: 1px solid var(--border-color);
+      border-radius: 14px; padding: 1.5rem; text-align: center;
+      width: 220px; transition: all 0.3s;
+    }
+    .arch-node:hover { border-color: var(--accent); transform: translateY(-4px); }
+    .arch-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .arch-name { font-family: var(--font-title); font-weight: 700; font-size: 1rem; margin-bottom: 0.3rem; }
+    .arch-stack { font-size: 0.7rem; color: var(--accent); font-weight: 600; margin-bottom: 0.5rem; }
+    .arch-desc { font-size: 0.75rem; color: var(--text-muted); }
+    .arch-arrow { color: var(--text-muted); font-size: 1.5rem; margin: 0 0.75rem; }
+
+    /* ===== 大数字 ===== */
+    .big-stats { display: flex; gap: 3rem; }
+    .big-stat { text-align: center; }
+    .big-stat-num {
+      font-family: var(--font-title); font-size: 3.5rem; font-weight: 900;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .big-stat-label { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem; }
+
+    /* ===== 来源标记徽章 ===== */
+    .source-badges { display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem; }
+    .source-badge {
+      padding: 0.4rem 0.8rem; border-radius: 8px; font-size: 0.75rem; font-weight: 600;
+      display: flex; align-items: center; gap: 0.3rem;
+    }
+    .source-badge.ai { background: rgba(139, 92, 246, 0.15); color: var(--purple); border: 1px solid rgba(139, 92, 246, 0.3); }
+    .source-badge.tm { background: rgba(245, 158, 11, 0.15); color: var(--yellow); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .source-badge.human { background: rgba(16, 185, 129, 0.15); color: var(--green); border: 1px solid rgba(16, 185, 129, 0.3); }
+
+    /* ===== 进度条模拟 ===== */
+    .progress-list { display: flex; flex-direction: column; gap: 0.5rem; max-width: 480px; width: 100%; }
+    .progress-row { display: flex; align-items: center; gap: 0.75rem; }
+    .progress-label { font-size: 0.75rem; color: var(--text-secondary); min-width: 80px; text-align: right; }
+    .progress-bar { flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+    .progress-val { font-size: 0.7rem; font-weight: 600; min-width: 36px; }
+
+    /* ===== 差异高亮模拟 ===== */
+    .diff-demo { display: flex; gap: 1rem; align-items: center; font-size: 0.85rem; }
+    .diff-old { color: var(--red); text-decoration: line-through; }
+    .diff-new { color: var(--green); font-weight: 600; }
+    .diff-arrow { color: var(--text-muted); }
+
+    /* ===== 看板模拟 ===== */
+    .dashboard-mock { display: flex; gap: 2rem; max-width: 800px; width: 100%; }
+    .dash-panel { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; }
+    .dash-panel h4 { font-family: var(--font-title); font-size: 0.85rem; margin-bottom: 1rem; color: var(--text-secondary); }
+    .kpi-row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); }
+    .kpi-row:last-child { border: none; }
+    .kpi-label { font-size: 0.75rem; color: var(--text-muted); }
+    .kpi-val { font-family: var(--font-title); font-weight: 700; font-size: 0.9rem; }
+    .kpi-val.green { color: var(--green); }
+    .kpi-val.yellow { color: var(--yellow); }
+    .kpi-val.accent { color: var(--accent); }
+
+    /* ===== 工具类 ===== */
+    .text-center { text-align: center; }
+    .mb-1 { margin-bottom: 0.5rem; }
+    .mb-2 { margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow cyan"></div>
+  <div class="bg-glow purple"></div>
+
+  <!-- 顶部品牌栏 -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-logo">G</div>
+      <span class="brand-text">GlossaHub</span>
+    </div>
+    <a class="topbar-tag" href="/历史版本.html" target="_blank" rel="noopener">历史版本</a>
+  </div>
+
+  <!-- 页码 -->
+  <div class="page-num"><span class="current" id="pageNumCurrent">01</span> / 10</div>
+
+  <!-- 翻页容器 -->
+  <div class="slides-wrapper" id="slides">
+
+    <!-- Page 1: 封面 -->
+    <div class="slide active" data-slide="0">
+      <div class="cover-logo">G</div>
+      <h1 class="cover-title">GlossaHub</h1>
+      <p class="cover-sub">AI 驱动的多语言词条协同翻译平台</p>
+      <p class="cover-slogan">让每一次出海翻译都精准、高效、可追溯</p>
+      <div class="scroll-hint">
+        <span>使用 ← → 键翻页</span>
+        <span>↓</span>
+      </div>
+    </div>
+
+    <!-- Page 2: 问题与挑战 -->
+    <div class="slide" data-slide="1">
+      <h2 class="slide-title">行业痛点</h2>
+      <p class="slide-subtitle">骑行产品出海，多语言词条管理面临三大核心挑战</p>
+      <div class="card-grid cols-3">
+        <div class="info-card pain-card">
+          <div class="card-icon">🔀</div>
+          <div class="card-title">多版本管理混乱</div>
+          <div class="card-desc">码表、App、外设各有版本，词条散落在不同表格中，缺乏统一管理中枢，版本间数据难以同步。</div>
+        </div>
+        <div class="info-card pain-card">
+          <div class="card-icon">🌍</div>
+          <div class="card-title">16 语种翻译低效</div>
+          <div class="card-desc">出海产品需覆盖 16 种语言，纯人工翻译耗时长、成本高，且难以保证术语一致性。</div>
+        </div>
+        <div class="info-card pain-card">
+          <div class="card-icon">⚠️</div>
+          <div class="card-title">一致性难保障</div>
+          <div class="card-desc">同一关键词在不同版本中翻译不一致，缺乏跨版本参考机制，导致用户体验割裂。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 3: 解决方案 -->
+    <div class="slide" data-slide="2">
+      <h2 class="slide-title">GlossaHub 的解决之道</h2>
+      <p class="slide-subtitle">以 AI 翻译引擎为核心，构建多版本协同管理闭环</p>
+      <div class="solution-wrap">
+        <div class="solution-items">
+          <div class="solution-item">
+            <span class="icon">🗂️</span>
+            <div class="text"><strong>统一多版本词条管理</strong><span>码表/App/外设版本表集中管理</span></div>
+          </div>
+          <div class="solution-item">
+            <span class="icon">🤖</span>
+            <div class="text"><strong>AI 智能翻译引擎</strong><span>Dify 集成，16 语种一键翻译</span></div>
+          </div>
+          <div class="solution-item">
+            <span class="icon">🔄</span>
+            <div class="text"><strong>跨版本参考与对比</strong><span>差异高亮，一键应用参考翻译</span></div>
+          </div>
+        </div>
+        <div class="solution-center">GlossaHub<br>协同中枢</div>
+      </div>
+    </div>
+
+    <!-- Page 4: 核心功能总览 -->
+    <div class="slide" data-slide="3">
+      <h2 class="slide-title">八大核心功能</h2>
+      <p class="slide-subtitle">覆盖词条全生命周期的协同管理能力</p>
+      <div class="card-grid cols-4">
+        <div class="info-card">
+          <div class="card-icon">🔒</div>
+          <div class="card-title">行级锁定防冲突</div>
+          <div class="card-desc">定稿词条物理锁定，防止意外覆写</div>
+        </div>
+        <div class="info-card">
+          <div class="card-icon">🤖</div>
+          <div class="card-title">AI 智能翻译</div>
+          <div class="card-desc">Dify 引擎，16 语种批量翻译</div>
+        </div>
+        <div class="info-card">
+          <div class="card-icon">🏷️</div>
+          <div class="card-title">翻译来源标记</div>
+          <div class="card-desc">AI 翻译 / 人工校验，来源可追溯</div>
+        </div>
+        <div class="info-card">
+          <div class="card-icon">🔄</div>
+          <div class="card-title">跨版本参考对比</div>
+          <div class="card-desc">差异高亮，一键应用参考翻译</div>
+        </div>
+        <div class="info-card">
+          <div class="card-icon">⏱️</div>
+          <div class="card-title">修改历史回退</div>
+          <div class="card-desc">完整审计日志，一键回退任意版本</div>
+        </div>
+        <div class="info-card">
+          <div class="card-icon">📊</div>
+          <div class="card-title">语种覆盖率看板</div>
+          <div class="card-desc">翻译+审核双维度实时监控</div>
+        </div>
+        <div class="info-card">
+          <div class="card-icon">📂</div>
+          <div class="card-title">CSV 导入 / XLS 导出</div>
+          <div class="card-desc">增量 diff 预览，修改高亮导出</div>
+        </div>
+        <div class="info-card">
+          <div class="card-icon">📚</div>
+          <div class="card-title">专业词汇库</div>
+          <div class="card-desc">统一术语库，保障翻译一致性</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 5: AI 智能翻译 -->
+    <div class="slide" data-slide="4">
+      <h2 class="slide-title">AI 驱动的翻译引擎</h2>
+      <p class="slide-subtitle">集成 Dify 工作流，中文词条一键翻译为 16 种出海语种</p>
+      <div class="flow-row">
+        <div class="flow-step">
+          <div class="step-icon">📝</div>
+          <div class="step-title">中文词条</div>
+          <div class="step-desc">KW + 上下文</div>
+        </div>
+        <span class="flow-arrow">➔</span>
+        <div class="flow-step" style="border-color: var(--accent);">
+          <div class="step-icon">🤖</div>
+          <div class="step-title">Dify AI 引擎</div>
+          <div class="step-status">WORKFLOW</div>
+          <div class="step-desc">语义理解 + 术语匹配</div>
+        </div>
+        <span class="flow-arrow">➔</span>
+        <div class="flow-step">
+          <div class="step-icon">🌍</div>
+          <div class="step-title">16 语种翻译</div>
+          <div class="step-desc">EN/JP/FR/DE/ES/...</div>
+        </div>
+      </div>
+      <div class="source-badges">
+        <div class="source-badge ai">🤖 AI 翻译</div>
+        <div class="source-badge human">👤 人工校验</div>
+      </div>
+    </div>
+
+    <!-- Page 6: 跨版本参考与对比 -->
+    <div class="slide" data-slide="5">
+      <h2 class="slide-title">跨版本翻译一致性保障</h2>
+      <p class="slide-subtitle">编辑词条时自动检索其他版本，差异高亮，一键应用</p>
+      <div style="display: flex; gap: 2rem; align-items: center;">
+        <div class="info-card" style="width: 300px;">
+          <div class="card-title mb-1">B-国际版 Preview</div>
+          <div class="diff-demo">
+            <span class="diff-old">Speed</span>
+            <span class="diff-arrow">➔</span>
+            <span class="diff-new">Velocity</span>
+          </div>
+          <div class="card-desc" style="margin-top: 0.5rem;">EN 语种存在差异，点击"应用差异"即可同步</div>
+        </div>
+        <div class="info-card" style="width: 300px;">
+          <div class="card-title mb-1">C-经典版</div>
+          <div class="card-desc" style="color: var(--green);">✓ 翻译与当前完全一致</div>
+          <div class="card-desc" style="margin-top: 0.5rem;">已自动过滤，无需对比</div>
+        </div>
+      </div>
+      <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+        <div class="source-badge ai">新增 2 条</div>
+        <div class="source-badge human">修改 1 条</div>
+        <div class="source-badge human">一致 1 条（已隐藏）</div>
+      </div>
+    </div>
+
+    <!-- Page 7: 数据看板 -->
+    <div class="slide" data-slide="6">
+      <h2 class="slide-title">实时数据看板</h2>
+      <p class="slide-subtitle">翻译覆盖率与审核覆盖率双维度监控，AI 用量可视化</p>
+      <div class="dashboard-mock">
+        <div class="dash-panel">
+          <h4>📊 按语种翻译覆盖率</h4>
+          <div class="progress-list">
+            <div class="progress-row"><span class="progress-label">EN（英文）</span><div class="progress-bar"><div class="progress-fill" style="width: 92%; background: var(--green);"></div></div><span class="progress-val" style="color: var(--green);">92%</span></div>
+            <div class="progress-row"><span class="progress-label">JP（日）</span><div class="progress-bar"><div class="progress-fill" style="width: 77%; background: var(--yellow);"></div></div><span class="progress-val" style="color: var(--yellow);">77%</span></div>
+            <div class="progress-row"><span class="progress-label">FR（法）</span><div class="progress-bar"><div class="progress-fill" style="width: 69%; background: var(--yellow);"></div></div><span class="progress-val" style="color: var(--yellow);">69%</span></div>
+            <div class="progress-row"><span class="progress-label">DE（德）</span><div class="progress-bar"><div class="progress-fill" style="width: 38%; background: var(--red);"></div></div><span class="progress-val" style="color: var(--red);">38%</span></div>
+            <div class="progress-row"><span class="progress-label">ES（西班牙）</span><div class="progress-bar"><div class="progress-fill" style="width: 38%; background: var(--red);"></div></div><span class="progress-val" style="color: var(--red);">38%</span></div>
+          </div>
+        </div>
+        <div class="dash-panel">
+          <h4>⚡ AI Token 用量</h4>
+          <div class="kpi-row"><span class="kpi-label">今日调用</span><span class="kpi-val accent">28 次</span></div>
+          <div class="kpi-row"><span class="kpi-label">今日消耗</span><span class="kpi-val accent">12.4K tokens</span></div>
+          <div class="kpi-row"><span class="kpi-label">本周累计</span><span class="kpi-val">156 次 / 68K</span></div>
+          <div class="kpi-row"><span class="kpi-label">已审核词条</span><span class="kpi-val green">8 / 13 (62%)</span></div>
+          <div class="kpi-row"><span class="kpi-label">翻译完成率</span><span class="kpi-val yellow">56%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 8: 协同工作流 -->
+    <div class="slide" data-slide="7">
+      <h2 class="slide-title">四步协同发版工作流</h2>
+      <p class="slide-subtitle">从开发录入到锁定同步，全流程状态流转</p>
+      <div class="flow-row">
+        <div class="flow-step">
+          <div class="step-icon">📝</div>
+          <div class="step-title">开发录入</div>
+          <div class="step-status">DRAFT</div>
+          <div class="step-desc">录入 KW 和中文</div>
+        </div>
+        <span class="flow-arrow">➔</span>
+        <div class="flow-step">
+          <div class="step-icon">🤖</div>
+          <div class="step-title">AI 预翻译</div>
+          <div class="step-status">PENDING_REVIEW</div>
+          <div class="step-desc">一键 16 语种翻译</div>
+        </div>
+        <span class="flow-arrow">➔</span>
+        <div class="flow-step">
+          <div class="step-icon">✅</div>
+          <div class="step-title">人工校验审批</div>
+          <div class="step-status">APPROVED</div>
+          <div class="step-desc">微调 + 批量审核</div>
+        </div>
+        <span class="flow-arrow">➔</span>
+        <div class="flow-step">
+          <div class="step-icon">🔒</div>
+          <div class="step-title">锁定同步</div>
+          <div class="step-status">PUBLISHED</div>
+          <div class="step-desc">锁定 + 导出</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 9: 技术架构 -->
+    <div class="slide" data-slide="8">
+      <h2 class="slide-title">三端云端架构</h2>
+      <p class="slide-subtitle">前后端分离 + 云数据库，安全、可扩展、高可用</p>
+      <div class="arch-row">
+        <div class="arch-node">
+          <div class="arch-icon">🌐</div>
+          <div class="arch-name">前端</div>
+          <div class="arch-stack">Vite + React SPA</div>
+          <div class="arch-desc">静态托管 / CDN 加速<br>用户直接操作入口</div>
+        </div>
+        <span class="arch-arrow">➔</span>
+        <div class="arch-node">
+          <div class="arch-icon">🔌</div>
+          <div class="arch-name">后端</div>
+          <div class="arch-stack">Node.js + Express</div>
+          <div class="arch-desc">API 处理 / AI 对接<br>权限校验 / 数据统计</div>
+        </div>
+        <span class="arch-arrow">➔</span>
+        <div class="arch-node">
+          <div class="arch-icon">🗄️</div>
+          <div class="arch-name">数据库</div>
+          <div class="arch-stack">PostgreSQL / Supabase</div>
+          <div class="arch-desc">关系型云数据库<br>数据持久化 / 多表管理</div>
+        </div>
+      </div>
+      <div style="margin-top: 2rem; display: flex; gap: 1.5rem; justify-content: center;">
+        <span class="source-badge human">🔒 安全</span>
+        <span class="source-badge ai">📈 可扩展</span>
+        <span class="source-badge tm">⚡ 高可用</span>
+      </div>
+    </div>
+
+    <!-- Page 10: 结尾 -->
+    <div class="slide" data-slide="9">
+      <div class="cover-logo" style="width: 60px; height: 60px; font-size: 1.8rem;">G</div>
+      <h2 class="slide-title" style="font-size: 2.8rem;">GlossaHub</h2>
+      <p class="cover-sub">让每一次出海翻译都精准、高效、可追溯</p>
+      <div class="big-stats" style="margin-top: 3rem;">
+        <div class="big-stat">
+          <div class="big-stat-num">16</div>
+          <div class="big-stat-label">种出海语种</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-stat-num">8</div>
+          <div class="big-stat-label">大核心功能</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-stat-num">4</div>
+          <div class="big-stat-label">步协同工作流</div>
+        </div>
+      </div>
+      <p style="margin-top: 3rem; font-size: 0.85rem; color: var(--text-muted);">感谢观看 · v0.2.0</p>
+    </div>
+
+  </div>
+
+  <!-- 底部导航 -->
+  <div class="nav-bar">
+    <button class="nav-arrow" id="prevBtn" onclick="changeSlide(-1)">‹</button>
+    <div class="nav-dots" id="navDots"></div>
+    <button class="nav-arrow" id="nextBtn" onclick="changeSlide(1)">›</button>
+    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" id="pageCounter">1 / 10</span>
+  </div>
+
+  <script>
+    // ===== 翻页逻辑 =====
+    var currentSlide = 0;
+    var totalSlides = 10;
+    var slides = document.querySelectorAll('.slide');
+    var dotsContainer = document.getElementById('navDots');
+    var pageCounter = document.getElementById('pageCounter');
+    var pageNumCurrent = document.getElementById('pageNumCurrent');
+    var prevBtn = document.getElementById('prevBtn');
+    var nextBtn = document.getElementById('nextBtn');
+
+    // 生成圆点导航
+    for (var i = 0; i < totalSlides; i++) {
+      (function(idx) {
+        var dot = document.createElement('div');
+        dot.className = 'nav-dot' + (idx === 0 ? ' active' : '');
+        dot.onclick = function() { goToSlide(idx); };
+        dotsContainer.appendChild(dot);
+      })(i);
+    }
+
+    var dots = document.querySelectorAll('.nav-dot');
+
+    function goToSlide(idx) {
+      if (idx < 0 || idx >= totalSlides) return;
+      // 移除当前状态
+      slides[currentSlide].classList.remove('active');
+      dots[currentSlide].classList.remove('active');
+      // 设置方向
+      if (idx > currentSlide) {
+        slides[currentSlide].classList.add('prev');
+      } else {
+        slides[currentSlide].classList.remove('prev');
+      }
+      // 切换到新页面
+      currentSlide = idx;
+      slides[currentSlide].classList.add('active');
+      slides[currentSlide].classList.remove('prev');
+      dots[currentSlide].classList.add('active');
+      // 更新页码
+      var pageNum = String(currentSlide + 1).padStart(2, '0');
+      pageCounter.textContent = (currentSlide + 1) + ' / ' + totalSlides;
+      pageNumCurrent.textContent = pageNum;
+      // 按钮状态
+      prevBtn.disabled = currentSlide === 0;
+      nextBtn.disabled = currentSlide === totalSlides - 1;
+    }
+
+    function changeSlide(dir) {
+      goToSlide(currentSlide + dir);
+    }
+
+    // 键盘翻页
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') changeSlide(-1);
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); changeSlide(1); }
+    });
+
+    // 初始状态
+    prevBtn.disabled = true;
+  </script>
+</body>
+</html>

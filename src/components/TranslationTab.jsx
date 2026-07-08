@@ -389,7 +389,11 @@ export default function TranslationTab({
           const syncedTables = await res.json();
           if (syncedTables.length > 0) {
             setTables(syncedTables);
-            setSelectedTableId(syncedTables[0].id);
+            // 如果父组件已传入 targetTableId 且在列表中，则使用它；否则默认选第一个
+            const hasValidSelection = propSelectedTableId && syncedTables.some(t => t.id === propSelectedTableId);
+            if (!hasValidSelection) {
+              setSelectedTableId(syncedTables[0].id);
+            }
             showStatus('success', `已载入云端协同数据 (${syncedTables.length} 个固件版本)`);
           } else {
             setTables([]);
@@ -2371,10 +2375,10 @@ export default function TranslationTab({
                           title={val ? `${val}${isAiSource ? ' (AI 翻译)' : isTmSource ? ' (翻译记忆)' : ''}` : undefined}
                         >
                           {val ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                              <span className="truncate" style={{ maxWidth: isAiSource || isTmSource ? 'calc(100% - 14px)' : '100%' }}>{val}</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', width: '100%' }}>
                               {isAiSource && <Bot size={11} style={{ flexShrink: 0, color: 'var(--purple)' }} />}
                               {isTmSource && <Check size={11} style={{ flexShrink: 0, color: 'var(--green)' }} />}
+                              <span className="truncate" style={{ flex: 1, minWidth: 0 }}>{val}</span>
                             </span>
                           ) : <span className="cell-empty">未翻译</span>}
                         </td>
