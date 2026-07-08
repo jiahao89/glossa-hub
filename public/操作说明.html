@@ -958,42 +958,63 @@
           <div class="section-icon">✨</div>
           <h2>二、 v0.3 版本升级核心新功能</h2>
         </div>
-        <p>在最新迭代的 v0.3 版本中，平台提供了质量控制、成本统计及多人防写冲突的五大特性：</p>
+        <p>在多人协同发包的复杂业务场景下，平台提供了八大核心功能来保障数据质量与提效：</p>
         
         <ul class="feature-list">
           <li class="feature-item">
             <div class="feature-item-num">1</div>
             <div class="feature-item-content">
               <h4>🔒 行级防冲突锁定 (Row Locking)</h4>
-              <p>临近定包时，管理员可直接对指定行上锁。上锁后，普通用户双击编辑将被彻底屏蔽，后端接口对于非管理员修改也会抛出 403。</p>
+              <p>管理员（Admin）或词条 Owner 可以在词条最左侧状态栏直接点击 🔓/🔒 图标进行加锁与解锁。上锁后，该行记录将受物理防护：双击打开时提示只读警告且输入框与 AI 翻译按钮全部禁用变灰；在<strong>批量翻译、大表数据导入更新、批量分类设置</strong>等高敏感操作中也会被自动安全跳过，防止冲突覆写。</p>
             </div>
           </li>
           <li class="feature-item">
             <div class="feature-item-num">2</div>
             <div class="feature-item-content">
               <h4>🏷️ 翻译来源角标 (Telemetry Badges)</h4>
-              <p>多语言字段附带清晰来源标识：<strong>ai</strong> (机器人)、<strong>tm</strong> (翻译记忆库)、<strong>human</strong> (人工审核)。当人工二次微调后，来源会自动无缝升级为 human。</p>
+              <p>每个语种的单元格右侧均带有明确的来源标识：<strong>ai</strong> (智能算法生成)、<strong>tm</strong> (历史记忆库复用)、<strong>human</strong> (人工校验并定稿)。一旦人员对译文进行二次微调保存，来源角标会自动无缝升级为最高可信度的 <strong>human</strong>。</p>
             </div>
           </li>
           <li class="feature-item">
             <div class="feature-item-num">3</div>
             <div class="feature-item-content">
               <h4>📈 AI 用量 Token 大盘 (Analytics)</h4>
-              <p>仪表盘顶部引入消耗监控，实时展示累积 Token 与最近 7 天的消耗走势折线图，方便监控大模型翻译的成本开销。</p>
+              <p>仪表盘顶部引入了消耗统计大盘，自动追踪每次翻译的 Token 损耗与用时，并绘制最近 7 天的每日消耗趋势折线图，协助监控与核算 AI 的成本支出。</p>
             </div>
           </li>
           <li class="feature-item">
             <div class="feature-item-num">4</div>
             <div class="feature-item-content">
               <h4>📊 语种就绪进度矩阵 (Progress Metric)</h4>
-              <p>红黄绿三色长柱形进度条，实时展示 16 种迈金出海语种的翻译覆盖就绪情况，哪里缺翻译、缺多少一目了然。</p>
+              <p>主面板配有直观的语种覆盖进度矩阵，支持对 16 个出海语种进行细粒度分析，实时标红/黄/绿并计算百分比，使得未译缺口一清二楚。</p>
             </div>
           </li>
           <li class="feature-item">
             <div class="feature-item-num">5</div>
             <div class="feature-item-content">
               <h4>🔄 比对差异一键写回飞书 (Sync Back)</h4>
-              <p>支持多版本差异比对（自动规整省略号、弯直双引号等假差异）。插件模式下，一键即可把增量差异写回到飞书多维表格单元格中。</p>
+              <p>提供强大的跨表/跨版本“多维表格级”差异对比工具，能够过滤省略号、双引号等格式假差异。支持筛选后一键差异写回，完成飞书数据源更新。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">6</div>
+            <div class="feature-item-content">
+              <h4>🧠 跨版本翻译智能参考 (Cross-version Reference)</h4>
+              <p>在编辑词条时，系统会基于当前词条的唯一主键 <strong>`KW`</strong>，自动检索当前项目内<strong>除当前数据大表外其他所有版本的数据大表</strong>。如果该 `KW` 在其他版本中已存在译文，右侧将把对应的大表名称及翻译结果调出来供译员对比与一键复制，保障迈金跨版本产品的翻译一致性。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">7</div>
+            <div class="feature-item-content">
+              <h4>⏱️ 词条修改历史追溯与一键回退 (Audit Logs & Rollback)</h4>
+              <p>编辑弹窗的右侧“修改历史”时间轴，会完整记录该词条的一生：谁在何时把何种语种从什么值改成了什么值。点击任意历史卡片底部的“回退”，即可将当前词条的整体语种状态一键瞬间恢复到该历史时间点。</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <div class="feature-item-num">8</div>
+            <div class="feature-item-content">
+              <h4>📂 场景化语境与多维元数据绑定 (Context & Tags)</h4>
+              <p>词条不仅包含 `KW`，还完整支持了“所在页面（如个人中心配对页）”、“字号类别”以及上下文“Context”的写入，译员可结合表头的高级过滤，轻松对特定应用模块的文案进行批量翻译与归档。</p>
             </div>
           </li>
         </ul>
