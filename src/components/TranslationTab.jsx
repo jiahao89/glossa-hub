@@ -188,11 +188,14 @@ export default function TranslationTab({
     }
   }, [editModalRecord, loadTmReferences]);
 
-  const handleApplyTmReference = (refTrans) => {
+  const handleApplyTmReference = (refTrans, diffsOnly = false) => {
     if (!editModalRecord) return;
     const mergedTrans = { ...editModalRecord.translations };
     Object.keys(refTrans).forEach(lang => {
       if (refTrans[lang] && refTrans[lang].trim() !== '') {
+        // diffsOnly 模式：仅填充当前为空或值不同的字段
+        const currentVal = (mergedTrans[lang] || '').trim();
+        if (diffsOnly && currentVal === refTrans[lang].trim()) return;
         mergedTrans[lang] = refTrans[lang];
         sessionMetaRef.current[lang] = 'tm'; // P1-1: 标记为翻译记忆来源
       }
@@ -2400,7 +2403,14 @@ export default function TranslationTab({
                     className={`btn ${activeRightTab === 'tm' ? 'btn-primary' : 'btn-secondary'}`}
                     style={{ flex: 1, height: '30px', fontSize: '0.8rem', padding: '0', background: activeRightTab === 'tm' ? 'var(--accent)' : 'transparent', color: activeRightTab === 'tm' ? 'var(--bg-primary)' : 'var(--text-secondary)' }}
                   >
-                    🧠 跨版本参考 ({tmReferences.length})
+                    🧠 跨版本参考 ({(() => {
+                      const ct = editModalRecord?.translations || {};
+                      const cz = (editModalRecord?.['CN（中文）'] || '').trim();
+                      return tmReferences.filter(r => {
+                        if ((r.zh_cn || '').trim() !== cz) return true;
+                        return Object.entries(r.translations).some(([k,v]) => v && v.trim() !== (ct[k] || '').trim());
+                      }).length;
+                    })()})
                   </button>
                   <button 
                     onClick={() => setActiveRightTab('history')}
@@ -2418,46 +2428,140 @@ export default function TranslationTab({
                         <Loader2 className="animate-spin" size={16} />
                         <span style={{ fontSize: '0.8rem' }}>正在检索记忆库参考...</span>
                       </div>
-                    ) : tmReferences.length === 0 ? (
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '2rem 0', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)' }}>
-                        暂无本项目其他大表中的翻译参考
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto', flex: 1, paddingRight: '0.3rem' }}>
-                        {tmReferences.map((ref, rIdx) => (
-                          <div key={rIdx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.6rem 0.8rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent)' }}>版本: {ref.versionName}</span>
-                              <button 
-                                onClick={() => handleApplyTmReference(ref.translations)}
-                                disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
-                                className="btn btn-secondary"
-                                style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem', height: '22px' }}
-                                title="一键填充全部译文"
-                              >
-                                应用此翻译
-                              </button>
-                            </div>
-                            
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                              <strong>中文:</strong> {ref.zh_cn}
-                            </div>
+                    ) : (() => {
+                      // 计算差异：过滤掉完全一致的参考，标记差异字段
+                      const currentTrans = editModalRecord?.translations || {};
+                      const currentZhCn = (editModalRecord?.['CN（中文）'] || '').trim();
 
-                            <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                              {Object.keys(ref.translations).map(lName => {
-                                if (!ref.translations[lName]) return null;
-                                return (
-                                  <div key={lName} style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--text-muted)' }}>{lName}:</span>
-                                    <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{ref.translations[lName]}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                      const filteredRefs = tmReferences.map(ref => {
+                        const refZhCn = (ref.zh_cn || '').trim();
+                        const zhCnDiff = refZhCn !== currentZhCn;
+                        const transDiffs = {};
+                        let hasAnyDiff = zhCnDiff;
+                        Object.keys(ref.translations).forEach(lang => {
+                          const refVal = (ref.translations[lang] || '').trim();
+                          const curVal = (currentTrans[lang] || '').trim();
+                          if (refVal && refVal !== curVal) {
+                            transDiffs[lang] = refVal;
+                            hasAnyDiff = true;
+                          }
+                        });
+                        // 也检查当前有但参考缺失的语种
+                        Object.keys(currentTrans).forEach(lang => {
+                          const refVal = (ref.translations[lang] || '').trim();
+                          const curVal = (currentTrans[lang] || '').trim();
+                          if (curVal && !refVal) {
+                            hasAnyDiff = true;
+                          }
+                        });
+                        return { ...ref, zhCnDiff, transDiffs, hasAnyDiff };
+                      }).filter(r => r.hasAnyDiff);
+
+                      const identicalCount = tmReferences.length - filteredRefs.length;
+
+                      if (filteredRefs.length === 0) {
+                        return (
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '2rem 0', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)', flexDirection: 'column', gap: '0.4rem' }}>
+                            <span>{tmReferences.length === 0 ? '暂无本项目其他大表中的翻译参考' : '✅ 其他版本的翻译与当前词条完全一致'}</span>
+                            {identicalCount > 0 && <span style={{ fontSize: '0.7rem' }}>已隐藏 {identicalCount} 个完全相同的版本</span>}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        );
+                      }
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', overflowY: 'auto', flex: 1, paddingRight: '0.3rem' }}>
+                          {identicalCount > 0 && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', paddingBottom: '0.2rem' }}>
+                              已隐藏 {identicalCount} 个完全相同的版本，仅显示有差异的 {filteredRefs.length} 个
+                            </div>
+                          )}
+                          {filteredRefs.map((ref, rIdx) => {
+                            const diffCount = Object.keys(ref.transDiffs).length + (ref.zhCnDiff ? 1 : 0);
+                            return (
+                              <div key={rIdx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.6rem 0.8rem', borderColor: 'rgba(var(--accent-rgb), 0.3)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent)' }}>版本: {ref.versionName}</span>
+                                  <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.65rem', color: 'var(--yellow)', background: 'rgba(var(--yellow-rgb), 0.15)', padding: '0.1rem 0.35rem', borderRadius: '3px', fontWeight: 500 }}>{diffCount} 处差异</span>
+                                    <button
+                                      onClick={() => handleApplyTmReference(ref.translations, true)}
+                                      disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem', height: '22px' }}
+                                      title="仅填充当前为空或不同的字段"
+                                    >
+                                      应用差异
+                                    </button>
+                                    <button
+                                      onClick={() => handleApplyTmReference(ref.translations, false)}
+                                      disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem', height: '22px' }}
+                                      title="覆盖填充全部译文"
+                                    >
+                                      全部应用
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* 中文差异高亮 */}
+                                {ref.zhCnDiff ? (
+                                  <div style={{ fontSize: '0.8rem', marginBottom: '0.4rem', display: 'flex', gap: '0.3rem', alignItems: 'baseline' }}>
+                                    <strong style={{ color: 'var(--text-secondary)' }}>中文:</strong>
+                                    <span style={{ color: 'var(--red)', textDecoration: 'line-through', fontSize: '0.75rem' }}>{currentZhCn || '（空）'}</span>
+                                    <span style={{ color: 'var(--text-muted)' }}>→</span>
+                                    <span style={{ fontWeight: 500, color: 'var(--green)' }}>{ref.zh_cn}</span>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
+                                    <strong>中文:</strong> {ref.zh_cn} <span style={{ fontSize: '0.65rem', color: 'var(--green)' }}>[一致]</span>
+                                  </div>
+                                )}
+
+                                {/* 译文差异展示 */}
+                                <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                  {Object.keys(ref.translations).map(lName => {
+                                    if (!ref.translations[lName]) return null;
+                                    const refVal = (ref.translations[lName] || '').trim();
+                                    const curVal = (currentTrans[lName] || '').trim();
+                                    const isDiff = refVal !== curVal;
+                                    return (
+                                      <div key={lName} style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', minHeight: '1.1rem' }}>
+                                        <span style={{ color: isDiff ? 'var(--accent)' : 'var(--text-muted)', fontWeight: isDiff ? 600 : 400 }}>{lName}:</span>
+                                        {isDiff ? (
+                                          <span style={{ display: 'flex', gap: '0.3rem', alignItems: 'baseline' }}>
+                                            {curVal && <span style={{ color: 'var(--red)', textDecoration: 'line-through', fontSize: '0.7rem', opacity: 0.7 }}>{curVal}</span>}
+                                            {curVal && <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>→</span>}
+                                            <span style={{ fontWeight: 500, color: 'var(--green)' }}>{refVal}</span>
+                                          </span>
+                                        ) : (
+                                          <span style={{ color: 'var(--text-muted)' }}>{refVal} <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>[一致]</span></span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  {/* 显示当前有但参考缺失的语种 */}
+                                  {Object.keys(currentTrans).filter(lang => {
+                                    const refVal = (ref.translations[lang] || '').trim();
+                                    const curVal = (currentTrans[lang] || '').trim();
+                                    return curVal && !refVal;
+                                  }).map(lang => (
+                                    <div key={lang} style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                      <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{lang}:</span>
+                                      <span style={{ display: 'flex', gap: '0.3rem', alignItems: 'baseline' }}>
+                                        <span style={{ color: 'var(--text-primary)' }}>{currentTrans[lang]}</span>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>→</span>
+                                        <span style={{ color: 'var(--red)', fontSize: '0.7rem' }}>（参考缺失）</span>
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : (
                   <>
