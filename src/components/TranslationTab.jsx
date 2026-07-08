@@ -181,8 +181,8 @@ export default function TranslationTab({
   }, [selectedTableId]);
 
   useEffect(() => {
-    if (editModalRecord && editModalRecord.fields && editModalRecord.fields.KW) {
-      loadTmReferences(editModalRecord.fields.KW);
+    if (editModalRecord && editModalRecord.KW) {
+      loadTmReferences(editModalRecord.KW);
     } else {
       setTmReferences([]);
     }

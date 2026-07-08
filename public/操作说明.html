@@ -1,15 +1,18 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GlossaHub 协同翻译平台 - 团队培训使用说明书</title>
-  
+
   <!-- 引入现代科技感字体 Outfit & Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+
   <style>
     /* ==========================================
        1. 设计系统与变量定义 (Design Tokens)
@@ -19,30 +22,30 @@
       --bg-dark: #121826;
       --bg-card: #1d2436;
       --bg-card-hover: #262f47;
-      
+
       --cyan: #06b6d4;
       --cyan-glow: rgba(6, 182, 212, 0.4);
       --blue: #3b82f6;
       --blue-glow: rgba(59, 130, 246, 0.4);
-      
+
       --text-main: #f3f4f6;
       --text-muted: #9ca3af;
       --text-dark: #6b7280;
-      
+
       --green: #10b981;
       --green-glow: rgba(16, 185, 129, 0.2);
       --red: #ef4444;
       --red-glow: rgba(239, 68, 68, 0.2);
       --amber: #f59e0b;
-      
+
       --border-color: rgba(255, 255, 255, 0.08);
       --border-glow: rgba(6, 182, 212, 0.2);
-      
+
       --font-title: 'Outfit', 'Inter', -apple-system, sans-serif;
       --font-body: 'Inter', -apple-system, sans-serif;
       --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    
+
     /* 明亮模式覆盖 (Light Mode Overrides) */
     body.light-mode {
       --bg-darker: #f0f4f8;
@@ -81,9 +84,11 @@
       width: 6px;
       height: 6px;
     }
+
     ::-webkit-scrollbar-track {
       background: var(--bg-darker);
     }
+
     ::-webkit-scrollbar-thumb {
       background: var(--cyan);
       border-radius: 4px;
@@ -94,6 +99,7 @@
       text-decoration: none;
       transition: var(--transition);
     }
+
     a:hover {
       text-shadow: 0 0 8px var(--cyan-glow);
     }
@@ -168,7 +174,7 @@
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
-    
+
     body.light-mode .brand-name {
       background: linear-gradient(to right, #0f172a, var(--blue));
       -webkit-background-clip: text;
@@ -194,11 +200,12 @@
       transition: var(--transition);
     }
 
-    .nav-item.active a, .nav-item a:hover {
+    .nav-item.active a,
+    .nav-item a:hover {
       color: var(--text-main);
       background-color: var(--bg-card);
       border-color: var(--border-color);
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
     }
 
     .nav-item.active a::before {
@@ -216,7 +223,7 @@
       margin-top: auto;
       padding-top: 2rem;
     }
-    
+
     @media (max-width: 1024px) {
       .theme-toggle-container {
         margin-top: 1.5rem;
@@ -296,9 +303,20 @@
     }
 
     @keyframes pulse {
-      0% { transform: scale(0.9); opacity: 0.6; }
-      50% { transform: scale(1.2); opacity: 1; }
-      100% { transform: scale(0.9); opacity: 0.6; }
+      0% {
+        transform: scale(0.9);
+        opacity: 0.6;
+      }
+
+      50% {
+        transform: scale(1.2);
+        opacity: 1;
+      }
+
+      100% {
+        transform: scale(0.9);
+        opacity: 0.6;
+      }
     }
 
     .title-area h1 {
@@ -366,12 +384,12 @@
       border-radius: 20px;
       padding: 3rem 2.5rem;
       margin-bottom: 3.5rem;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
       transition: var(--transition);
       position: relative;
       overflow: hidden;
     }
-    
+
     @media (max-width: 768px) {
       .section-card {
         padding: 2rem 1.5rem;
@@ -383,7 +401,7 @@
       box-shadow: 0 15px 40px rgba(6, 182, 212, 0.05);
       transform: translateY(-2px);
     }
-    
+
     .section-card.highlight {
       border-color: var(--cyan);
       box-shadow: 0 0 30px rgba(6, 182, 212, 0.1);
@@ -550,7 +568,7 @@
       border: 1px solid var(--border-color);
       border-radius: 14px;
       padding: 1.5rem;
-      box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
     }
 
     .virtual-header {
@@ -558,7 +576,7 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 1.5rem;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       padding-bottom: 0.75rem;
     }
 
@@ -635,7 +653,7 @@
 
     /* 交互回馈弹窗或提示 */
     .v-console-feedback {
-      background-color: rgba(0,0,0,0.4);
+      background-color: rgba(0, 0, 0, 0.4);
       border-radius: 8px;
       padding: 0.75rem 1rem;
       font-family: monospace;
@@ -652,9 +670,21 @@
     }
 
     @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      20%, 60% { transform: translateX(-4px); }
-      40%, 80% { transform: translateX(4px); }
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      20%,
+      60% {
+        transform: translateX(-4px);
+      }
+
+      40%,
+      80% {
+        transform: translateX(4px);
+      }
     }
 
     /* ==========================================
@@ -682,7 +712,7 @@
       text-align: center;
       transition: var(--transition);
       cursor: pointer;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
       position: relative;
     }
 
@@ -719,8 +749,17 @@
     }
 
     @keyframes pulse-arrow {
-      0%, 100% { opacity: 0.3; transform: scale(0.9); }
-      50% { opacity: 1; transform: scale(1.1); }
+
+      0%,
+      100% {
+        opacity: 0.3;
+        transform: scale(0.9);
+      }
+
+      50% {
+        opacity: 1;
+        transform: scale(1.1);
+      }
     }
 
     @media (max-width: 768px) {
@@ -785,10 +824,18 @@
     /* ==========================================
        10. 辅助功能类 (Utility Classes)
        ========================================== */
-    .text-center { text-align: center; }
-    .mt-4 { margin-top: 1.5rem; }
-    .mb-4 { margin-bottom: 1.5rem; }
-    
+    .text-center {
+      text-align: center;
+    }
+
+    .mt-4 {
+      margin-top: 1.5rem;
+    }
+
+    .mb-4 {
+      margin-bottom: 1.5rem;
+    }
+
     /* 警告与通知 */
     .alert-box {
       padding: 1.25rem;
@@ -811,17 +858,18 @@
     }
   </style>
 </head>
+
 <body>
 
   <div class="app-container">
-    
+
     <!-- 1. 侧边栏导航 (Sidebar) -->
     <aside>
       <div class="brand">
         <div class="brand-logo">G</div>
         <span class="brand-name">GlossaHub</span>
       </div>
-      
+
       <ul class="nav-list">
         <li class="nav-item active" data-target="sec-intro"><a href="#sec-intro">📋 平台介绍与架构</a></li>
         <li class="nav-item" data-target="sec-roles"><a href="#sec-roles">👥 角色权限与模拟</a></li>
@@ -829,7 +877,7 @@
         <li class="nav-item" data-target="sec-workflow"><a href="#sec-workflow">🔄 典型业务工作流</a></li>
         <li class="nav-item" data-target="sec-faq"><a href="#sec-faq">❓ 常见故障诊断</a></li>
       </ul>
-      
+
       <div class="theme-toggle-container">
         <button class="theme-btn" id="theme-toggle-btn">
           <span id="theme-icon">🌙</span>
@@ -837,10 +885,10 @@
         </button>
       </div>
     </aside>
-    
+
     <!-- 2. 主页面内容 (Main Content) -->
     <main>
-      
+
       <!-- 头部大屏 -->
       <header>
         <div class="badge-cloud">云端 0.3 黄金稳定版本部署就绪</div>
@@ -848,25 +896,27 @@
           <h1>GlossaHub 协同翻译平台使用说明书</h1>
           <p>面向开发人员、PM、以及翻译人员的极速上手指南</p>
         </div>
-        
+
         <!-- 实时检索框 -->
         <div class="search-box">
           <span class="search-icon">🔍</span>
           <input type="text" class="search-input" id="search-input" placeholder="输入关键字搜索培训内容 (例如: 权限, 404, 来源)...">
         </div>
       </header>
-      
+
       <!-- 章节 1：平台介绍 -->
       <section id="sec-intro" class="section-card">
         <div class="section-header">
           <div class="section-icon">📋</div>
           <h2>零、 平台介绍与部署架构</h2>
         </div>
-        <p>GlossaHub 是一款专门面向<strong>迈金智能骑行产品线（码表、App、外设等）</strong>多语言词条的多人协同管理与智能预翻译平台。它为全生命周期的词条录入、工作流审核、版本增量比对、以及最终同步导出提供了全套解决方案。</p>
-        
+        <p>GlossaHub
+          是一款专门面向<strong>迈金智能骑行产品线（码表、App、外设等）</strong>多语言词条的多人协同管理与智能预翻译平台。它为全生命周期的词条录入、工作流审核、版本增量比对、以及最终同步导出提供了全套解决方案。
+        </p>
+
         <h3>云端部署拓扑 (三端分离)</h3>
         <p>点击各节点，可以查看其在云端架构中的主要职责：</p>
-        
+
         <div class="topology-container">
           <div class="topo-node" onclick="showTopoInfo('vercel')">
             <span class="topo-node-icon">🌐</span>
@@ -886,13 +936,13 @@
             <span>PostgreSQL 关系云库</span>
           </div>
         </div>
-        
+
         <!-- 拓扑信息交互显示 -->
         <div class="v-console-feedback text-center mt-4" id="topo-display" style="justify-content: center;">
           点击上方架构节点查看云部署职责与域名信息...
         </div>
       </section>
-      
+
       <!-- 章节 2：角色权限与模拟 -->
       <section id="sec-roles" class="section-card">
         <div class="section-header">
@@ -900,7 +950,7 @@
           <h2>一、 全局角色权限与交互模拟</h2>
         </div>
         <p>为了防止词条在临近版本封包定稿时被译员或开发意外改动，系统采用了双重权限防护机制：</p>
-        
+
         <ul class="feature-list">
           <li class="feature-item">
             <div class="feature-item-num">1</div>
@@ -913,14 +963,15 @@
             <div class="feature-item-num">2</div>
             <div class="feature-item-content">
               <h4>项目级成员角色 (project_members.role)</h4>
-              <p>针对具体产品项目隔离。分为 <strong>owner</strong>（项目所有者）、<strong>editor</strong>（编辑者）和 <strong>viewer</strong>（只读查看，UI 操作全部变灰）。</p>
+              <p>针对具体产品项目隔离。分为 <strong>owner</strong>（项目所有者）、<strong>editor</strong>（编辑者）和
+                <strong>viewer</strong>（只读查看，UI 操作全部变灰）。</p>
             </div>
           </li>
         </ul>
-        
+
         <h3>🎮 交互式权限模拟器 (点击角色测试 UI 变化)</h3>
         <p>在下方下拉框中切换您的测试角色，然后在控制台中点击对应的 GlossaHub 按钮测试 UI 的反馈与拦截机制：</p>
-        
+
         <div class="simulator-container">
           <div class="simulator-controls">
             <span class="selector-label">切换当前登录角色:</span>
@@ -930,28 +981,29 @@
               <option value="viewer">只读审核 (viewer) - 仅限导出查看</option>
             </select>
           </div>
-          
+
           <div class="virtual-panel">
             <div class="virtual-header">
               <span>GlossaHub 虚拟操作控制台</span>
               <span class="role-badge admin" id="sim-role-badge">ADMIN</span>
             </div>
-            
+
             <div class="virtual-toolbar">
               <button class="v-btn primary" onclick="triggerSimAction('translate')">🪄 一键 AI 翻译</button>
               <button class="v-btn outline" id="btn-sim-lock" onclick="triggerSimAction('lock')">🔒 锁定行记录</button>
               <button class="v-btn outline" id="btn-sim-approve" onclick="triggerSimAction('approve')">✅ 批量审批通过</button>
-              <button class="v-btn outline" id="btn-sim-dify" onclick="triggerSimAction('dify')">⚙️ 全局配置 (Dify Key)</button>
+              <button class="v-btn outline" id="btn-sim-dify" onclick="triggerSimAction('dify')">⚙️ 全局配置 (Dify
+                Key)</button>
               <button class="v-btn danger" id="btn-sim-delete" onclick="triggerSimAction('delete')">🗑️ 批量删除选中</button>
             </div>
-            
+
             <div class="v-console-feedback" id="sim-feedback">
               系统控制台就绪，请点击按钮开始测试...
             </div>
           </div>
         </div>
       </section>
-      
+
       <!-- 章节 3：v0.3 核心功能 -->
       <section id="sec-features" class="section-card">
         <div class="section-header">
@@ -959,20 +1011,22 @@
           <h2>二、 v0.3 版本升级核心新功能</h2>
         </div>
         <p>在多人协同发包的复杂业务场景下，平台提供了八大核心功能来保障数据质量与提效：</p>
-        
+
         <ul class="feature-list">
           <li class="feature-item">
             <div class="feature-item-num">1</div>
             <div class="feature-item-content">
               <h4>🔒 行级防冲突锁定 (Row Locking)</h4>
-              <p>管理员（Admin）或词条 Owner 可以在词条最左侧状态栏直接点击 🔓/🔒 图标进行加锁与解锁。上锁后，该行记录将受物理防护：双击打开时提示只读警告且输入框与 AI 翻译按钮全部禁用变灰；在<strong>批量翻译、大表数据导入更新、批量分类设置</strong>等高敏感操作中也会被自动安全跳过，防止冲突覆写。</p>
+              <p>管理员（Admin）或词条 Owner 可以在词条最左侧状态栏直接点击 🔓/🔒 图标进行加锁与解锁。上锁后，该行记录将受物理防护：双击打开时提示只读警告且输入框与 AI
+                翻译按钮全部禁用变灰；在<strong>批量翻译、大表数据导入更新、批量分类设置</strong>等高敏感操作中也会被自动安全跳过，防止冲突覆写。</p>
             </div>
           </li>
           <li class="feature-item">
             <div class="feature-item-num">2</div>
             <div class="feature-item-content">
               <h4>🏷️ 翻译来源角标 (Telemetry Badges)</h4>
-              <p>每个语种的单元格右侧均带有明确的来源标识：<strong>ai</strong> (智能算法生成)、<strong>tm</strong> (历史记忆库复用)、<strong>human</strong> (人工校验并定稿)。一旦人员对译文进行二次微调保存，来源角标会自动无缝升级为最高可信度的 <strong>human</strong>。</p>
+              <p>每个语种的单元格右侧均带有明确的来源标识：<strong>ai</strong> (智能算法生成)、<strong>tm</strong> (历史记忆库复用)、<strong>human</strong>
+                (人工校验并定稿)。一旦人员对译文进行二次微调保存，来源角标会自动无缝升级为最高可信度的 <strong>human</strong>。</p>
             </div>
           </li>
           <li class="feature-item">
@@ -1000,7 +1054,8 @@
             <div class="feature-item-num">6</div>
             <div class="feature-item-content">
               <h4>🧠 跨版本翻译智能参考 (Cross-version Reference)</h4>
-              <p>在编辑词条时，系统会基于当前词条的唯一主键 <strong>`KW`</strong>，自动检索当前项目内<strong>除当前数据大表外其他所有版本的数据大表</strong>。如果该 `KW` 在其他版本中已存在译文，右侧将把对应的大表名称及翻译结果调出来供译员对比与一键复制，保障迈金跨版本产品的翻译一致性。</p>
+              <p>在编辑词条时，系统会基于当前词条的唯一主键 <strong>`KW`</strong>，自动检索当前项目内<strong>除当前数据大表外其他所有版本的数据大表</strong>。如果该 `KW`
+                在其他版本中已存在译文，右侧将把对应的大表名称及翻译结果调出来供译员对比与一键复制，保障迈金跨版本产品的翻译一致性。</p>
             </div>
           </li>
           <li class="feature-item">
@@ -1019,7 +1074,7 @@
           </li>
         </ul>
       </section>
-      
+
       <!-- 章节 4：工作流 -->
       <section id="sec-workflow" class="section-card">
         <div class="section-header">
@@ -1027,11 +1082,11 @@
           <h2>三. 典型协同业务工作流推荐</h2>
         </div>
         <p>推荐迈金多人高效协作的 **“四步发版工作流”**：</p>
-        
+
         <div class="alert-box tip">
           <strong>开发录入 (DRAFT) ➔ AI预翻译 (PENDING) ➔ 人工校验与审批 (APPROVED) ➔ 锁定行并同步回飞书 (PUBLISHED)</strong>
         </div>
-        
+
         <ol class="feature-list" style="grid-template-columns: 1fr;">
           <li class="feature-item">
             <div class="feature-item-num">A</div>
@@ -1051,7 +1106,8 @@
             <div class="feature-item-num">C</div>
             <div class="feature-item-content">
               <h4>项目负责人/译员：人工定稿与审批</h4>
-              <p>对 AI 翻译不满意的字词进行双击编辑微调（微标自动更新为 `human`），确定合格后点击 **“批量审批通过”**。词条状态升级为 <strong>`APPROVED` (已审批)</strong>。</p>
+              <p>对 AI 翻译不满意的字词进行双击编辑微调（微标自动更新为 `human`），确定合格后点击 **“批量审批通过”**。词条状态升级为 <strong>`APPROVED` (已审批)</strong>。
+              </p>
             </div>
           </li>
           <li class="feature-item">
@@ -1063,7 +1119,7 @@
           </li>
         </ol>
       </section>
-      
+
       <!-- 章节 5：故障诊断 -->
       <section id="sec-faq" class="section-card">
         <div class="section-header">
@@ -1071,7 +1127,7 @@
           <h2>四、 常见问题与故障诊断 FAQ</h2>
         </div>
         <p>在部署与使用过程中，如遇到以下常见错误，请参考对应排查步骤解决：</p>
-        
+
         <div class="faq-item">
           <div class="faq-header" onclick="toggleFaq(this)">
             <span>Q1: 登录报错 `Unexpected token 'T', "The page c"... is not valid JSON`？</span>
@@ -1082,37 +1138,43 @@
             <p><strong>解决步骤</strong>：</p>
             <ol style="margin-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
               <li>登录 Vercel 项目页面 ➔ Settings ➔ Environment Variables。</li>
-              <li>检查是否正确添加了 **`VITE_API_BASE_URL`**，值必须是您的 Render 后端 API 域名：`https://glossa-hub.onrender.com` (注意：<strong>末尾绝对不能带有斜杠 `/`</strong>)。</li>
+              <li>检查是否正确添加了 **`VITE_API_BASE_URL`**，值必须是您的 Render 后端 API 域名：`https://glossa-hub.onrender.com`
+                (注意：<strong>末尾绝对不能带有斜杠 `/`</strong>)。</li>
               <li>添加或修改后，<strong>必须进入 Vercel 的 Deployments 菜单，对最新那次部署选择 Redeploy (重新部署)</strong>，否则新环境变量不会被打包进静态文件。</li>
-              <li>如环境变量无误，说明您的请求在公网遭到了**本地科学上网/网络代理工具（如 Clash、Surge 等）**的拦截（导致 90ms 瞬间本地返回错误页）。请暂时关闭代理或切换为“直连模式”，强制刷新页面即可解决。</li>
+              <li>如环境变量无误，说明您的请求在公网遭到了**本地科学上网/网络代理工具（如 Clash、Surge 等）**的拦截（导致 90ms
+                瞬间本地返回错误页）。请暂时关闭代理或切换为“直连模式”，强制刷新页面即可解决。</li>
             </ol>
           </div>
         </div>
-        
+
         <div class="faq-item">
           <div class="faq-header" onclick="toggleFaq(this)">
             <span>Q2: 环境变量 `CORS_ORIGINS` 怎么配置？结尾需要斜杠吗？</span>
             <span class="faq-icon-arrow">▼</span>
           </div>
           <div class="faq-content">
-            <p><strong>原因</strong>：后端 CORS 跨域校验是严格的字符串比对。浏览器在跨域发送请求时携带的 `Origin` 头是 **`https://glossa-hub.vercel.app` (永远不带斜杠)**。</p>
+            <p><strong>原因</strong>：后端 CORS 跨域校验是严格的字符串比对。浏览器在跨域发送请求时携带的 `Origin` 头是 **`https://glossa-hub.vercel.app`
+              (永远不带斜杠)**。</p>
             <p><strong>解决步骤</strong>：</p>
             <ol style="margin-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
               <li>登录 Render.com 控制台 ➔ 进入您的后端 API 选项卡。</li>
-              <li>检查 `CORS_ORIGINS` 环境变量值。如果是带有 `/`（如 `https://glossa-hub.vercel.app/`），请点击 Edit，<strong>将末尾的斜杠物理删掉</strong>。</li>
+              <li>检查 `CORS_ORIGINS` 环境变量值。如果是带有 `/`（如 `https://glossa-hub.vercel.app/`），请点击
+                Edit，<strong>将末尾的斜杠物理删掉</strong>。</li>
               <li>点击 Save 储存，Render 自动热重启完毕后即放行跨域。</li>
             </ol>
           </div>
         </div>
-        
+
         <div class="faq-item">
           <div class="faq-header" onclick="toggleFaq(this)">
-            <span>Q3: 在 Render 日志中看到 `no tenant identifier provided (external_id or sni_hostname required)` 自动降级为 SQLite 是什么情况？</span>
+            <span>Q3: 在 Render 日志中看到 `no tenant identifier provided (external_id or sni_hostname required)` 自动降级为 SQLite
+              是什么情况？</span>
             <span class="faq-icon-arrow">▼</span>
           </div>
           <div class="faq-content">
             <p><strong>原因</strong>：这是 Supabase 实例的 SSL SNI 校验机制限制，如果连接池在 TLS 握手时没收到 servername，会拒绝外网握手连接。</p>
-            <p><strong>状态与解决</strong>：我们已在 v0.3 的 `server.cjs` 代码中部署了 SNI 自动提取与填充的主机名补丁。现在 Render 重新发布后，系统能够自动建立安全的 SNI 通道，您不需要手动执行任何代码修改。</p>
+            <p><strong>状态与解决</strong>：我们已在 v0.3 的 `server.cjs` 代码中部署了 SNI 自动提取与填充的主机名补丁。现在 Render 重新发布后，系统能够自动建立安全的 SNI
+              通道，您不需要手动执行任何代码修改。</p>
           </div>
         </div>
 
@@ -1122,8 +1184,10 @@
             <span class="faq-icon-arrow">▼</span>
           </div>
           <div class="faq-content">
-            <p><strong>原因</strong>：PostgreSQL 标准 URI 连接串以第一个 `@` 符号作为密码和主机名（Host）的分隔符，若密码本身带有 `@` 等字符，常规的 URL 解析库会发生字段错配，从而导致密码被硬性截断并报错。</p>
-            <p><strong>解决与状态</strong>：我们已在 `server.cjs` 后端解析层引入了<strong>贪婪正则切分与 URL 安全解码机制</strong>。系统会从右向左锁定最后一个 `@` 分隔符，自适应还原特殊字符，因此现在无论您的密码是否包含 `@`，系统在 Render 重新启动后都能成功验证通过。</p>
+            <p><strong>原因</strong>：PostgreSQL 标准 URI 连接串以第一个 `@` 符号作为密码和主机名（Host）的分隔符，若密码本身带有 `@` 等字符，常规的 URL
+              解析库会发生字段错配，从而导致密码被硬性截断并报错。</p>
+            <p><strong>解决与状态</strong>：我们已在 `server.cjs` 后端解析层引入了<strong>贪婪正则切分与 URL 安全解码机制</strong>。系统会从右向左锁定最后一个 `@`
+              分隔符，自适应还原特殊字符，因此现在无论您的密码是否包含 `@`，系统在 Render 重新启动后都能成功验证通过。</p>
           </div>
         </div>
 
@@ -1133,8 +1197,12 @@
             <span class="faq-icon-arrow">▼</span>
           </div>
           <div class="faq-content">
-            <p><strong>原因</strong>：本地 SQLite 数据库将 `dify_config` 字段作为 TEXT（字符串）形式返回，后端通过 `JSON.parse` 进行解析；而线上 Supabase PostgreSQL 中由于该列为 `jsonb` 类型，pg 驱动会直接返回已解析好的 JS 对象。如果对 Object 强行执行 `JSON.parse` 会触发 JS 语法异常并被 catch 捕获，造成配置为空的报错假象。</p>
-            <p><strong>解决与状态</strong>：后端中转 API 已经针对 `project.dify_config` 部署了<strong>类型自适应逻辑</strong>。如果检测到其已为对象则直接读取，否则再执行 `JSON.parse` 兼容文本，目前本地 SQLite 和云端 PostgreSQL 的 Dify 翻译皆可畅通运行。</p>
+            <p><strong>原因</strong>：本地 SQLite 数据库将 `dify_config` 字段作为 TEXT（字符串）形式返回，后端通过 `JSON.parse` 进行解析；而线上 Supabase
+              PostgreSQL 中由于该列为 `jsonb` 类型，pg 驱动会直接返回已解析好的 JS 对象。如果对 Object 强行执行 `JSON.parse` 会触发 JS 语法异常并被 catch
+              捕获，造成配置为空的报错假象。</p>
+            <p><strong>解决与状态</strong>：后端中转 API 已经针对 `project.dify_config`
+              部署了<strong>类型自适应逻辑</strong>。如果检测到其已为对象则直接读取，否则再执行 `JSON.parse` 兼容文本，目前本地 SQLite 和云端 PostgreSQL 的 Dify
+              翻译皆可畅通运行。</p>
           </div>
         </div>
 
@@ -1145,11 +1213,13 @@
           </div>
           <div class="faq-content">
             <p><strong>原因</strong>：Supabase 的直连地址仅发布了 IPv6 记录，而 Render 等静态云容器目前仅支持 IPv4 出网，导致物理网络无法送达。</p>
-            <p><strong>解决与状态</strong>：本系统已强制挂载了 <strong>IPv4 DNS 优先级解析补丁</strong>。同时为了确保可用，代码在连接时会自动将直连地址在内存中重映射为您项目专属的官方池化域名：`aws-1-ap-northeast-2.pooler.supabase.com:6543`，完美绕过网络限制并接通。</p>
+            <p><strong>解决与状态</strong>：本系统已强制挂载了 <strong>IPv4 DNS
+                优先级解析补丁</strong>。同时为了确保可用，代码在连接时会自动将直连地址在内存中重映射为您项目专属的官方池化域名：`aws-1-ap-northeast-2.pooler.supabase.com:6543`，完美绕过网络限制并接通。
+            </p>
           </div>
         </div>
       </section>
-      
+
     </main>
   </div>
 
@@ -1177,7 +1247,7 @@
 
     searchInput.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase().trim();
-      
+
       cards.forEach(card => {
         const text = card.textContent.toLowerCase();
         if (text.includes(query)) {
@@ -1211,12 +1281,12 @@
     function toggleFaq(header) {
       const faqItem = header.parentElement;
       const isOpen = faqItem.classList.contains('open');
-      
+
       // 先把所有其他的收起来
       document.querySelectorAll('.faq-item').forEach(item => {
         item.classList.remove('open');
       });
-      
+
       // 如果原本没开，就把它打开
       if (!isOpen) {
         faqItem.classList.add('open');
@@ -1229,13 +1299,13 @@
     function showTopoInfo(node) {
       const display = document.getElementById('topo-display');
       display.classList.remove('error');
-      
+
       const info = {
         vercel: "【Vercel 前端】: 负责托管由 Vite 编译出来的静态静态单页应用。拥有全球极速 CDN 加速节点，国内秒开，是用户的直接操作页面入口。域名如: https://glossa-hub.vercel.app",
         render: "【Render 后端】: 常驻运行的 Node.js Express 接口服务。负责所有 API 处理、AI 预翻译对接以及 Telemetry 监控数据统计。域名如: https://glossa-hub.onrender.com",
         supabase: "【Supabase 数据库】: 云端的 PostgreSQL 数据库。保存所有用户权限凭证、锁定信息、语种表和 11 张核心关系表，保障数据永久保存。主机: db.seypmsanzhhbucnilcgl.supabase.co"
       };
-      
+
       display.textContent = info[node];
     }
 
@@ -1245,7 +1315,7 @@
     const simRoleSelect = document.getElementById('sim-role-select');
     const simRoleBadge = document.getElementById('sim-role-badge');
     const feedback = document.getElementById('sim-feedback');
-    
+
     // UI elements inside simulator
     const btnLock = document.getElementById('btn-sim-lock');
     const btnApprove = document.getElementById('btn-sim-approve');
@@ -1254,15 +1324,15 @@
 
     function updateSimRole() {
       const role = simRoleSelect.value;
-      
+
       // Update badge UI
       simRoleBadge.className = `role-badge ${role}`;
       simRoleBadge.textContent = role.toUpperCase();
-      
+
       // Reset feedback console
       feedback.textContent = `当前身份已成功切换为: [${role.toUpperCase()}]，点击上方任意按钮测试权限！`;
       feedback.classList.remove('error');
-      
+
       // Sync simulated disabled buttons state in HTML UI
       if (role === 'admin') {
         btnLock.classList.remove('disabled');
@@ -1285,7 +1355,7 @@
     function triggerSimAction(action) {
       const role = simRoleSelect.value;
       feedback.classList.remove('error');
-      
+
       const permissions = {
         admin: { translate: true, lock: true, approve: true, dify: true, delete: true },
         user: { translate: true, lock: false, approve: false, dify: false, delete: true },
@@ -1315,7 +1385,7 @@
       } else {
         feedback.className = "v-console-feedback error";
         feedback.textContent = `❌ [拒绝 - 403 FORBIDDEN]: 权限校验失败。当前角色 [${role.toUpperCase()}] 无权操作 [${actionNames[action]}]。`;
-        
+
         // Triggers haptic shake feedback on simulated console container
         const consoleEl = document.querySelector('.virtual-panel');
         consoleEl.classList.remove('shake-anim');
@@ -1329,4 +1399,5 @@
     updateSimRole();
   </script>
 </body>
+
 </html>
