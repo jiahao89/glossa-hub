@@ -215,6 +215,7 @@ export default function GlossaryTab() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // CSV Import Parser

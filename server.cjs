@@ -333,7 +333,11 @@ function initSqliteTables() {
         if (err) return reject(err);
 
         // Pre-populate Magene internal users (王赵云 & 史东升等 8 位管理员)
-        const passHash = hashPassword('magene123');
+        const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'magene123';
+        if (!process.env.INITIAL_ADMIN_PASSWORD) {
+          console.warn('⚠️ INITIAL_ADMIN_PASSWORD 未设置，使用默认密码。请在环境变量中配置 INITIAL_ADMIN_PASSWORD 以提高安全性。');
+        }
+        const passHash = hashPassword(adminPassword);
         sqliteDb.run(`
           INSERT OR IGNORE INTO users (id, username, password_hash, name, role, created_at)
           VALUES 
@@ -583,6 +587,25 @@ function authenticateToken(req, res, next) {
   });
 }
 
+// Project membership authorization middleware
+async function requireProjectMember(req, res, next) {
+  const projectId = req.params.projectId || 'proj-default';
+  try {
+    const member = await db.queryOne(
+      'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+      [projectId, req.user.id]
+    );
+    if (!member) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权访问此项目。' });
+    }
+    req.projectRole = member.role;
+    next();
+  } catch (err) {
+    console.error('RBAC 校验失败:', err.message);
+    next();
+  }
+}
+
 // ----------------------------------------------------
 // API Endpoints
 // ----------------------------------------------------
@@ -641,32 +664,26 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 // 2. GET /api/tables - 获取所有固件版本表 (带创建人及最近修改时间)
 app.get('/api/tables', authenticateToken, async (req, res) => {
   try {
+    const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
     const versions = await db.query(
-      `SELECT v.id, v.version_name AS name, v.created_at, u.name AS creator_name
+      `SELECT v.id, v.version_name AS name, v.created_at, u.name AS creator_name,
+        (SELECT l.timestamp FROM ${logsTable} l
+         WHERE l.version_name = v.version_name
+         ORDER BY l.id DESC LIMIT 1) AS last_modified
        FROM versions v
        LEFT JOIN users u ON v.created_by = u.id
        WHERE v.project_id = $1
        ORDER BY v.created_at DESC`,
       ['proj-default']
     );
-    
-    const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
-    const updatedVersions = [];
-    for (const ver of versions) {
-      const latestLog = await db.queryOne(
-        `SELECT timestamp FROM ${logsTable} 
-         WHERE version_name = $1 
-         ORDER BY id DESC LIMIT 1`,
-        [ver.name]
-      );
-      updatedVersions.push({
-        id: ver.id,
-        name: ver.name,
-        created_at: ver.created_at,
-        creator_name: ver.creator_name || '系统默认',
-        last_modified: latestLog ? latestLog.timestamp : ver.created_at
-      });
-    }
+
+    const updatedVersions = versions.map(ver => ({
+      id: ver.id,
+      name: ver.name,
+      created_at: ver.created_at,
+      creator_name: ver.creator_name || '系统默认',
+      last_modified: ver.last_modified || ver.created_at
+    }));
 
     res.json(updatedVersions);
   } catch (err) {
@@ -835,7 +852,8 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
           await tx.run(
             `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-             ON CONFLICT (version_id, kw) DO UPDATE SET
+             ON CONFLICT (id) DO UPDATE SET
+               kw = EXCLUDED.kw,
                context = EXCLUDED.context,
                owner = EXCLUDED.owner,
                zh_cn = EXCLUDED.zh_cn,
@@ -855,8 +873,12 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
             }
           }
           await tx.run(
-            `INSERT OR REPLACE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
+            `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at, is_locked, locked_by, locked_at, status, reject_reason)
+             VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),0,NULL,NULL,'DRAFT',NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               kw=excluded.kw, context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
+               translations=excluded.translations, translations_meta=excluded.translations_meta,
+               updated_by=excluded.updated_by, updated_at=datetime('now')`,
             [termId, tableId, kw, context, owner, zh_cn, translationsStr, finalMetaStr, req.user.id]
           );
         }
@@ -1067,6 +1089,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, async (req, res
     }
 
     const versionId = crypto.randomUUID();
+    let inheritedCount = 0;
 
     await db.transaction(async (tx) => {
       // 1. Insert version record
@@ -1106,11 +1129,12 @@ app.post('/api/projects/:projectId/versions', authenticateToken, async (req, res
               [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr]
             );
           }
+          inheritedCount++;
         }
       }
     });
 
-    res.status(201).json({ id: versionId, versionName, inheritedCount: baseVersionId ? 1 : 0 });
+    res.status(201).json({ id: versionId, versionName, inheritedCount });
   } catch (err) {
     console.error('新建固件版本失败:', err);
     res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
@@ -1137,17 +1161,6 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'LOCKED', message: '该词条目前已被锁定，无法修改。如需变更请联系管理员解锁！' });
     }
 
-    // Verify Concurrency Lock
-    const dbUpdated = new Date(term.updated_at).toISOString();
-    const clientUpdated = new Date(oldUpdatedAt).toISOString();
-
-    if (dbUpdated !== clientUpdated) {
-      return res.status(409).json({
-        error: 'CONCURRENCY_CONFLICT',
-        message: '该词条最近已被其他协同人员修改，请刷新数据后再重试。'
-      });
-    }
-
     let updatedTrans = '';
     const inputTrans = translations !== undefined ? translations : term.translations;
     if (typeof inputTrans === 'string') {
@@ -1171,42 +1184,51 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
     const isZhChanged = zh_cn && term.zh_cn !== zh_cn;
     const isKwChanged = kw && term.kw !== kw;
 
-    if (isTransChanged || isZhChanged || isKwChanged) {
-      const snapshotId = crypto.randomUUID();
-      if (dbType === 'postgres') {
-        await db.run(
-          `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
-          [snapshotId, termId, term.version_id, term.kw, term.zh_cn, dbTransStr, req.user.id]
-        );
-      } else {
-        await db.run(
-          `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, datetime('now'), $7)`,
-          [snapshotId, termId, term.version_id, term.kw, term.zh_cn, dbTransStr, req.user.id]
-        );
-      }
-    }
-
     let nextStatus = 'PENDING_REVIEW';
     if (req.user.role === 'admin') {
       nextStatus = 'APPROVED';
     }
 
-    if (dbType === 'postgres') {
-      await db.run(
-        `UPDATE terms 
-         SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
-         WHERE id = $9`,
-        [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId]
-      );
-    } else {
-      await db.run(
-        `UPDATE terms 
-         SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = datetime('now'), updated_by = $8
-         WHERE id = $9`,
-        [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId]
-      );
+    // M2+M4: 在事务中执行快照写入与带乐观锁守卫的更新，消除 TOCTOU 竞态
+    const updateResult = await db.transaction(async (tx) => {
+      if (isTransChanged || isZhChanged || isKwChanged) {
+        const snapshotId = crypto.randomUUID();
+        if (dbType === 'postgres') {
+          await tx.run(
+            `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
+            [snapshotId, termId, term.version_id, term.kw, term.zh_cn, dbTransStr, req.user.id]
+          );
+        } else {
+          await tx.run(
+            `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, datetime('now'), $7)`,
+            [snapshotId, termId, term.version_id, term.kw, term.zh_cn, dbTransStr, req.user.id]
+          );
+        }
+      }
+
+      if (dbType === 'postgres') {
+        return await tx.run(
+          `UPDATE terms
+           SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
+           WHERE id = $9 AND updated_at::text = $10`,
+          [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
+        );
+      } else {
+        return await tx.run(
+          `UPDATE terms
+           SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = datetime('now'), updated_by = $8
+           WHERE id = $9 AND updated_at = $10`,
+          [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
+        );
+      }
+    });
+
+    // M2: 若更新影响行数为 0，说明读取快照后已被他人抢先修改（并发冲突）
+    const affectedRows = updateResult.changes || 0;
+    if (affectedRows === 0) {
+      return res.status(409).json({ error: 'CONCURRENCY_CONFLICT', message: '该词条已被其他人修改，请刷新后重试。' });
     }
 
     const newTerm = await db.queryOne('SELECT * FROM terms WHERE id = $1', [termId]);
@@ -1508,6 +1530,11 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: '必须包含 termIds 数组、targetVersionId 和 duplicateStrategy 策略' });
   }
 
+  const validStrategies = ['overwrite', 'skip', 'merge'];
+  if (!validStrategies.includes(duplicateStrategy)) {
+    return res.status(400).json({ error: 'INVALID_STRATEGY', message: '无效的复制策略。' });
+  }
+
   try {
     const targetVer = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [targetVersionId]);
     if (!targetVer) {
@@ -1784,49 +1811,42 @@ app.post('/api/terms/batch-approve', authenticateToken, async (req, res) => {
 
   try {
     await db.transaction(async (tx) => {
-      // 逐个更新状态，过滤锁定行
-      for (const id of termIds) {
-        const term = await tx.queryOne('SELECT is_locked, kw, zh_cn, version_id FROM terms WHERE id = $1', [id]);
-        if (!term) continue;
-        if (term.is_locked === 1 || term.is_locked === true) continue; // 跳过锁定行
+      // 一次性查询所有候选词条
+      const selectPlaceholders = termIds.map((_, i) => `$${i + 1}`).join(',');
+      const candidates = await tx.query(
+        `SELECT id, is_locked, kw, zh_cn, version_id FROM terms WHERE id IN (${selectPlaceholders})`,
+        termIds
+      );
 
-        const reason = status === 'REJECTED' ? (rejectReason || '未填写具体原因') : null;
+      // 在 JS 中过滤掉锁定行（保持原有行为）
+      const validTerms = candidates.filter(t => !(t.is_locked === 1 || t.is_locked === true));
 
-        if (dbType === 'postgres') {
-          await tx.run(
-            `UPDATE terms 
-             SET status = $1, reject_reason = $2, updated_at = NOW(), updated_by = $3
-             WHERE id = $4`,
-            [status, reason, req.user.id, id]
-          );
-        } else {
-          await tx.run(
-            `UPDATE terms 
-             SET status = $1, reject_reason = $2, updated_at = datetime('now'), updated_by = $3
-             WHERE id = $4`,
-            [status, reason, req.user.id, id]
-          );
-        }
-
-        // 写一条审核日志
-        const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
-        const versionObj = await tx.queryOne('SELECT version_name FROM versions WHERE id = $1', [term.version_id]);
-        const details = `审核词条 [${term.kw}]，结果: [${status}]${status === 'REJECTED' ? `，原因: ${reason}` : ''}`;
-        
-        if (dbType === 'postgres') {
-          await tx.run(
-            `INSERT INTO ${logsTable} (timestamp, kw, chinese, action, details, version_name, user_id)
-             VALUES (NOW(), $1, $2, '内容审核', $3, $4, $5)`,
-            [term.kw, term.zh_cn, details, versionObj ? versionObj.version_name : '', req.user.id]
-          );
-        } else {
-          await tx.run(
-            `INSERT INTO ${logsTable} (timestamp, kw, chinese, action, details, version_name, user_id)
-             VALUES (datetime('now'), $1, $2, '内容审核', $3, $4, $5)`,
-            [term.kw, term.zh_cn, details, versionObj ? versionObj.version_name : '', req.user.id]
-          );
-        }
+      if (validTerms.length === 0) {
+        return; // 没有可审核的词条，直接返回
       }
+
+      const validIds = validTerms.map(t => t.id);
+      const reason = status === 'REJECTED' ? (rejectReason || '未填写具体原因') : null;
+
+      // 单次批量 UPDATE
+      const updatePlaceholders = validIds.map((_, i) => `$${i + 3}`).join(',');
+      const updateSql = dbType === 'postgres'
+        ? `UPDATE terms SET status = $1, reject_reason = $2, updated_at = NOW(), updated_by = $3 WHERE id IN (${updatePlaceholders})`
+        : `UPDATE terms SET status = $1, reject_reason = $2, updated_at = datetime('now'), updated_by = $3 WHERE id IN (${updatePlaceholders})`;
+      await tx.run(updateSql, [status, reason, req.user.id, ...validIds]);
+
+      // 单次批量写入审核日志（INSERT...SELECT 关联版本名称）
+      const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
+      const logPlaceholders = validIds.map((_, i) => `$${i + 4}`).join(',');
+      const timestampExpr = dbType === 'postgres' ? 'NOW()' : "datetime('now')";
+      const detailsPrefix = '审核词条 [';
+      const detailsSuffix = `]，结果: [${status}]${status === 'REJECTED' ? `，原因: ${reason}` : ''}`;
+
+      const logSql = `INSERT INTO ${logsTable} (timestamp, kw, chinese, action, details, version_name, user_id)
+           SELECT ${timestampExpr}, t.kw, t.zh_cn, '内容审核', $1 || t.kw || $2, COALESCE(v.version_name, ''), $3
+           FROM terms t LEFT JOIN versions v ON t.version_id = v.id
+           WHERE t.id IN (${logPlaceholders})`;
+      await tx.run(logSql, [detailsPrefix, detailsSuffix, req.user.id, ...validIds]);
     });
 
     res.json({ message: `批量操作成功！已将选中词条设置为 [${status}] 状态。` });
@@ -1877,7 +1897,7 @@ app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) =>
       [newConfig, projectId]
     );
 
-    res.json({ message: 'Dify 配置已成功加密存入数据库！' });
+    res.json({ message: 'Dify 配置已安全存入数据库！' });
   } catch (err) {
     console.error('保存 Dify 配置失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
@@ -1958,7 +1978,7 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req,
     db.query(
       'INSERT INTO ai_usage_logs (user_id, project_id, term_kw, zh_cn, target_languages, total_tokens, elapsed_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [userId, projectId, termKw, zhCn.slice(0, 200), targetLangs, usageTokens, usageElapsed, usageStatus]
-    ).catch(() => {});
+    ).catch(err => console.error('AI用量日志写入失败:', err.message));
 
     const outputs = data.data?.outputs;
     if (!outputs) {
@@ -2053,7 +2073,7 @@ app.get('/api/projects/:projectId/languages', authenticateToken, async (req, res
 });
 
 // 15. POST /api/projects/:projectId/languages - 添加新的语种
-app.post('/api/projects/:projectId/languages', authenticateToken, async (req, res) => {
+app.post('/api/projects/:projectId/languages', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   const { langCode, langName } = req.body;
 
@@ -2112,43 +2132,45 @@ app.put('/api/projects/:projectId/languages/:langId', authenticateToken, async (
     const newName = langName || oldName;
     const newOrder = displayOrder !== undefined ? displayOrder : oldLang.display_order;
 
-    // 如果名称改变，则迁移所有的 terms 对应的 translations JSON key
-    if (oldName !== newName) {
-      const versions = await db.query('SELECT id FROM versions WHERE project_id = $1', [projectId]);
-      const versionIds = versions.map(v => v.id);
+    await db.transaction(async (tx) => {
+      // 如果名称改变，则迁移所有的 terms 对应的 translations JSON key
+      if (oldName !== newName) {
+        const versions = await tx.query('SELECT id FROM versions WHERE project_id = $1', [projectId]);
+        const versionIds = versions.map(v => v.id);
 
-      if (versionIds.length > 0) {
-        const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
-        const allTerms = await db.query(
-          `SELECT id, translations FROM terms WHERE version_id IN (${versionPlaceholders})`,
-          versionIds
-        );
+        if (versionIds.length > 0) {
+          const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
+          const allTerms = await tx.query(
+            `SELECT id, translations FROM terms WHERE version_id IN (${versionPlaceholders})`,
+            versionIds
+          );
 
-        for (const term of allTerms) {
-          let trans = {};
-          try {
-            trans = JSON.parse(term.translations || '{}');
-          } catch {
-            trans = {};
-          }
+          for (const term of allTerms) {
+            let trans = {};
+            try {
+              trans = JSON.parse(term.translations || '{}');
+            } catch {
+              trans = {};
+            }
 
-          if (trans[oldName] !== undefined) {
-            trans[newName] = trans[oldName];
-            delete trans[oldName];
-            
-            await db.run(
-              'UPDATE terms SET translations = $1 WHERE id = $2',
-              [JSON.stringify(trans), term.id]
-            );
+            if (trans[oldName] !== undefined) {
+              trans[newName] = trans[oldName];
+              delete trans[oldName];
+
+              await tx.run(
+                'UPDATE terms SET translations = $1 WHERE id = $2',
+                [JSON.stringify(trans), term.id]
+              );
+            }
           }
         }
       }
-    }
 
-    await db.run(
-      'UPDATE languages SET lang_name = $1, display_order = $2 WHERE id = $3',
-      [newName, newOrder, langId]
-    );
+      await tx.run(
+        'UPDATE languages SET lang_name = $1, display_order = $2 WHERE id = $3',
+        [newName, newOrder, langId]
+      );
+    });
 
     res.json({ message: '语种修改及词条映射同步成功！' });
   } catch (err) {
@@ -2167,36 +2189,39 @@ app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, asyn
 
     const oldName = lang.lang_name;
 
-    // 清除所有关联词条的该语种翻译缓存
-    const versions = await db.query('SELECT id FROM versions WHERE project_id = $1', [projectId]);
-    const versionIds = versions.map(v => v.id);
+    await db.transaction(async (tx) => {
+      // 清除所有关联词条的该语种翻译缓存
+      const versions = await tx.query('SELECT id FROM versions WHERE project_id = $1', [projectId]);
+      const versionIds = versions.map(v => v.id);
 
-    if (versionIds.length > 0) {
-      const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
-      const allTerms = await db.query(
-        `SELECT id, translations FROM terms WHERE version_id IN (${versionPlaceholders})`,
-        versionIds
-      );
+      if (versionIds.length > 0) {
+        const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
+        const allTerms = await tx.query(
+          `SELECT id, translations FROM terms WHERE version_id IN (${versionPlaceholders})`,
+          versionIds
+        );
 
-      for (const term of allTerms) {
-        let trans = {};
-        try {
-          trans = JSON.parse(term.translations || '{}');
-        } catch {
-          trans = {};
-        }
+        for (const term of allTerms) {
+          let trans = {};
+          try {
+            trans = JSON.parse(term.translations || '{}');
+          } catch {
+            trans = {};
+          }
 
-        if (trans[oldName] !== undefined) {
-          delete trans[oldName];
-          await db.run(
-            'UPDATE terms SET translations = $1 WHERE id = $2',
-            [JSON.stringify(trans), term.id]
-          );
+          if (trans[oldName] !== undefined) {
+            delete trans[oldName];
+            await tx.run(
+              'UPDATE terms SET translations = $1 WHERE id = $2',
+              [JSON.stringify(trans), term.id]
+            );
+          }
         }
       }
-    }
 
-    await db.run('DELETE FROM languages WHERE id = $1', [langId]);
+      await tx.run('DELETE FROM languages WHERE id = $1', [langId]);
+    });
+
     res.json({ message: '语种及关联词条翻译成功清除！' });
   } catch (err) {
     console.error('删除语种失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
@@ -2464,7 +2489,7 @@ app.get('/api/projects/:projectId/glossary-tables', authenticateToken, async (re
 });
 
 // 21. POST /api/projects/:projectId/glossary-tables - 创建新的专业词汇表
-app.post('/api/projects/:projectId/glossary-tables', authenticateToken, async (req, res) => {
+app.post('/api/projects/:projectId/glossary-tables', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   const { tableName } = req.body;
   if (!tableName) {
@@ -2612,7 +2637,10 @@ app.delete('/api/glossary-tables/:tableId/terms/:termId', authenticateToken, asy
 });
 
 // 15. GET /api/debug-status - 获取系统运行引擎与状态的免检调试路由
-app.get('/api/debug-status', (req, res) => {
+app.get('/api/debug-status', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
   res.json({
     dbType,
     port: PORT,

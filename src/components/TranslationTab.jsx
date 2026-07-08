@@ -336,7 +336,7 @@ export default function TranslationTab({
 
   // Sync the latest records list to backend SQLite via /api/sync-table (full replace)
   const saveOfflineRecords = useCallback(async (tableId, recordsList) => {
-    if (!tableId || !recordsList || recordsList.length === 0) return;
+    if (!tableId || !recordsList) return;
     const activeTableMeta = tables.find(t => t.id === tableId);
     const tableName = activeTableMeta ? activeTableMeta.name : 'Unknown';
     const formatted = recordsList.map(rec => ({
@@ -355,6 +355,10 @@ export default function TranslationTab({
 
   // File Input Ref
   const fileInputRef = useRef(null);
+  // M5: 取消令牌，防止 selectedTableId 快速切换时 loadTableData 产生竞态
+  const loadDataAbortRef = useRef(null);
+  // M12: records 的 ref 镜像，避免 CSV 导入异步回调中捕获到旧的 records
+  const recordsRef = useRef([]);
 
 
 
@@ -451,16 +455,65 @@ export default function TranslationTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load Fields and Records when selected table changes
+  // M5: Load Fields and Records when selected table changes (with race-condition guard)
   useEffect(() => {
     if (!selectedTableId) return;
-    loadTableData(selectedTableId);
-  }, [selectedTableId, loadTableData]);
+    // 取消上一次未完成的加载
+    if (loadDataAbortRef.current) loadDataAbortRef.current = true;
+    const myToken = { cancelled: false };
+    loadDataAbortRef.current = myToken;
+
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await apiFetch(`/api/tables/${selectedTableId}/records`);
+        if (myToken.cancelled) return;
+        if (res.ok) {
+          const dbRecords = await res.json();
+          if (myToken.cancelled) return;
+
+          const fMap = {
+            'KW': 'KW',
+            'CN（中文）': 'CN（中文）',
+            '所在页面': '所在页面',
+            '字号类别': '字号类别'
+          };
+          TARGET_LANGUAGES.forEach(lang => {
+            fMap[lang] = lang;
+          });
+
+          const revFMap = {};
+          Object.keys(fMap).forEach(key => {
+            revFMap[key] = key;
+          });
+
+          setFieldMap(fMap);
+          setRevFieldMap(revFMap);
+          setRecords(dbRecords);
+        } else {
+          if (!myToken.cancelled) showStatus('error', '获取固件词条数据失败');
+        }
+      } catch (err) {
+        if (!myToken.cancelled) {
+          console.error('⚠️ 无法读取词条数据:', err.message);
+          showStatus('error', '数据库连接失败，请确认后端已启动。');
+        }
+      } finally {
+        if (!myToken.cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { myToken.cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTableId]);
 
   // Reset selection on table change
   useEffect(() => {
     setSelectedRecordIds(new Set());
   }, [selectedTableId]);
+
+  // M12: 保持 recordsRef 与 records 状态同步，供异步回调读取最新值
+  useEffect(() => { recordsRef.current = records; }, [records]);
 
 
 
@@ -576,7 +629,7 @@ export default function TranslationTab({
 
     return list; // fallback default sorting
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, searchQuery, filterUntranslated, filterStatus, getRecordValueByName, sortBy, modifiedCells, recordIndexMap]);
+  }, [records, searchQuery, filterUntranslated, filterStatus, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, TARGET_LANGUAGES]);
 
   // 分页：当筛选条件/搜索/版本变化导致总数变化时，自动重置到第 1 页
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
@@ -1142,7 +1195,7 @@ export default function TranslationTab({
           }
         });
         
-        item.translations = trans;
+        updatedList[i] = { ...updatedList[i], translations: trans };
         setBatchPreviewList([...updatedList]);
       } catch (err) {
         console.error(`翻译词条 ${item.KW} 失败:`, err);
@@ -1336,7 +1389,7 @@ export default function TranslationTab({
           }
         });
         
-        row.translations = trans;
+        updatedRows[i] = { ...row, translations: trans };
         setBatchAddRows([...updatedRows]);
       } catch (err) {
         console.error(`翻译行 ${i + 1} 失败:`, err);
@@ -1490,10 +1543,12 @@ export default function TranslationTab({
         body: JSON.stringify({ inputs })
       });
       if (!res.ok) {
-        const errJson = await res.json();
+        let errJson;
+        try { errJson = await res.json(); } catch { errJson = {}; }
         throw new Error(errJson.error || 'AI 翻译失败');
       }
-      const result = await res.json();
+      let result;
+      try { result = await res.json(); } catch { result = {}; }
       
       const updatedTrans = { ...editModalRecord.translations };
       TARGET_LANGUAGES.forEach(lang => {
@@ -1632,7 +1687,7 @@ export default function TranslationTab({
           return;
         }
 
-        const updatedRecords = [...records];
+        const updatedRecords = [...recordsRef.current];
         let localUpdateCount = 0;
         let localAddCount = 0;
         const updatedCellsDict = { ...modifiedCells };
@@ -1754,6 +1809,7 @@ export default function TranslationTab({
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
       
       onAddLog(`导出当前视图 CSV (表格: ${tableName})`);
       showStatus('success', 'CSV 导出成功！');

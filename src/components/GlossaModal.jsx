@@ -79,6 +79,39 @@ export default function GlossaModal({
     }
   }, [isOpen]);
 
+  // Focus trap：Tab 键在模态框内循环
+  useEffect(() => {
+    if (!isOpen) return;
+    const modalElement = dialogRef.current;
+    if (!modalElement) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Tab') return;
+      const focusable = modalElement.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    // 打开时聚焦第一个可聚焦元素
+    const focusable = modalElement.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length > 0) focusable[0].focus();
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
   // 打开时锁定 body 滚动
   useEffect(() => {
     if (isOpen) {

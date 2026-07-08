@@ -14,6 +14,17 @@ export default class ErrorBoundary extends React.Component {
     console.error('[ErrorBoundary] 未捕获的渲染错误:', error, errorInfo);
   }
 
+  componentDidMount() {
+    this.handleUnhandledRejection = (event) => {
+      this.setState({ hasError: true, error: event.reason });
+    };
+    window.addEventListener('unhandledrejection', this.handleUnhandledRejection);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
+  }
+
   render() {
     if (this.state.hasError) {
       return (

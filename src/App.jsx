@@ -34,7 +34,9 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedTableId, setSelectedTableId] = useState('');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('glossahub_sidebar_collapsed') === 'true';
+  });
 
   // 主题状态: 'dark' 或 'light'
   const [theme, setTheme] = useState(() => localStorage.getItem('glossahub_theme') || 'dark');
@@ -49,9 +51,23 @@ export default function App() {
     localStorage.setItem('glossahub_theme', theme);
   }, [theme]);
 
+  // Persist sidebar collapse state
+  useEffect(() => {
+    localStorage.setItem('glossahub_sidebar_collapsed', sidebarCollapsed);
+  }, [sidebarCollapsed]);
+
+  // Clear selectedTableId when switching away from translate tab
+  useEffect(() => {
+    if (activeTab !== 'translate') {
+      setSelectedTableId('');
+    }
+  }, [activeTab]);
+
   const handleNavigate = (tab, targetTableId = '') => {
     setActiveTab(tab);
-    if (targetTableId) {
+    if (tab !== 'translate') {
+      setSelectedTableId('');
+    } else if (targetTableId) {
       setSelectedTableId(targetTableId);
     }
   };
@@ -66,6 +82,18 @@ export default function App() {
       return null;
     }
   });
+
+  // Multi-tab sync: update user state when storage changes in another tab
+  useEffect(() => {
+    const loadUser = () => {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        try { setUser(JSON.parse(stored)); } catch(e) {}
+      }
+    };
+    window.addEventListener('storage', loadUser);
+    return () => window.removeEventListener('storage', loadUser);
+  }, []);
 
   // Login form state
   const [usernameInput, setUsernameInput] = useState('');
@@ -163,7 +191,7 @@ export default function App() {
         setLoginError(data.error || '登录验证失败，请核对凭证！');
       }
     } catch (err) {
-      setLoginError(`网络连接失败: ${err.message} (当前请求地址: ${API_BASE}/api/auth/login)`);
+      setLoginError('登录失败，请检查用户名和密码。');
     } finally {
       setLoggingIn(false);
     }
@@ -188,6 +216,7 @@ export default function App() {
       case 'languages': return '语种字典管理';
       case 'logs': return '词条修改日志';
       case 'settings': return '翻译引擎设置';
+      case 'guide': return '使用指南';
       default: return '词条管理平台';
     }
   };
@@ -201,7 +230,7 @@ export default function App() {
             <div className="flex-center" style={{ background: 'var(--bg-primary)', width: '48px', height: '48px', borderRadius: 'var(--radius-md)', margin: '0 auto 0.75rem auto', color: 'var(--accent)', filter: 'drop-shadow(0 0 8px var(--accent-glow))' }}>
               <Languages size={24} />
             </div>
-            <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.4rem', fontWeight: '700', background: 'linear-gradient(135deg, #ffffff 40%, var(--accent) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.4rem', fontWeight: '700', background: 'var(--logo-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               GlossaHub 控制台
             </h2>
             <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>迈金词条智能管理系统</p>
@@ -279,7 +308,7 @@ export default function App() {
         </div>
 
         {/* Sidebar Navigation links */}
-        <nav style={{ padding: '0.75rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
+        <nav aria-label="主导航" style={{ padding: '0.75rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
           
           {/* Dashboard */}
           <button 
@@ -450,13 +479,14 @@ export default function App() {
                 transition: 'var(--transition)'
               }}
               title={theme === 'dark' ? '切换为明亮模式' : '切换为暗黑模式'}
+              aria-label={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
             >
               {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
             </button>
 
             <div style={{ width: '1px', height: '14px', background: 'var(--border-color)' }} />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Globe size={13} style={{ color: 'var(--text-muted)' }} />
               <span style={{ color: 'var(--text-secondary)' }}>Dify 翻译引擎状态:</span>
               <div className={`status-dot ${difyConnected ? 'active' : 'inactive'}`} />
@@ -503,7 +533,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="footer" style={{ height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0, fontSize: '0.72rem' }}>
-          <div>GlossaHub v1.2.0 © Magene translation platform</div>
+          <div>GlossaHub v0.2.0 © Magene translation platform</div>
         </footer>
 
       </div>

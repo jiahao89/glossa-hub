@@ -9,7 +9,7 @@ export default function LogsTab() {
   const toast = useToast();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [_error, setError] = useState(null);
+  const [error, setError] = useState(null);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,7 +97,7 @@ export default function LogsTab() {
         const query = searchQuery.toLowerCase();
         const kw = (log.kw || '').toLowerCase();
         const chinese = (log.chinese || '').toLowerCase();
-        const operator = (log.operator_name || log.operator || '王赵云').toLowerCase();
+        const operator = (log.operator_name || log.operator || '未知用户').toLowerCase();
         const details = (log.details || '').toLowerCase();
 
         if (!kw.includes(query) && !chinese.includes(query) && !operator.includes(query) && !details.includes(query)) {
@@ -167,6 +167,15 @@ export default function LogsTab() {
     return (
       <div className="flex-center" style={{ height: '70vh' }}>
         <span>正在读取修改日志轨迹...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-center" style={{ height: '70vh', flexDirection: 'column', gap: '0.5rem' }}>
+        <span style={{ color: 'var(--red)' }}>⚠️ {error}</span>
+        <button onClick={fetchLogs} className="btn btn-secondary">重试</button>
       </div>
     );
   }
@@ -312,7 +321,7 @@ export default function LogsTab() {
                     <td style={{ padding: '0.75rem 1rem', fontWeight: '500' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                         <User size={12} style={{ color: 'var(--text-muted)' }} />
-                        {log.operator_name || log.operator || '王赵云'}
+                        {log.operator_name || log.operator || '未知用户'}
                       </span>
                     </td>
                     <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>{log.version_name || log.version || '通用'}</td>
@@ -371,7 +380,7 @@ export default function LogsTab() {
             >
               <div style={{ padding: '1rem 0' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem', background: 'var(--bg-primary)', padding: '0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.82rem' }}>
-                  <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '王赵云'}</strong></div>
+                  <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '未知用户'}</strong></div>
                   <div>操作时间: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.timestamp}</strong></div>
                   <div>所属数据表: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.version_name || activeLog.version || '通用'}</strong></div>
                   <div>词条键名: <code style={{ color: 'var(--accent)' }}>{activeLog.kw || '-'}</code></div>
@@ -396,7 +405,7 @@ export default function LogsTab() {
             <div style={{ padding: '1rem 0' }}>
               {/* Meta details */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginBottom: '1.25rem', fontSize: '0.78rem' }}>
-                <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '王赵云'}</strong></div>
+                <div>操作成员: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.operator_name || activeLog.operator || '未知用户'}</strong></div>
                 <div>修改时间: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.timestamp}</strong></div>
                 <div>所属大表: <strong style={{ color: 'var(--text-primary)' }}>{activeLog.version_name || activeLog.version || '通用'}</strong></div>
                 <div>词条键名: <code style={{ color: 'var(--accent)' }}>{activeLog.kw}</code></div>

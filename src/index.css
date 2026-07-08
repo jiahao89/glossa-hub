@@ -78,11 +78,14 @@ html.light-mode {
   --green: #059669;
   --green-bg: rgba(5, 150, 105, 0.1);
   --green-soft: #10b981;
+  --green-rgb: 5, 150, 105;
   --yellow: #d97706;
   --yellow-bg: rgba(217, 119, 6, 0.1);
+  --yellow-rgb: 217, 119, 6;
   --red: #dc2626;
   --red-bg: rgba(220, 38, 38, 0.1);
   --red-soft: #f43f5e;
+  --red-rgb: 220, 38, 38;
   --purple: #7c3aed;
   --purple-bg: rgba(124, 58, 237, 0.1);
   
@@ -345,20 +348,20 @@ textarea:focus-visible {
 }
 
 .toolbar-action-btn.is-success {
-  border-color: rgba(16, 185, 129, 0.4);
+  border-color: rgba(var(--green-rgb), 0.4);
   color: var(--green);
 }
 .toolbar-action-btn.is-success:hover {
-  background-color: rgba(16, 185, 129, 0.12);
+  background-color: rgba(var(--green-rgb), 0.12);
   border-color: var(--green);
 }
 
 .toolbar-action-btn.is-warning {
-  border-color: rgba(245, 158, 11, 0.4);
+  border-color: rgba(var(--yellow-rgb), 0.4);
   color: var(--yellow);
 }
 .toolbar-action-btn.is-warning:hover {
-  background-color: rgba(245, 158, 11, 0.12);
+  background-color: rgba(var(--yellow-rgb), 0.12);
   border-color: var(--yellow);
 }
 
@@ -372,11 +375,11 @@ textarea:focus-visible {
 }
 
 .toolbar-action-btn.is-danger {
-  border-color: rgba(239, 68, 68, 0.3);
+  border-color: rgba(var(--red-rgb), 0.3);
   color: var(--red);
 }
 .toolbar-action-btn.is-danger:hover {
-  background-color: rgba(239, 68, 68, 0.12);
+  background-color: rgba(var(--red-rgb), 0.12);
   border-color: var(--red);
 }
 
@@ -505,7 +508,7 @@ textarea:focus-visible {
 .btn-danger {
   background-color: var(--red-bg);
   color: var(--red);
-  border-color: rgba(239, 68, 68, 0.3);
+  border-color: rgba(var(--red-rgb), 0.3);
 }
 
 .btn-danger:hover {
@@ -740,7 +743,7 @@ textarea:focus-visible {
   padding: 0.15rem 0.4rem;
   border-radius: 10px;
   font-weight: 600;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  border: 1px solid rgba(var(--yellow-rgb), 0.3);
 }
 
 /* Version Comparison Visuals */
@@ -886,13 +889,13 @@ textarea:focus-visible {
 
 .alert-box-success {
   background-color: var(--green-bg);
-  border-color: rgba(16, 185, 129, 0.2);
+  border-color: rgba(var(--green-rgb), 0.2);
   color: var(--green);
 }
 
 .alert-box-danger {
   background-color: var(--red-bg);
-  border-color: rgba(239, 68, 68, 0.2);
+  border-color: rgba(var(--red-rgb), 0.2);
   color: var(--red);
 }
 

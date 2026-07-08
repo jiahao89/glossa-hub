@@ -73,7 +73,10 @@ export default function DashboardTab({ onNavigate }) {
   useEffect(() => {
     fetchStats();
     // Auto refresh stats every 10 seconds for real-time collaboration feel
-    const interval = setInterval(fetchStats, 10000);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchStats();
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
