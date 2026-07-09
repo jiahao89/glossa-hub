@@ -602,7 +602,7 @@ async function requireProjectMember(req, res, next) {
     next();
   } catch (err) {
     console.error('RBAC 校验失败:', err.message);
-    next();
+    return res.status(500).json({ error: '权限校验失败，请稍后重试。' });
   }
 }
 
@@ -805,12 +805,21 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
     await db.transaction(async (tx) => {
       // 清理已删除记录（在写入前执行）
       if (records.length > 0 && recordIds.length > 0) {
+        // P1-3: 保护已锁定词条不被全量替换删除
         const placeholders = recordIds.map((_, idx) => `$${idx + 2}`).join(',');
         await tx.run(
-          `DELETE FROM terms WHERE version_id = $1 AND id NOT IN (${placeholders})`,
+          `DELETE FROM terms WHERE version_id = $1 AND id NOT IN (${placeholders}) AND (is_locked = 0 OR is_locked IS NULL)`,
           [tableId, ...recordIds]
         );
       } else if (records.length === 0) {
+        // P0-2: 安全守卫 - 拒绝空数组全量删除已有数据
+        const existing = await tx.queryOne(
+          'SELECT COUNT(*) as cnt FROM terms WHERE version_id = $1', [tableId]
+        );
+        const existingCount = existing ? (existing.cnt || 0) : 0;
+        if (existingCount > 0) {
+          throw new Error(`安全拦截: 试图对含有 ${existingCount} 条词条的版本执行空数组全量清除！请检查前端数据完整性。`);
+        }
         await tx.run('DELETE FROM terms WHERE version_id = $1', [tableId]);
       }
 
@@ -848,6 +857,12 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
         // P1-1: 翻译来源标记
         const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
 
+        // P1-3: 跳过已锁定词条的更新
+        const existingTerm = await tx.queryOne('SELECT is_locked FROM terms WHERE id = $1', [termId]);
+        if (existingTerm && (existingTerm.is_locked === 1 || existingTerm.is_locked === true)) {
+          continue; // 已锁定词条不允许通过 sync-table 覆盖
+        }
+
         if (dbType === 'postgres') {
           await tx.run(
             `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
@@ -860,16 +875,17 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
                translations = EXCLUDED.translations,
                translations_meta = COALESCE(NULLIF(EXCLUDED.translations_meta, '{}'), terms.translations_meta),
                updated_at = NOW(),
-               updated_by = EXCLUDED.updated_by`,
+               updated_by = EXCLUDED.updated_by
+             WHERE terms.is_locked = 0 OR terms.is_locked IS NULL`,
             [termId, tableId, kw, context, owner, zh_cn, translationsStr, transMetaStr, req.user.id]
           );
         } else {
           // SQLite: 保留现有 meta（如果新 meta 为空）
           let finalMetaStr = transMetaStr;
           if (transMetaStr === '{}') {
-            const existing = await tx.queryOne('SELECT translations_meta FROM terms WHERE id = $1', [termId]);
-            if (existing && existing.translations_meta && existing.translations_meta !== '{}') {
-              finalMetaStr = existing.translations_meta;
+            const existingMeta = await tx.queryOne('SELECT translations_meta FROM terms WHERE id = $1', [termId]);
+            if (existingMeta && existingMeta.translations_meta && existingMeta.translations_meta !== '{}') {
+              finalMetaStr = existingMeta.translations_meta;
             }
           }
           await tx.run(
@@ -878,7 +894,8 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
              ON CONFLICT(id) DO UPDATE SET
                kw=excluded.kw, context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
                translations=excluded.translations, translations_meta=excluded.translations_meta,
-               updated_by=excluded.updated_by, updated_at=datetime('now')`,
+               updated_by=excluded.updated_by, updated_at=datetime('now')
+             WHERE is_locked = 0 OR is_locked IS NULL`,
             [termId, tableId, kw, context, owner, zh_cn, translationsStr, finalMetaStr, req.user.id]
           );
         }
@@ -1530,7 +1547,7 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: '必须包含 termIds 数组、targetVersionId 和 duplicateStrategy 策略' });
   }
 
-  const validStrategies = ['overwrite', 'skip', 'merge'];
+  const validStrategies = ['overwrite', 'skip'];
   if (!validStrategies.includes(duplicateStrategy)) {
     return res.status(400).json({ error: 'INVALID_STRATEGY', message: '无效的复制策略。' });
   }

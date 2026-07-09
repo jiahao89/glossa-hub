@@ -363,11 +363,16 @@ export default function TranslationTab({
       createdAt: rec.createdAt || new Date().toISOString(),
       updatedAt: rec.updatedAt || new Date().toISOString()
     }));
-    await apiFetch('/api/sync-table', {
+    const res = await apiFetch('/api/sync-table', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tableId, tableName, records: formatted })
     });
+    // P1-4/P2-1: 检查响应状态，失败时抛出异常通知调用方
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || `数据同步失败 (HTTP ${res.status})`);
+    }
   }, [tables]);
 
   // File Input Ref
@@ -1516,7 +1521,16 @@ export default function TranslationTab({
         });
       }
 
-      await saveOfflineRecords(batchAddTargetTableId, addedRecordsForSync);
+      // P0-1: 必须先获取目标版本的全量记录，追加新增后再全量同步，避免 sync-table 全量替换删除现有数据
+      let fullRecords = [];
+      if (batchAddTargetTableId === selectedTableId) {
+        fullRecords = [...recordsRef.current, ...addedRecordsForSync];
+      } else {
+        const fetchRes = await apiFetch(`/api/tables/${batchAddTargetTableId}/records`);
+        const currentTerms = fetchRes.ok ? await fetchRes.json() : [];
+        fullRecords = [...currentTerms, ...addedRecordsForSync];
+      }
+      await saveOfflineRecords(batchAddTargetTableId, fullRecords);
 
       setModifiedCells(updatedCellsDict);
       showStatus('success', `批量新增成功！共写入 ${completedRows.length} 条已翻译词条。`);
@@ -1592,11 +1606,11 @@ export default function TranslationTab({
     try {
       const idsToDelete = Array.from(selectedRecordIds);
 
+      // P2-3: 先持久化到数据库，成功后再更新 UI
       const updatedRecordsList = recordsRef.current.filter(rec => !selectedRecordIds.has(rec.recordId));
-      setRecords(updatedRecordsList);
-      
-      // Sync deletions to SQLite in background
       await saveOfflineRecords(selectedTableId, updatedRecordsList);
+
+      setRecords(updatedRecordsList);
       
       idsToDelete.forEach(id => {
         onAddLog('删除词条', `ID: ${id}`, '无');
@@ -1633,11 +1647,11 @@ export default function TranslationTab({
     try {
       const idsToDelete = emptyRecords.map(r => r.recordId);
 
+      // P2-3: 先持久化到数据库，成功后再更新 UI
       const updatedRecordsList = recordsRef.current.filter(rec => !idsToDelete.includes(rec.recordId));
-      setRecords(updatedRecordsList);
-
-      // Sync cleanup to SQLite in background
       await saveOfflineRecords(selectedTableId, updatedRecordsList);
+
+      setRecords(updatedRecordsList);
 
       setSelectedRecordIds(prev => {
         const updated = new Set(prev);
@@ -1800,6 +1814,11 @@ export default function TranslationTab({
   // CSV 增量导入确认：将 added + modified 合并进当前 records，并标记 modifiedCells
   const handleConfirmImport = async () => {
     if (!importDiff) return;
+    // P2-2: 校验 selectedTableId 非空
+    if (!selectedTableId) {
+      showStatus('danger', '请先选择一个数据表再执行导入！');
+      return;
+    }
 
     const currentRecords = recordsRef.current;
     const currentByKw = {};
