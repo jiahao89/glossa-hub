@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, History, Trash2, Eye, User } from 'lucide-react';
+import { Search, History, Trash2, Eye, User, RotateCcw, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { useToast } from './Toast';
 import EmptyState from './EmptyState';
@@ -22,6 +22,14 @@ export default function LogsTab() {
   // Diff Modal State
   const [diffModalOpen, setDiffModalOpen] = useState(false);
   const [activeLog, setActiveLog] = useState(null);
+
+  // Rollback State
+  const [rollbackModalOpen, setRollbackModalOpen] = useState(false);
+  const [rollbackLog, setRollbackLog] = useState(null);
+  const [snapshots, setSnapshots] = useState([]);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  const [rollbackTermId, setRollbackTermId] = useState(null);
+  const [rollingBack, setRollingBack] = useState(false);
 
   const fetchLogs = async () => {
     try {
@@ -140,6 +148,55 @@ export default function LogsTab() {
   const handleOpenDiff = (log) => {
     setActiveLog(log);
     setDiffModalOpen(true);
+  };
+
+  const handleOpenRollback = async (log) => {
+    setRollbackLog(log);
+    setRollbackModalOpen(true);
+    setSnapshots([]);
+    setSnapshotsLoading(true);
+    setRollbackTermId(null);
+    try {
+      const versionName = log.version_name || log.version || '';
+      const res = await apiFetch(`/api/terms/by-kw-version?kw=${encodeURIComponent(log.kw)}&versionName=${encodeURIComponent(versionName)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '查找失败');
+      }
+      const data = await res.json();
+      setRollbackTermId(data.termId);
+      setSnapshots(data.snapshots || []);
+      if (data.isLocked) {
+        toast.warning('该词条已被锁定，回退需要先解锁');
+      }
+    } catch (err) {
+      toast.error(`获取历史快照失败: ${err.message}`);
+    } finally {
+      setSnapshotsLoading(false);
+    }
+  };
+
+  const handleConfirmRollback = async (snapshotId) => {
+    if (!rollbackTermId || !snapshotId) return;
+    setRollingBack(true);
+    try {
+      const res = await apiFetch(`/api/terms/${rollbackTermId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snapshotId })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || err.message || '回退失败');
+      }
+      toast.success('词条已成功回退到历史版本');
+      setRollbackModalOpen(false);
+      fetchLogs();
+    } catch (err) {
+      toast.error(`回退失败: ${err.message}`);
+    } finally {
+      setRollingBack(false);
+    }
   };
 
   const getBriefActionText = (log) => {
@@ -334,7 +391,7 @@ export default function LogsTab() {
                     <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>
                       {getBriefActionText(log)}
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                    <td style={{ padding: '0.75rem 1rem', textAlign: 'center', display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
                       {isDiff ? (
                         <button 
                           onClick={() => handleOpenDiff(log)}
@@ -352,6 +409,17 @@ export default function LogsTab() {
                         >
                           <Eye size={11} />
                           <span>查看</span>
+                        </button>
+                      )}
+                      {log.kw && (log.version_name || log.version) && (
+                        <button
+                          onClick={() => handleOpenRollback(log)}
+                          className="btn btn-secondary"
+                          style={{ height: '24px', padding: '0 0.4rem', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', color: 'var(--accent)', borderColor: 'rgba(0, 242, 255, 0.3)' }}
+                          title="回退到此词条的历史版本"
+                        >
+                          <RotateCcw size={11} />
+                          <span>回退</span>
                         </button>
                       )}
                     </td>
@@ -441,6 +509,78 @@ export default function LogsTab() {
           </GlossaModal>
         );
       })()}
+
+      {/* Rollback Modal */}
+      <GlossaModal
+        isOpen={rollbackModalOpen}
+        onClose={() => setRollbackModalOpen(false)}
+        title="词条历史回退"
+        maxWidth="680px"
+        footer={<button onClick={() => setRollbackModalOpen(false)} className="btn btn-secondary" style={{ width: '100px' }}>取消</button>}
+      >
+        <div style={{ padding: '1rem 0' }}>
+          {rollbackLog && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginBottom: '1.25rem', fontSize: '0.8rem' }}>
+              <div>词条: <code style={{ color: 'var(--accent)' }}>{rollbackLog.kw}</code></div>
+              <div>数据表: <strong style={{ color: 'var(--text-primary)' }}>{rollbackLog.version_name || rollbackLog.version || '通用'}</strong></div>
+              <div>中文源词: <strong style={{ color: 'var(--text-primary)' }}>{rollbackLog.chinese || '-'}</strong></div>
+              <div>操作记录时间: <span style={{ color: 'var(--text-secondary)' }}>{rollbackLog.timestamp}</span></div>
+            </div>
+          )}
+
+          <div style={{ marginBottom: '0.5rem', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-secondary)' }}>
+            选择要回退到的历史版本（回退前会自动保存当前状态作为"后悔药"）：
+          </div>
+
+          {snapshotsLoading ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>加载历史快照中...</div>
+          ) : snapshots.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              该词条暂无历史快照（可能从未被修改过，或快照已被清理）
+            </div>
+          ) : (
+            <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+              {snapshots.map((snap, idx) => (
+                <div
+                  key={snap.id}
+                  style={{
+                    padding: '0.75rem 1rem',
+                    borderBottom: idx < snapshots.length - 1 ? '1px solid var(--border-color)' : 'none',
+                    display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    cursor: 'pointer', transition: 'background 0.15s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-primary)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: '500', color: 'var(--text-primary)' }}>
+                      {snap.createdAt} <span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>· {snap.creatorName}</span>
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                      {Object.entries(snap.translations || {}).slice(0, 4).map(([k, v]) => `${k}: ${v}`).join('  |  ')}
+                      {Object.keys(snap.translations || {}).length > 4 ? ' ...' : ''}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleConfirmRollback(snap.id)}
+                    disabled={rollingBack}
+                    className="btn btn-primary"
+                    style={{ height: '28px', padding: '0 0.75rem', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}
+                  >
+                    <RotateCcw size={12} />
+                    {rollingBack ? '回退中...' : '回退到此版本'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(255, 193, 7, 0.08)', border: '1px solid rgba(255, 193, 7, 0.2)', borderRadius: 'var(--radius-sm)', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+            <ChevronRight size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />
+            回退会将词条的 KW、中文源词和翻译内容恢复到历史版本。回退操作本身也会生成一条新的日志记录。
+          </div>
+        </div>
+      </GlossaModal>
 
     </div>
   );

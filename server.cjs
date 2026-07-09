@@ -867,8 +867,7 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
           await tx.run(
             `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-             ON CONFLICT (id) DO UPDATE SET
-               kw = EXCLUDED.kw,
+             ON CONFLICT (version_id, kw) DO UPDATE SET
                context = EXCLUDED.context,
                owner = EXCLUDED.owner,
                zh_cn = EXCLUDED.zh_cn,
@@ -891,8 +890,8 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
           await tx.run(
             `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at, is_locked, locked_by, locked_at, status, reject_reason)
              VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),0,NULL,NULL,'DRAFT',NULL)
-             ON CONFLICT(id) DO UPDATE SET
-               kw=excluded.kw, context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
+             ON CONFLICT(version_id, kw) DO UPDATE SET
+               context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
                translations=excluded.translations, translations_meta=excluded.translations_meta,
                updated_by=excluded.updated_by, updated_at=datetime('now')
              WHERE is_locked = 0 OR is_locked IS NULL`,
@@ -996,8 +995,11 @@ app.post('/api/versions/sync-terms', authenticateToken, async (req, res) => {
   }
 });
 
-// 5. POST /api/sync-cleanup - 缓存清理 (向后兼容)
+// 5. POST /api/sync-cleanup - 缓存清理 (向后兼容, 需管理员权限)
 app.post('/api/sync-cleanup', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'FORBIDDEN', message: '仅管理员可执行缓存清理。' });
+  }
   const { activeTableIds } = req.body;
   if (!Array.isArray(activeTableIds)) {
     return res.status(400).json({ error: '必须包含 activeTableIds 数组！' });
@@ -1089,7 +1091,7 @@ app.delete('/api/logs', authenticateToken, async (req, res) => {
 });
 
 // 9. POST /api/versions - 创建固件新版本 (多人协同新增，支持翻译继承)
-app.post('/api/projects/:projectId/versions', authenticateToken, async (req, res) => {
+app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   const { versionName, baseVersionId } = req.body;
   if (!versionName) {
@@ -1676,6 +1678,46 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
   }
 });
 
+// 11.5. GET /api/terms/by-kw-version - 按 KW 和版本名查找词条及其快照（日志回退用）
+app.get('/api/terms/by-kw-version', authenticateToken, async (req, res) => {
+  const { kw, versionName } = req.query;
+  if (!kw || !versionName) {
+    return res.status(400).json({ error: '缺少 kw 或 versionName 参数' });
+  }
+  try {
+    const term = await db.queryOne(
+      `SELECT t.id, t.kw, t.zh_cn, t.is_locked FROM terms t
+       JOIN versions v ON t.version_id = v.id
+       WHERE t.kw = $1 AND v.version_name = $2`,
+      [kw, versionName]
+    );
+    if (!term) {
+      return res.status(404).json({ error: '找不到对应词条，可能已被删除' });
+    }
+    const snapshots = await db.query(
+      `SELECT s.id, s.kw, s.zh_cn, s.translations, s.created_at, s.created_by, u.username as creator_name
+       FROM term_snapshots s
+       LEFT JOIN users u ON s.created_by = u.id
+       WHERE s.term_id = $1
+       ORDER BY s.created_at DESC`,
+      [term.id]
+    );
+    const formatted = snapshots.map(s => {
+      let trans = {};
+      try { trans = typeof s.translations === 'string' ? JSON.parse(s.translations) : s.translations; } catch {}
+      return {
+        id: s.id, kw: s.kw, zh_cn: s.zh_cn,
+        translations: trans, createdAt: s.created_at,
+        creatorName: s.creator_name || '系统用户'
+      };
+    });
+    res.json({ termId: term.id, isLocked: !!(term.is_locked === 1 || term.is_locked === true), snapshots: formatted });
+  } catch (err) {
+    console.error('按 KW 查找词条失败:', err);
+    res.status(500).json({ error: '服务器内部错误' });
+  }
+});
+
 // 12. GET /api/terms/:termId/snapshots - 获取单个词条的翻译历史快照列表
 app.get('/api/terms/:termId/snapshots', authenticateToken, async (req, res) => {
   const { termId } = req.params;
@@ -1878,7 +1920,7 @@ app.post('/api/terms/batch-approve', authenticateToken, async (req, res) => {
 // ====================================================
 
 // 11. POST /api/projects/:projectId/dify - 保存项目的 Dify 配置
-app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) => {
+app.post('/api/projects/:projectId/dify', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
@@ -1921,7 +1963,7 @@ app.post('/api/projects/:projectId/dify', authenticateToken, async (req, res) =>
 });
 
 // 12. GET /api/projects/:projectId/dify - 获取项目的 Dify 配置状态 (不返回明文 Key)
-app.get('/api/projects/:projectId/dify', authenticateToken, async (req, res) => {
+app.get('/api/projects/:projectId/dify', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   try {
     const config = await getEffectiveDifyConfig(projectId);
@@ -1937,7 +1979,7 @@ app.get('/api/projects/:projectId/dify', authenticateToken, async (req, res) => 
 });
 
 // 13. POST /api/projects/:projectId/ai-translate - 后端中转 Dify AI 翻译代理
-app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req, res) => {
+app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   const { inputs } = req.body;
   const userId = req.user?.id || null;
@@ -2022,7 +2064,7 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, async (req,
 });
 
 // 13.5. POST /api/projects/:projectId/dify-test - 测试 Dify 连接性
-app.post('/api/projects/:projectId/dify-test', authenticateToken, async (req, res) => {
+app.post('/api/projects/:projectId/dify-test', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
@@ -2076,7 +2118,7 @@ app.post('/api/projects/:projectId/dify-test', authenticateToken, async (req, re
 // ====================================================
 
 // 14. GET /api/projects/:projectId/languages - 获取项目的语种字典列表
-app.get('/api/projects/:projectId/languages', authenticateToken, async (req, res) => {
+app.get('/api/projects/:projectId/languages', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   try {
     const rows = await db.query(
@@ -2135,7 +2177,7 @@ app.post('/api/projects/:projectId/languages', authenticateToken, requireProject
 });
 
 // 16. PUT /api/projects/:projectId/languages/:langId - 修改语种（支持重命名及翻译字段迁移）
-app.put('/api/projects/:projectId/languages/:langId', authenticateToken, async (req, res) => {
+app.put('/api/projects/:projectId/languages/:langId', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId, langId } = req.params;
   const { langName, displayOrder } = req.body;
 
@@ -2196,7 +2238,7 @@ app.put('/api/projects/:projectId/languages/:langId', authenticateToken, async (
 });
 
 // 17. DELETE /api/projects/:projectId/languages/:langId - 删除语种
-app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, async (req, res) => {
+app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId, langId } = req.params;
   try {
     const lang = await db.queryOne('SELECT * FROM languages WHERE id = $1', [langId]);
@@ -2464,7 +2506,7 @@ app.get('/api/dashboard/ai-usage', authenticateToken, async (req, res) => {
 // ====================================================
 
 // 19. DELETE /api/projects/:projectId/versions/:versionId - 删除数据表（固件大表）
-app.delete('/api/projects/:projectId/versions/:versionId', authenticateToken, async (req, res) => {
+app.delete('/api/projects/:projectId/versions/:versionId', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId, versionId } = req.params;
   try {
     const ver = await db.queryOne('SELECT id, version_name FROM versions WHERE id = $1 AND project_id = $2', [versionId, projectId]);
@@ -2480,7 +2522,7 @@ app.delete('/api/projects/:projectId/versions/:versionId', authenticateToken, as
 });
 
 // 19.5 PUT /api/projects/:projectId/versions/:versionId - 修改数据表名称
-app.put('/api/projects/:projectId/versions/:versionId', authenticateToken, async (req, res) => {
+app.put('/api/projects/:projectId/versions/:versionId', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId, versionId } = req.params;
   const { versionName } = req.body;
 
@@ -2512,7 +2554,7 @@ app.put('/api/projects/:projectId/versions/:versionId', authenticateToken, async
 });
 
 // 20. GET /api/projects/:projectId/glossary-tables - 获取专业词汇大表列表
-app.get('/api/projects/:projectId/glossary-tables', authenticateToken, async (req, res) => {
+app.get('/api/projects/:projectId/glossary-tables', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   try {
     const tables = await db.query('SELECT * FROM glossary_tables WHERE project_id = $1 ORDER BY table_name ASC', [projectId]);
@@ -2561,7 +2603,7 @@ app.post('/api/projects/:projectId/glossary-tables', authenticateToken, requireP
 });
 
 // 22. DELETE /api/projects/:projectId/glossary-tables/:tableId - 删除专业词汇大表
-app.delete('/api/projects/:projectId/glossary-tables/:tableId', authenticateToken, async (req, res) => {
+app.delete('/api/projects/:projectId/glossary-tables/:tableId', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId, tableId } = req.params;
   try {
     const tbl = await db.queryOne('SELECT id, table_name FROM glossary_tables WHERE id = $1 AND project_id = $2', [tableId, projectId]);
