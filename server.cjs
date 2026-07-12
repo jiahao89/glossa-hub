@@ -606,6 +606,27 @@ async function requireProjectMember(req, res, next) {
   }
 }
 
+// R2: 通过 versionId 反查项目归属的 RBAC 校验辅助函数
+// 用于 /api/sync-table, /api/terms/*, /api/versions/sync-terms 等不含 projectId 的端点
+async function requireVersionOwnership(userId, versionId) {
+  const ver = await db.queryOne(
+    'SELECT v.project_id FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
+    [versionId, userId]
+  );
+  return !!ver;
+}
+
+async function requireTermOwnership(userId, termId) {
+  const term = await db.queryOne(
+    `SELECT t.version_id FROM terms t
+     JOIN versions v ON t.version_id = v.id
+     JOIN project_members pm ON v.project_id = pm.project_id
+     WHERE t.id = $1 AND pm.user_id = $2`,
+    [termId, userId]
+  );
+  return !!term;
+}
+
 // ----------------------------------------------------
 // API Endpoints
 // ----------------------------------------------------
@@ -616,6 +637,13 @@ const loginLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
   message: { error: '尝试过于频繁，请 1 分钟后再试。' }
+});
+
+// R5: 高危写入操作限流
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: '操作过于频繁，请稍后再试。' }
 });
 
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
@@ -760,6 +788,11 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
   }
 
   try {
+    // R2: RBAC — 校验版本归属（新建版本时跳过校验，因为版本尚未关联项目）
+    const existingVer = await db.queryOne('SELECT id FROM versions WHERE id = $1', [tableId]);
+    if (existingVer && !(await requireVersionOwnership(req.user.id, tableId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权操作此数据表。' });
+    }
     // Verify version existence, or create if not present
     const version = await db.queryOne('SELECT id FROM versions WHERE id = $1', [tableId]);
     if (!version) {
@@ -915,6 +948,10 @@ app.post('/api/versions/sync-terms', authenticateToken, async (req, res) => {
   }
 
   try {
+    // R2: RBAC — 校验源和目标版本的项目归属
+    if (!(await requireVersionOwnership(req.user.id, sourceVersionId)) || !(await requireVersionOwnership(req.user.id, targetVersionId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权操作此数据表。' });
+    }
     const sourceVer = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [sourceVersionId]);
     const targetVer = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [targetVersionId]);
     if (!sourceVer || !targetVer) {
@@ -1153,7 +1190,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
       }
     });
 
-    res.status(201).json({ id: versionId, versionName, inheritedCount });
+    res.status(201).json({ id: versionId, versionName, inheritedCount: baseVersionId ? inheritedCount : 0 });
   } catch (err) {
     console.error('新建固件版本失败:', err);
     res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
@@ -1170,6 +1207,10 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
   }
 
   try {
+    // R2: RBAC — 校验词条归属
+    if (!(await requireTermOwnership(req.user.id, termId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此词条。' });
+    }
     const term = await db.queryOne('SELECT * FROM terms WHERE id = $1', [termId]);
     if (!term) {
       return res.status(404).json({ error: '词条不存在' });
@@ -1448,6 +1489,10 @@ app.post('/api/terms/batch-update', authenticateToken, async (req, res) => {
   }
 
   try {
+    // R2: RBAC — 校验首条词条的项目归属（同一批操作必然属于同一项目）
+    if (termIds.length > 0 && !(await requireTermOwnership(req.user.id, termIds[0]))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此项目的词条。' });
+    }
     let successCount = 0;
     let lockedCount = 0;
 
@@ -1555,6 +1600,10 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
   }
 
   try {
+    // R2: RBAC — 校验目标版本的项目归属
+    if (!(await requireVersionOwnership(req.user.id, targetVersionId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权操作目标数据表。' });
+    }
     const targetVer = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [targetVersionId]);
     if (!targetVer) {
       return res.status(404).json({ error: '目标版本不存在' });
@@ -1680,16 +1729,18 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
 
 // 11.5. GET /api/terms/by-kw-version - 按 KW 和版本名查找词条及其快照（日志回退用）
 app.get('/api/terms/by-kw-version', authenticateToken, async (req, res) => {
-  const { kw, versionName } = req.query;
+  const { kw, versionName, projectId } = req.query;
   if (!kw || !versionName) {
     return res.status(400).json({ error: '缺少 kw 或 versionName 参数' });
   }
   try {
+    // R1: 添加 project_id 过滤，避免跨项目同名 KW 碰撞
+    const effectiveProjectId = projectId || 'proj-default';
     const term = await db.queryOne(
       `SELECT t.id, t.kw, t.zh_cn, t.is_locked FROM terms t
        JOIN versions v ON t.version_id = v.id
-       WHERE t.kw = $1 AND v.version_name = $2`,
-      [kw, versionName]
+       WHERE t.kw = $1 AND v.version_name = $2 AND v.project_id = $3`,
+      [kw, versionName, effectiveProjectId]
     );
     if (!term) {
       return res.status(404).json({ error: '找不到对应词条，可能已被删除' });
@@ -1756,7 +1807,7 @@ app.get('/api/terms/:termId/snapshots', authenticateToken, async (req, res) => {
 });
 
 // 13. POST /api/terms/:termId/rollback - 一键回退到指定快照的翻译
-app.post('/api/terms/:termId/rollback', authenticateToken, async (req, res) => {
+app.post('/api/terms/:termId/rollback', authenticateToken, writeLimiter, async (req, res) => {
   const { termId } = req.params;
   const { snapshotId } = req.body;
 
@@ -1765,6 +1816,10 @@ app.post('/api/terms/:termId/rollback', authenticateToken, async (req, res) => {
   }
 
   try {
+    // R2: RBAC — 校验词条归属
+    if (!(await requireTermOwnership(req.user.id, termId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权回退此词条。' });
+    }
     const term = await db.queryOne('SELECT * FROM terms WHERE id = $1', [termId]);
     if (!term) {
       return res.status(404).json({ error: '词条不存在' });
@@ -1857,6 +1912,11 @@ app.post('/api/terms/batch-approve', authenticateToken, async (req, res) => {
 
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'FORBIDDEN', message: '只有管理员有权审核词条！' });
+  }
+
+  // R2: RBAC — 校验首条词条的项目归属
+  if (Array.isArray(termIds) && termIds.length > 0 && !(await requireTermOwnership(req.user.id, termIds[0]))) {
+    return res.status(403).json({ error: 'FORBIDDEN', message: '您无权审核此项目的词条。' });
   }
 
   if (!Array.isArray(termIds) || termIds.length === 0 || !status) {

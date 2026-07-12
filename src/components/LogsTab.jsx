@@ -29,7 +29,7 @@ export default function LogsTab() {
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
   const [rollbackTermId, setRollbackTermId] = useState(null);
-  const [rollingBack, setRollingBack] = useState(false);
+  const [rollingBack, setRollingBack] = useState(null); // R4: null 或正在回退的 snapshotId
 
   const fetchLogs = async () => {
     try {
@@ -178,7 +178,11 @@ export default function LogsTab() {
 
   const handleConfirmRollback = async (snapshotId) => {
     if (!rollbackTermId || !snapshotId) return;
-    setRollingBack(true);
+    // R3: 二次确认
+    const snap = snapshots.find(s => s.id === snapshotId);
+    const confirmMsg = `确认要将词条 [${rollbackLog?.kw}] 回退到 [${snap?.createdAt}] 的历史版本吗？\n\n回退前会自动保存当前状态作为"后悔药"。`;
+    if (!window.confirm(confirmMsg)) return;
+    setRollingBack(snapshotId); // R4: 记录正在回退的 snapshotId
     try {
       const res = await apiFetch(`/api/terms/${rollbackTermId}/rollback`, {
         method: 'POST',
@@ -195,7 +199,7 @@ export default function LogsTab() {
     } catch (err) {
       toast.error(`回退失败: ${err.message}`);
     } finally {
-      setRollingBack(false);
+      setRollingBack(null);
     }
   };
 
@@ -563,12 +567,12 @@ export default function LogsTab() {
                   </div>
                   <button
                     onClick={() => handleConfirmRollback(snap.id)}
-                    disabled={rollingBack}
+                    disabled={rollingBack !== null}
                     className="btn btn-primary"
                     style={{ height: '28px', padding: '0 0.75rem', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}
                   >
                     <RotateCcw size={12} />
-                    {rollingBack ? '回退中...' : '回退到此版本'}
+                    {rollingBack === snap.id ? '回退中...' : '回退到此版本'}
                   </button>
                 </div>
               ))}
