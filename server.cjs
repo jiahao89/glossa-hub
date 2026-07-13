@@ -338,6 +338,8 @@ function initSqliteTables() {
           console.warn('⚠️ INITIAL_ADMIN_PASSWORD 未设置，使用默认密码。请在环境变量中配置 INITIAL_ADMIN_PASSWORD 以提高安全性。');
         }
         const passHash = hashPassword(adminPassword);
+        const userHash = hashPassword('user123');
+        const viewerHash = hashPassword('viewer123');
         sqliteDb.run(`
           INSERT OR IGNORE INTO users (id, username, password_hash, name, role, created_at)
           VALUES 
@@ -348,8 +350,15 @@ function initSqliteTables() {
           ('user-bizihao', 'bizihao', ?, 'bizihao', 'admin', datetime('now')),
           ('user-shengyongbang', 'shengyongbang', ?, 'shengyongbang', 'admin', datetime('now')),
           ('user-lanyiwei', 'lanyiwei', ?, 'lanyiwei', 'admin', datetime('now')),
-          ('user-jiahao', 'jiahao', ?, 'jiahao', 'admin', datetime('now'))
-        `, [passHash, passHash, passHash, passHash, passHash, passHash, passHash, passHash], (insErr) => {
+          ('user-jiahao', 'jiahao', ?, 'jiahao', 'admin', datetime('now')),
+          ('user-user1', 'user1', ?, 'User One', 'user', datetime('now')),
+          ('user-user2', 'user2', ?, 'User Two', 'user', datetime('now')),
+          ('user-viewer1', 'viewer1', ?, 'Viewer One', 'user', datetime('now')),
+          ('user-viewer2', 'viewer2', ?, 'Viewer Two', 'user', datetime('now'))
+        `, [
+          passHash, passHash, passHash, passHash, passHash, passHash, passHash, passHash,
+          userHash, userHash, viewerHash, viewerHash
+        ], (insErr) => {
           if (insErr) console.error('⚠️ 预置 SQLite 用户失败:', insErr.message);
 
           // Pre-populate default project
@@ -364,7 +373,17 @@ function initSqliteTables() {
               INSERT OR IGNORE INTO project_members (id, project_id, user_id, role, created_at)
               VALUES 
               ('mem-1', 'proj-default', 'user-wangzhaoyun', 'owner', datetime('now')),
-              ('mem-2', 'proj-default', 'user-shidongsheng', 'owner', datetime('now'))
+              ('mem-2', 'proj-default', 'user-shidongsheng', 'owner', datetime('now')),
+              ('mem-liuchenlu', 'proj-default', 'user-liuchenlu', 'owner', datetime('now')),
+              ('mem-liuyuanyuan', 'proj-default', 'user-liuyuanyuan', 'owner', datetime('now')),
+              ('mem-bizihao', 'proj-default', 'user-bizihao', 'owner', datetime('now')),
+              ('mem-shengyongbang', 'proj-default', 'user-shengyongbang', 'owner', datetime('now')),
+              ('mem-lanyiwei', 'proj-default', 'user-lanyiwei', 'owner', datetime('now')),
+              ('mem-jiahao', 'proj-default', 'user-jiahao', 'owner', datetime('now')),
+              ('mem-user1', 'proj-default', 'user-user1', 'editor', datetime('now')),
+              ('mem-user2', 'proj-default', 'user-user2', 'editor', datetime('now')),
+              ('mem-viewer1', 'proj-default', 'user-viewer1', 'viewer', datetime('now')),
+              ('mem-viewer2', 'proj-default', 'user-viewer2', 'viewer', datetime('now'))
             `, (insMemErr) => {
               if (insMemErr) console.error('⚠️ 预置 SQLite 成员关联失败:', insMemErr.message);
               

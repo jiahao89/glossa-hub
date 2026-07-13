@@ -120,12 +120,24 @@ BEFORE UPDATE ON terms
 FOR EACH ROW
 EXECUTE FUNCTION update_terms_timestamp();
 
--- 9. Pre-populate default users (Colleagues: 王赵云 & 史东升)
+-- 9. Pre-populate default users (Colleagues: 王赵云 & 史东升等 8 位管理员 + 2 个普通用户 + 2 个只读用户)
 -- Default password: magene123 -> SHA256: 3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe
+-- User password: user123 -> SHA256: c30c5e7b233a7be1d82136ab6230b425ef8df468e6b12a32dfc5bbf893e96191
+-- Viewer password: viewer123 -> SHA256: 65375049b9e4d7cad6c9ba286fdeb9394b28135a3e84136404cfccfdcc438894
 INSERT INTO users (id, username, password_hash, name, role)
 VALUES 
 ('user-wangzhaoyun', 'wangzhaoyun', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '王赵云', 'admin'),
-('user-shidongsheng', 'shidongsheng', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '史东升', 'admin')
+('user-shidongsheng', 'shidongsheng', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '史东升', 'admin'),
+('user-liuchenlu', 'liuchenlu', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '刘晨璐', 'admin'),
+('user-liuyuanyuan', 'liuyuanyuan', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '刘圆圆', 'admin'),
+('user-bizihao', 'bizihao', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '毕梓豪', 'admin'),
+('user-shengyongbang', 'shengyongbang', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '盛永邦', 'admin'),
+('user-lanyiwei', 'lanyiwei', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '兰一玮', 'admin'),
+('user-jiahao', 'jiahao', '3245361ff6d0f8895e9f669d03b3f6a1f7d37495e4fa97876545940c81da56fe', '贾浩', 'admin'),
+('user-user1', 'user1', 'c30c5e7b233a7be1d82136ab6230b425ef8df468e6b12a32dfc5bbf893e96191', 'User One', 'user'),
+('user-user2', 'user2', 'c30c5e7b233a7be1d82136ab6230b425ef8df468e6b12a32dfc5bbf893e96191', 'User Two', 'user'),
+('user-viewer1', 'viewer1', '65375049b9e4d7cad6c9ba286fdeb9394b28135a3e84136404cfccfdcc438894', 'Viewer One', 'user'),
+('user-viewer2', 'viewer2', '65375049b9e4d7cad6c9ba286fdeb9394b28135a3e84136404cfccfdcc438894', 'Viewer Two', 'user')
 ON CONFLICT (username) DO NOTHING;
 
 -- 10. Pre-populate default project
@@ -137,7 +149,17 @@ ON CONFLICT (name) DO NOTHING;
 INSERT INTO project_members (id, project_id, user_id, role)
 VALUES 
 ('mem-1', 'proj-default', 'user-wangzhaoyun', 'owner'),
-('mem-2', 'proj-default', 'user-shidongsheng', 'owner')
+('mem-2', 'proj-default', 'user-shidongsheng', 'owner'),
+('mem-liuchenlu', 'proj-default', 'user-liuchenlu', 'owner'),
+('mem-liuyuanyuan', 'proj-default', 'user-liuyuanyuan', 'owner'),
+('mem-bizihao', 'proj-default', 'user-bizihao', 'owner'),
+('mem-shengyongbang', 'proj-default', 'user-shengyongbang', 'owner'),
+('mem-lanyiwei', 'proj-default', 'user-lanyiwei', 'owner'),
+('mem-jiahao', 'proj-default', 'user-jiahao', 'owner'),
+('mem-user1', 'proj-default', 'user-user1', 'editor'),
+('mem-user2', 'proj-default', 'user-user2', 'editor'),
+('mem-viewer1', 'proj-default', 'user-viewer1', 'viewer'),
+('mem-viewer2', 'proj-default', 'user-viewer2', 'viewer')
 ON CONFLICT (project_id, user_id) DO NOTHING;
 
 -- 12. Pre-populate default languages list

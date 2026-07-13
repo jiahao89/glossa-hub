@@ -114,9 +114,16 @@ npm start
 npm run dev:all
 ```
 
-登录开发环境管理员：
-* **用户名**：`wangzhaoyun`
-* **密码**：`magene123`（未设置 INITIAL_ADMIN_PASSWORD 时使用默认值，会输出警告）
+登录开发环境默认账户：
+* **系统管理员 (Admin/Owner)**：
+  * 用户名：`wangzhaoyun` 或 `shidongsheng` 等
+  * 密码：`magene123`（或环境变量 `INITIAL_ADMIN_PASSWORD` 配置的值）
+* **协作成员 (User/Editor)**：
+  * 用户名：`user1`、`user2`
+  * 密码：`user123`
+* **只读旁听 (User/Viewer)**：
+  * 用户名：`viewer1`、`viewer2`
+  * 密码：`viewer123`
 
 ---
 
