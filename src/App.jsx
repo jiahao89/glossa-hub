@@ -537,7 +537,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="footer" style={{ height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0, fontSize: '0.72rem' }}>
-          <div>GlossaHub v0.2.0 © Magene translation platform</div>
+          <div>GlossaHub v1.0 © Magene translation platform</div>
         </footer>
 
       </div>
