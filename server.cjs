@@ -899,7 +899,7 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
         if (dbType === 'postgres') {
           await tx.run(
             `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+             VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, NOW())
              ON CONFLICT (version_id, kw) DO UPDATE SET
                context = EXCLUDED.context,
                owner = EXCLUDED.owner,
@@ -988,7 +988,7 @@ app.post('/api/versions/sync-terms', authenticateToken, async (req, res) => {
           if (dbType === 'postgres') {
             await tx.run(
               `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, updated_by, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+               VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW(), NOW())`,
               [termId, targetVersionId, kw, context, owner, zhCn, transStr, req.user.id]
             );
           } else {
@@ -1176,7 +1176,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
 
           if (dbType === 'postgres') {
             await tx.run(
-              'INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), 0)',
+              'INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), 0)',
               [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr]
             );
           } else {
@@ -1256,7 +1256,7 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
         if (dbType === 'postgres') {
           await tx.run(
             `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), $7)`,
             [snapshotId, termId, term.version_id, term.kw, term.zh_cn, dbTransStr, req.user.id]
           );
         } else {
@@ -1271,7 +1271,7 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
       if (dbType === 'postgres') {
         return await tx.run(
           `UPDATE terms
-           SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
+           SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5::jsonb, translations_meta = $6::jsonb, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
            WHERE id = $9 AND updated_at::text = $10`,
           [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
         );
@@ -1437,7 +1437,7 @@ app.post('/api/versions/:versionId/inherit-translations', authenticateToken, asy
           const updatedTransStr = JSON.stringify(tgtTrans);
           if (dbType === 'postgres') {
             await tx.run(
-              'UPDATE terms SET translations = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3',
+              'UPDATE terms SET translations = $1::jsonb, updated_at = NOW(), updated_by = $2 WHERE id = $3',
               [updatedTransStr, req.user.id, tgt.id]
             );
           } else {
@@ -1664,7 +1664,7 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
             if (dbType === 'postgres') {
               await tx.run(
                 `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), 0)`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), 0)`,
                 [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr]
               );
             } else {
@@ -1680,7 +1680,7 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
           if (dbType === 'postgres') {
             await tx.run(
               `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), 0)`,
+               VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), 0)`,
               [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr]
             );
           } else {
@@ -1844,7 +1844,7 @@ app.post('/api/terms/:termId/rollback', authenticateToken, writeLimiter, async (
       if (dbType === 'postgres') {
         await tx.run(
           `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), $7)`,
           [newSnapshotId, termId, term.version_id, term.kw, term.zh_cn, currentTransStr, req.user.id]
         );
       } else {
@@ -1866,7 +1866,7 @@ app.post('/api/terms/:termId/rollback', authenticateToken, writeLimiter, async (
       if (dbType === 'postgres') {
         await tx.run(
           `UPDATE terms 
-           SET kw = $1, zh_cn = $2, translations = $3, status = $4, reject_reason = NULL, updated_at = NOW(), updated_by = $5
+           SET kw = $1, zh_cn = $2, translations = $3::jsonb, status = $4, reject_reason = NULL, updated_at = NOW(), updated_by = $5
            WHERE id = $6`,
           [snapshot.kw, snapshot.zh_cn, snapTransStr, nextStatus, req.user.id, termId]
         );
@@ -2011,10 +2011,17 @@ app.post('/api/projects/:projectId/dify', authenticateToken, requireProjectMembe
     }
 
     const newConfig = JSON.stringify({ baseUrl, apiKey: finalApiKey });
-    await db.run(
-      'UPDATE projects SET dify_config = $1 WHERE id = $2',
-      [newConfig, projectId]
-    );
+    if (dbType === 'postgres') {
+      await db.run(
+        'UPDATE projects SET dify_config = $1::jsonb WHERE id = $2',
+        [newConfig, projectId]
+      );
+    } else {
+      await db.run(
+        'UPDATE projects SET dify_config = $1 WHERE id = $2',
+        [newConfig, projectId]
+      );
+    }
 
     res.json({ message: 'Dify 配置已安全存入数据库！' });
   } catch (err) {
@@ -2276,10 +2283,17 @@ app.put('/api/projects/:projectId/languages/:langId', authenticateToken, require
               trans[newName] = trans[oldName];
               delete trans[oldName];
 
-              await tx.run(
-                'UPDATE terms SET translations = $1 WHERE id = $2',
-                [JSON.stringify(trans), term.id]
-              );
+              if (dbType === 'postgres') {
+                await tx.run(
+                  'UPDATE terms SET translations = $1::jsonb WHERE id = $2',
+                  [JSON.stringify(trans), term.id]
+                );
+              } else {
+                await tx.run(
+                  'UPDATE terms SET translations = $1 WHERE id = $2',
+                  [JSON.stringify(trans), term.id]
+                );
+              }
             }
           }
         }
@@ -2330,10 +2344,17 @@ app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, requ
 
           if (trans[oldName] !== undefined) {
             delete trans[oldName];
-            await tx.run(
-              'UPDATE terms SET translations = $1 WHERE id = $2',
-              [JSON.stringify(trans), term.id]
-            );
+            if (dbType === 'postgres') {
+              await tx.run(
+                'UPDATE terms SET translations = $1::jsonb WHERE id = $2',
+                [JSON.stringify(trans), term.id]
+              );
+            } else {
+              await tx.run(
+                'UPDATE terms SET translations = $1 WHERE id = $2',
+                [JSON.stringify(trans), term.id]
+              );
+            }
           }
         }
       }
