@@ -105,10 +105,13 @@ export default function App() {
     if (!token) return;
     async function loadProjectRole() {
       try {
-        const data = await apiFetch('/api/projects/proj-default/role');
-        if (data && data.role) {
-          setProjectRole(data.role);
-          localStorage.setItem('project_role', data.role);
+        const res = await apiFetch('/api/projects/proj-default/role');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.role) {
+            setProjectRole(data.role);
+            localStorage.setItem('project_role', data.role);
+          }
         }
       } catch (err) {
         console.error('加载项目角色失败:', err);
