@@ -2315,7 +2315,7 @@ app.put('/api/projects/:projectId/languages/:langId', authenticateToken, require
           for (const term of allTerms) {
             let trans = {};
             try {
-              trans = JSON.parse(term.translations || '{}');
+              trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
             } catch {
               trans = {};
             }
@@ -2378,7 +2378,7 @@ app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, requ
         for (const term of allTerms) {
           let trans = {};
           try {
-            trans = JSON.parse(term.translations || '{}');
+            trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
           } catch {
             trans = {};
           }
@@ -2450,7 +2450,7 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     // 单次遍历聚合
     for (const t of terms) {
       let trans = {};
-      try { trans = JSON.parse(t.translations || '{}'); } catch { trans = {}; }
+      try { trans = typeof t.translations === 'string' ? JSON.parse(t.translations || '{}') : (t.translations || {}); } catch { trans = {}; }
 
       let termFilledCount = 0;
       for (const lang of langNames) {

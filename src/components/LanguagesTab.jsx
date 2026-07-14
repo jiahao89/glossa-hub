@@ -202,6 +202,7 @@ export default function LanguagesTab() {
           <thead>
             <tr style={{ background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', height: '40px' }}>
               <th style={{ padding: '0.75rem 1rem', width: '80px' }}>显示顺序</th>
+              <th style={{ padding: '0.75rem 1rem', width: '60px' }}>排序</th>
               <th style={{ padding: '0.75rem 1rem', width: '120px' }}>语种代码</th>
               <th style={{ padding: '0.75rem 1rem' }}>语种显示名称 (列头显示值)</th>
               <th style={{ padding: '0.75rem 1rem', width: '180px' }}>创建日期</th>
@@ -211,7 +212,7 @@ export default function LanguagesTab() {
           <tbody>
             {languages.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ padding: '0' }}>
+                <td colSpan="6" style={{ padding: '0' }}>
                   <EmptyState
                     icon={Globe}
                     title="当前项目还没有任何语种配置"
@@ -246,6 +247,11 @@ export default function LanguagesTab() {
                         <ArrowDown size={14} />
                       </button>
                     </div>
+                  </td>
+
+                  {/* 排序 (No DB field, just 1-indexed count) */}
+                  <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>
+                    {idx + 1}
                   </td>
 
                   {/* Code */}
