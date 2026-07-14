@@ -529,7 +529,6 @@ export default function App() {
                 selectedTableId={selectedTableId}
                 setSelectedTableId={setSelectedTableId}
                 projectRole={projectRole}
-                userRole={user?.role}
               />
             )}
             {activeTab === 'compare' && <ComparisonTab projectRole={projectRole} />}

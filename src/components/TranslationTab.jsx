@@ -31,8 +31,7 @@ export default function TranslationTab({
   setModifiedCells = () => {},
   selectedTableId: propSelectedTableId,
   setSelectedTableId: propSetSelectedTableId,
-  projectRole = 'viewer',
-  userRole = 'user'
+  projectRole = 'viewer'
 }) {
   // 全局 Toast 通知（替代 alert 弹窗）
   const toast = useToast();
