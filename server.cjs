@@ -451,7 +451,20 @@ function initSqliteTables() {
                                     sqliteDb.run("ALTER TABLE terms ADD COLUMN reject_reason TEXT", () => {
                                       // P1-1: 翻译来源标记列
                                       sqliteDb.run("ALTER TABLE terms ADD COLUMN translations_meta TEXT DEFAULT '{}'", () => {
-                                        resolve();
+                                        sqliteDb.run(`
+                                          CREATE TABLE IF NOT EXISTS recycle_bin (
+                                            id TEXT PRIMARY KEY,
+                                            entity_type TEXT NOT NULL,
+                                            entity_name TEXT NOT NULL,
+                                            payload TEXT NOT NULL,
+                                            deleted_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+                                            deleted_at TEXT NOT NULL,
+                                            expires_at TEXT NOT NULL
+                                          )
+                                        `, (rbErr) => {
+                                          if (rbErr) console.error('⚠️ 创建 SQLite recycle_bin 表失败:', rbErr.message);
+                                          resolve();
+                                        });
                                       });
                                     });
                                   });
@@ -622,6 +635,87 @@ async function requireProjectMember(req, res, next) {
   } catch (err) {
     console.error('RBAC 校验失败:', err.message);
     return res.status(500).json({ error: '权限校验失败，请稍后重试。' });
+  }
+}
+
+// Fine-grained RBAC requireRole middleware
+function requireRole(allowedRoles) {
+  return (req, res, next) => {
+    // If the user's project role is not allowed AND they are not a global admin
+    if (!allowedRoles.includes(req.projectRole) && req.user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'FORBIDDEN',
+        message: '您的角色权限不足以执行此操作。'
+      });
+    }
+    next();
+  };
+}
+
+// Helper to back up versions, languages or glossary tables to recycle_bin before deletion
+async function backupToRecycleBin(entityType, entityId, entityName, userId) {
+  let payload = {};
+
+  if (entityType === 'version') {
+    const version = await db.queryOne('SELECT * FROM versions WHERE id = $1', [entityId]);
+    if (!version) return;
+    const terms = await db.query('SELECT * FROM terms WHERE version_id = $1', [entityId]);
+    const snapshots = await db.query('SELECT * FROM term_snapshots WHERE version_id = $1', [entityId]);
+    payload = { version, terms, snapshots };
+  } else if (entityType === 'glossary_table') {
+    const glossaryTable = await db.queryOne('SELECT * FROM glossary_tables WHERE id = $1', [entityId]);
+    if (!glossaryTable) return;
+    const glossaryTerms = await db.query('SELECT * FROM glossary_terms WHERE table_id = $1', [entityId]);
+    payload = { glossary_table: glossaryTable, glossary_terms: glossaryTerms };
+  } else if (entityType === 'language') {
+    const language = await db.queryOne('SELECT * FROM languages WHERE id = $1', [entityId]);
+    if (!language) return;
+
+    // Backup all translations for this language name under the same project
+    const langName = language.lang_name;
+    const terms = await db.query(
+      `SELECT t.id, t.translations, t.translations_meta FROM terms t
+       JOIN versions v ON t.version_id = v.id
+       WHERE v.project_id = $1`,
+      [language.project_id]
+    );
+
+    const termTranslations = {};
+    for (const t of terms) {
+      const trans = typeof t.translations === 'string' ? JSON.parse(t.translations || '{}') : (t.translations || {});
+      const meta = typeof t.translations_meta === 'string' ? JSON.parse(t.translations_meta || '{}') : (t.translations_meta || {});
+      if (trans[langName] !== undefined || meta[langName] !== undefined) {
+        termTranslations[t.id] = {
+          translation: trans[langName],
+          meta: meta[langName]
+        };
+      }
+    }
+    payload = { language, term_translations: termTranslations };
+  } else {
+    throw new Error('Unsupported entity type: ' + entityType);
+  }
+
+  const id = crypto.randomUUID();
+  const deletedAt = dbType === 'postgres' ? new Date() : new Date().toISOString();
+  
+  const expiresAtDate = new Date();
+  expiresAtDate.setDate(expiresAtDate.getDate() + 30);
+  const expiresAt = dbType === 'postgres' ? expiresAtDate : expiresAtDate.toISOString();
+
+  const payloadStr = JSON.stringify(payload);
+  if (dbType === 'postgres') {
+    await db.run(
+      `INSERT INTO recycle_bin (id, entity_type, entity_name, payload, deleted_by, deleted_at, expires_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)`,
+      [id, entityType, entityName, payloadStr, userId, deletedAt, expiresAt]
+    );
+  } else {
+    await db.run(
+      `INSERT INTO recycle_bin (id, entity_type, entity_name, payload, deleted_by, deleted_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, entityType, entityName, payloadStr, userId, deletedAt, expiresAt]
+    );
   }
 }
 
@@ -815,8 +909,14 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
   }
 
   try {
-    // R2: RBAC — 校验版本归属（新建版本时跳过校验，因为版本尚未关联项目）
-    const existingVer = await db.queryOne('SELECT id FROM versions WHERE id = $1', [tableId]);
+    // R2: RBAC — 校验版本归属并校验角色限制 (只读审核 Viewer 角色不可修改)
+    const existingVer = await db.queryOne(
+      'SELECT pm.role FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
+      [tableId, req.user.id]
+    );
+    if (existingVer && existingVer.role === 'viewer' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权导入或修改词条。' });
+    }
     if (existingVer && !(await requireVersionOwnership(req.user.id, tableId))) {
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权操作此数据表。' });
     }
@@ -989,7 +1089,14 @@ app.post('/api/versions/sync-terms', authenticateToken, heavyOperationLimiter, a
   }
 
   try {
-    // R2: RBAC — 校验源和目标版本的项目归属
+    // R2: RBAC — 校验源和目标版本的项目归属并限制 Viewer 只读
+    const targetVerMembership = await db.queryOne(
+      'SELECT pm.role FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
+      [targetVersionId, req.user.id]
+    );
+    if (targetVerMembership && targetVerMembership.role === 'viewer' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权合并同步词条。' });
+    }
     if (!(await requireVersionOwnership(req.user.id, sourceVersionId)) || !(await requireVersionOwnership(req.user.id, targetVersionId))) {
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权操作此数据表。' });
     }
@@ -1169,7 +1276,7 @@ app.delete('/api/logs', authenticateToken, async (req, res) => {
 });
 
 // 9. POST /api/versions - 创建固件新版本 (多人协同新增，支持翻译继承)
-app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectMember, async (req, res) => {
+app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectMember, requireRole(['owner', 'editor']), async (req, res) => {
   const { projectId } = req.params;
   const { versionName, baseVersionId } = req.body;
   if (!versionName) {
@@ -1248,7 +1355,14 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
   }
 
   try {
-    // R2: RBAC — 校验词条归属
+    // R2: RBAC — 校验词条归属与项目角色
+    const termMembership = await db.queryOne(
+      'SELECT pm.role FROM terms t JOIN versions v ON t.version_id = v.id JOIN project_members pm ON v.project_id = pm.project_id WHERE t.id = $1 AND pm.user_id = $2',
+      [termId, req.user.id]
+    );
+    if (termMembership && termMembership.role === 'viewer' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权修改词条。' });
+    }
     if (!(await requireTermOwnership(req.user.id, termId))) {
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此词条。' });
     }
@@ -1344,12 +1458,16 @@ app.put('/api/terms/:termId/lock', authenticateToken, async (req, res) => {
   const { termId } = req.params;
   const { isLocked } = req.body; // boolean
 
-  // Role verification: Admin or Owner role required to lock/unlock
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'FORBIDDEN', message: '只有管理员或所有者可以锁定/解锁词条。' });
-  }
-
   try {
+    // Role verification: Admin or Owner role required to lock/unlock
+    const memberRoleRes = await db.queryOne(
+      'SELECT pm.role FROM terms t JOIN versions v ON t.version_id = v.id JOIN project_members pm ON v.project_id = pm.project_id WHERE t.id = $1 AND pm.user_id = $2',
+      [termId, req.user.id]
+    );
+    const projectRole = memberRoleRes ? memberRoleRes.role : null;
+    if (req.user.role !== 'admin' && projectRole !== 'owner') {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '只有项目所有者或系统管理员可以锁定/解锁词条。' });
+    }
     const term = await db.queryOne('SELECT * FROM terms WHERE id = $1', [termId]);
     if (!term) {
       return res.status(404).json({ error: '词条不存在' });
@@ -2021,7 +2139,7 @@ app.post('/api/terms/batch-approve', authenticateToken, async (req, res) => {
 // ====================================================
 
 // 11. POST /api/projects/:projectId/dify - 保存项目的 Dify 配置
-app.post('/api/projects/:projectId/dify', authenticateToken, requireProjectMember, async (req, res) => {
+app.post('/api/projects/:projectId/dify', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
   const { projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
@@ -2070,6 +2188,229 @@ app.post('/api/projects/:projectId/dify', authenticateToken, requireProjectMembe
   }
 });
 
+// GET /api/projects/:projectId/role - 获取当前用户在该项目中的角色
+app.get('/api/projects/:projectId/role', authenticateToken, requireProjectMember, async (req, res) => {
+  res.json({ role: req.projectRole });
+});
+
+// GET /api/projects/:projectId/recycle-bin - 获取回收站数据列表
+app.get('/api/projects/:projectId/recycle-bin', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
+  try {
+    // 自动清理过期数据
+    const cleanupSql = dbType === 'postgres'
+      ? `DELETE FROM recycle_bin WHERE expires_at < NOW()`
+      : `DELETE FROM recycle_bin WHERE datetime(expires_at) < datetime('now')`;
+    await db.run(cleanupSql);
+
+    // 查询回收站内条目，关联删除人的姓名
+    const items = await db.query(
+      `SELECT r.id, r.entity_type, r.entity_name, r.deleted_at, r.expires_at, u.name AS deleted_by_name
+       FROM recycle_bin r
+       LEFT JOIN users u ON r.deleted_by = u.id
+       ORDER BY r.deleted_at DESC`
+    );
+
+    res.json(items);
+  } catch (err) {
+    console.error('获取回收站数据失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// POST /api/recycle-bin/:id/restore - 恢复回收站数据
+app.post('/api/recycle-bin/:id/restore', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const item = await db.queryOne('SELECT * FROM recycle_bin WHERE id = $1', [id]);
+    if (!item) {
+      return res.status(404).json({ error: '回收站条目未找到' });
+    }
+
+    // RBAC: Verify project owner permission or global admin
+    const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload;
+    let projectId = '';
+    if (item.entity_type === 'version' && payload.version) {
+      projectId = payload.version.project_id;
+    } else if (item.entity_type === 'glossary_table' && payload.glossary_table) {
+      projectId = payload.glossary_table.project_id;
+    } else if (item.entity_type === 'language' && payload.language) {
+      projectId = payload.language.project_id;
+    }
+
+    if (!projectId) {
+      return res.status(400).json({ error: '无法解析的项目归属信息，恢复失败。' });
+    }
+
+    // Check project member role
+    const member = await db.queryOne(
+      'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+      [projectId, req.user.id]
+    );
+    if ((!member || member.role !== 'owner') && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '只有项目所有者或系统管理员能够执行恢复操作。' });
+    }
+
+    await db.transaction(async (tx) => {
+      if (item.entity_type === 'version') {
+        const { version, terms, snapshots } = payload;
+        // Insert version
+        await tx.run(
+          'INSERT INTO versions (id, project_id, version_name, created_at, created_by) VALUES ($1, $2, $3, $4, $5)',
+          [version.id, version.project_id, version.version_name, version.created_at, version.created_by]
+        );
+
+        // Insert terms
+        for (const term of terms) {
+          const lockedVal = dbType === 'postgres' ? (term.is_locked ? true : false) : (term.is_locked ? 1 : 0);
+          const translationsStr = typeof term.translations === 'string' ? term.translations : JSON.stringify(term.translations || {});
+          const metaStr = typeof term.translations_meta === 'string' ? term.translations_meta : JSON.stringify(term.translations_meta || {});
+          
+          if (dbType === 'postgres') {
+            await tx.run(
+              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, updated_by, is_locked, locked_by, locked_at, status, reject_reason)
+               VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16)`,
+              [term.id, term.version_id, term.kw, term.context, term.owner, term.zh_cn, translationsStr, metaStr, term.created_at, term.updated_at, term.updated_by, lockedVal, term.locked_by, term.locked_at, term.status, term.reject_reason]
+            );
+          } else {
+            await tx.run(
+              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, updated_by, is_locked, locked_by, locked_at, status, reject_reason)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+              [term.id, term.version_id, term.kw, term.context, term.owner, term.zh_cn, translationsStr, metaStr, term.created_at, term.updated_at, term.updated_by, lockedVal, term.locked_by, term.locked_at, term.status, term.reject_reason]
+            );
+          }
+        }
+
+        // Insert snapshots
+        for (const snap of snapshots) {
+          const translationsStr = typeof snap.translations === 'string' ? snap.translations : JSON.stringify(snap.translations || {});
+          if (dbType === 'postgres') {
+            await tx.run(
+              `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
+               VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+              [snap.id, snap.term_id, snap.version_id, snap.kw, snap.zh_cn, translationsStr, snap.created_at, snap.created_by]
+            );
+          } else {
+            await tx.run(
+              `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [snap.id, snap.term_id, snap.version_id, snap.kw, snap.zh_cn, translationsStr, snap.created_at, snap.created_by]
+            );
+          }
+        }
+      } else if (item.entity_type === 'glossary_table') {
+        const { glossary_table, glossary_terms } = payload;
+        const headersStr = typeof glossary_table.headers === 'string' ? glossary_table.headers : JSON.stringify(glossary_table.headers || []);
+
+        await tx.run(
+          'INSERT INTO glossary_tables (id, project_id, table_name, created_at, headers) VALUES ($1, $2, $3, $4, $5)',
+          [glossary_table.id, glossary_table.project_id, glossary_table.table_name, glossary_table.created_at, headersStr]
+        );
+
+        for (const term of glossary_terms) {
+          const fieldsStr = typeof term.fields === 'string' ? term.fields : JSON.stringify(term.fields || {});
+          if (dbType === 'postgres') {
+            await tx.run(
+              'INSERT INTO glossary_terms (id, table_id, cn_term, en_term, description, created_at, fields) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)',
+              [term.id, term.table_id, term.cn_term, term.en_term, term.description, term.created_at, fieldsStr]
+            );
+          } else {
+            await tx.run(
+              'INSERT INTO glossary_terms (id, table_id, cn_term, en_term, description, created_at, fields) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+              [term.id, term.table_id, term.cn_term, term.en_term, term.description, term.created_at, fieldsStr]
+            );
+          }
+        }
+      } else if (item.entity_type === 'language') {
+        const { language, term_translations } = payload;
+        
+        const existingLang = await tx.queryOne(
+          'SELECT id FROM languages WHERE project_id = $1 AND lang_code = $2',
+          [language.project_id, language.lang_code]
+        );
+        if (existingLang) {
+          throw new Error(`语种代码 [${language.lang_code}] 已存在，无法恢复！`);
+        }
+
+        await tx.run(
+          'INSERT INTO languages (id, project_id, lang_code, lang_name, display_order, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [language.id, language.project_id, language.lang_code, language.lang_name, language.display_order, language.created_at]
+        );
+
+        const langName = language.lang_name;
+        for (const [termId, data] of Object.entries(term_translations)) {
+          const term = await tx.queryOne('SELECT translations, translations_meta FROM terms WHERE id = $1', [termId]);
+          if (term) {
+            const trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
+            const meta = typeof term.translations_meta === 'string' ? JSON.parse(term.translations_meta || '{}') : (term.translations_meta || {});
+            
+            trans[langName] = data.translation;
+            if (data.meta) {
+              meta[langName] = data.meta;
+            }
+
+            if (dbType === 'postgres') {
+              await tx.run(
+                'UPDATE terms SET translations = $1::jsonb, translations_meta = $2::jsonb WHERE id = $3',
+                [JSON.stringify(trans), JSON.stringify(meta), termId]
+              );
+            } else {
+              await tx.run(
+                'UPDATE terms SET translations = $1, translations_meta = $2 WHERE id = $3',
+                [JSON.stringify(trans), JSON.stringify(meta), termId]
+              );
+            }
+          }
+        }
+      }
+
+      // Delete from recycle_bin
+      await tx.run('DELETE FROM recycle_bin WHERE id = $1', [id]);
+    });
+
+    res.json({ message: '数据已成功一键恢复！' });
+  } catch (err) {
+    console.error('还原数据失败:', err);
+    res.status(500).json({ error: err.message || '还原数据失败，请稍后重试。' });
+  }
+});
+
+// DELETE /api/recycle-bin/:id - 彻底删除数据
+app.delete('/api/recycle-bin/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const item = await db.queryOne('SELECT * FROM recycle_bin WHERE id = $1', [id]);
+    if (!item) {
+      return res.status(404).json({ error: '回收站条目未找到' });
+    }
+
+    const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload;
+    let projectId = '';
+    if (item.entity_type === 'version' && payload.version) {
+      projectId = payload.version.project_id;
+    } else if (item.entity_type === 'glossary_table' && payload.glossary_table) {
+      projectId = payload.glossary_table.project_id;
+    } else if (item.entity_type === 'language' && payload.language) {
+      projectId = payload.language.project_id;
+    }
+
+    if (projectId) {
+      const member = await db.queryOne(
+        'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+        [projectId, req.user.id]
+      );
+      if ((!member || member.role !== 'owner') && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '只有项目所有者或系统管理员能够彻底删除回收站条目。' });
+      }
+    }
+
+    await db.run('DELETE FROM recycle_bin WHERE id = $1', [id]);
+    res.json({ message: '数据已从回收站彻底销毁。' });
+  } catch (err) {
+    console.error('彻底删除失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
 // 12. GET /api/projects/:projectId/dify - 获取项目的 Dify 配置状态 (不返回明文 Key)
 app.get('/api/projects/:projectId/dify', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
@@ -2087,7 +2428,7 @@ app.get('/api/projects/:projectId/dify', authenticateToken, requireProjectMember
 });
 
 // 13. POST /api/projects/:projectId/ai-translate - 后端中转 Dify AI 翻译代理
-app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProjectMember, heavyOperationLimiter, async (req, res) => {
+app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProjectMember, requireRole(['owner', 'editor']), heavyOperationLimiter, async (req, res) => {
   const { projectId } = req.params;
   const { inputs } = req.body;
   const userId = req.user?.id || null;
@@ -2240,7 +2581,7 @@ app.get('/api/projects/:projectId/languages', authenticateToken, requireProjectM
 });
 
 // 15. POST /api/projects/:projectId/languages - 添加新的语种
-app.post('/api/projects/:projectId/languages', authenticateToken, requireProjectMember, async (req, res) => {
+app.post('/api/projects/:projectId/languages', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
   const { projectId } = req.params;
   const { langCode, langName } = req.body;
 
@@ -2285,7 +2626,7 @@ app.post('/api/projects/:projectId/languages', authenticateToken, requireProject
 });
 
 // 16. PUT /api/projects/:projectId/languages/:langId - 修改语种（支持重命名及翻译字段迁移）
-app.put('/api/projects/:projectId/languages/:langId', authenticateToken, requireProjectMember, async (req, res) => {
+app.put('/api/projects/:projectId/languages/:langId', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
   const { projectId, langId } = req.params;
   const { langName, displayOrder } = req.body;
 
@@ -2353,7 +2694,7 @@ app.put('/api/projects/:projectId/languages/:langId', authenticateToken, require
 });
 
 // 17. DELETE /api/projects/:projectId/languages/:langId - 删除语种
-app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, requireProjectMember, async (req, res) => {
+app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
   const { projectId, langId } = req.params;
   try {
     const lang = await db.queryOne('SELECT * FROM languages WHERE id = $1', [langId]);
@@ -2362,6 +2703,9 @@ app.delete('/api/projects/:projectId/languages/:langId', authenticateToken, requ
     }
 
     const oldName = lang.lang_name;
+
+    // Backup to Recycle Bin
+    await backupToRecycleBin('language', langId, lang.lang_name, req.user.id);
 
     await db.transaction(async (tx) => {
       // 清除所有关联词条的该语种翻译缓存
@@ -2628,7 +2972,7 @@ app.get('/api/dashboard/ai-usage', authenticateToken, async (req, res) => {
 // ====================================================
 
 // 19. DELETE /api/projects/:projectId/versions/:versionId - 删除数据表（固件大表）
-app.delete('/api/projects/:projectId/versions/:versionId', authenticateToken, requireProjectMember, async (req, res) => {
+app.delete('/api/projects/:projectId/versions/:versionId', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
   const { projectId, versionId } = req.params;
   try {
     const ver = await db.queryOne('SELECT id, version_name FROM versions WHERE id = $1 AND project_id = $2', [versionId, projectId]);
@@ -2636,15 +2980,18 @@ app.delete('/api/projects/:projectId/versions/:versionId', authenticateToken, re
       return res.status(404).json({ error: '数据表未找到' });
     }
 
+    // Backup to Recycle Bin
+    await backupToRecycleBin('version', versionId, ver.version_name, req.user.id);
+
     await db.run('DELETE FROM versions WHERE id = $1', [versionId]);
-    res.json({ message: `固件数据表 [${ver.version_name}] 已成功删除，其下的词条翻译数据已被清除。` });
+    res.json({ message: `固件数据表 [${ver.version_name}] 已成功移入回收站。` });
   } catch (err) {
     console.error('删除固件版本失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 
 // 19.5 PUT /api/projects/:projectId/versions/:versionId - 修改数据表名称
-app.put('/api/projects/:projectId/versions/:versionId', authenticateToken, requireProjectMember, async (req, res) => {
+app.put('/api/projects/:projectId/versions/:versionId', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
   const { projectId, versionId } = req.params;
   const { versionName } = req.body;
 
@@ -2696,7 +3043,7 @@ app.get('/api/projects/:projectId/glossary-tables', authenticateToken, requirePr
 });
 
 // 21. POST /api/projects/:projectId/glossary-tables - 创建新的专业词汇表
-app.post('/api/projects/:projectId/glossary-tables', authenticateToken, requireProjectMember, async (req, res) => {
+app.post('/api/projects/:projectId/glossary-tables', authenticateToken, requireProjectMember, requireRole(['owner', 'editor']), async (req, res) => {
   const { projectId } = req.params;
   const { tableName } = req.body;
   if (!tableName) {
@@ -2725,7 +3072,7 @@ app.post('/api/projects/:projectId/glossary-tables', authenticateToken, requireP
 });
 
 // 22. DELETE /api/projects/:projectId/glossary-tables/:tableId - 删除专业词汇大表
-app.delete('/api/projects/:projectId/glossary-tables/:tableId', authenticateToken, requireProjectMember, async (req, res) => {
+app.delete('/api/projects/:projectId/glossary-tables/:tableId', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
   const { projectId, tableId } = req.params;
   try {
     const tbl = await db.queryOne('SELECT id, table_name FROM glossary_tables WHERE id = $1 AND project_id = $2', [tableId, projectId]);
@@ -2733,8 +3080,11 @@ app.delete('/api/projects/:projectId/glossary-tables/:tableId', authenticateToke
       return res.status(404).json({ error: '词汇表未找到' });
     }
 
+    // Backup to Recycle Bin
+    await backupToRecycleBin('glossary_table', tableId, tbl.table_name, req.user.id);
+
     await db.run('DELETE FROM glossary_tables WHERE id = $1', [tableId]);
-    res.json({ message: `专业词汇表 [${tbl.table_name}] 及其内所有术语已被彻底清除。` });
+    res.json({ message: `专业词汇表 [${tbl.table_name}] 已成功移入回收站。` });
   } catch (err) {
     console.error('删除词汇表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }

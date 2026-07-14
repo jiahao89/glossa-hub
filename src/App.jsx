@@ -97,6 +97,26 @@ export default function App() {
   // Dify connection status
   const [difyConnected, setDifyConnected] = useState(false);
 
+  // Project Role (RBAC) state
+  const [projectRole, setProjectRole] = useState(() => localStorage.getItem('project_role') || 'viewer');
+
+  // Fetch project role whenever token changes
+  useEffect(() => {
+    if (!token) return;
+    async function loadProjectRole() {
+      try {
+        const data = await apiFetch('/api/projects/proj-default/role');
+        if (data && data.role) {
+          setProjectRole(data.role);
+          localStorage.setItem('project_role', data.role);
+        }
+      } catch (err) {
+        console.error('加载项目角色失败:', err);
+      }
+    }
+    loadProjectRole();
+  }, [token]);
+
   // Cell highlight modified state
   const [modifiedCells, setModifiedCells] = useState(() => safeGetLocalStorage('glossahub_modified_cells', {}));
 
@@ -186,6 +206,7 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('project_role');
     setToken('');
     setUser(null);
     window.location.reload();
@@ -412,7 +433,10 @@ export default function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
                   <span style={{ fontSize: '0.78rem', fontWeight: '600' }}>{user?.name || '协作成员'}</span>
                   <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '1px' }}>
-                    <ShieldCheck size={10} style={{ color: 'var(--green)' }} /> 管理员
+                    <ShieldCheck size={10} style={{ color: 'var(--green)' }} /> {
+                      projectRole === 'owner' ? '所有者' :
+                      projectRole === 'editor' ? '译员' : '只读审核'
+                    }{user?.role === 'admin' ? ' (超级)' : ''}
                   </span>
                 </div>
               </div>
@@ -492,7 +516,7 @@ export default function App() {
           <div key={activeTab} className="tab-fade-in" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
             <Suspense fallback={<SkeletonTab />}>
             {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
-            {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} />}
+            {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} projectRole={projectRole} />}
             {activeTab === 'translate' && (
               <TranslationTab
                 difyConnected={difyConnected}
@@ -501,13 +525,15 @@ export default function App() {
                 setModifiedCells={setModifiedCells}
                 selectedTableId={selectedTableId}
                 setSelectedTableId={setSelectedTableId}
+                projectRole={projectRole}
+                userRole={user?.role}
               />
             )}
-            {activeTab === 'compare' && <ComparisonTab />}
-            {activeTab === 'glossary' && <GlossaryTab />}
-            {activeTab === 'languages' && <LanguagesTab />}
-            {activeTab === 'logs' && <LogsTab />}
-            {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} />}
+            {activeTab === 'compare' && <ComparisonTab projectRole={projectRole} />}
+            {activeTab === 'glossary' && <GlossaryTab projectRole={projectRole} />}
+            {activeTab === 'languages' && <LanguagesTab projectRole={projectRole} />}
+            {activeTab === 'logs' && <LogsTab projectRole={projectRole} />}
+            {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} projectRole={projectRole} />}
             {activeTab === 'guide' && (
               <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <iframe
@@ -523,7 +549,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="footer" style={{ height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0, fontSize: '0.72rem' }}>
-          <div>GlossaHub v1.0 © Magene translation platform</div>
+          <div>GlossaHub v1.1 © Magene translation platform</div>
         </footer>
 
       </div>

@@ -223,3 +223,16 @@ CREATE INDEX IF NOT EXISTS idx_pg_terms_version_id ON terms(version_id);
 CREATE INDEX IF NOT EXISTS idx_pg_logs_user_id ON logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_pg_languages_project_id ON languages(project_id);
 CREATE INDEX IF NOT EXISTS idx_pg_glossary_terms_table_id ON glossary_terms(table_id);
+
+-- 16. Recycle Bin Table
+CREATE TABLE IF NOT EXISTS recycle_bin (
+    id VARCHAR(64) PRIMARY KEY,
+    entity_type TEXT NOT NULL, -- 'version' | 'glossary_table' | 'language'
+    entity_name TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    deleted_by VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pg_recycle_bin_expires_at ON recycle_bin(expires_at);
+

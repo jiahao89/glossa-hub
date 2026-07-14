@@ -5,7 +5,7 @@ import { Plus, Edit2, Trash2, ArrowUp, ArrowDown, Globe, AlertTriangle } from 'l
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
 
-export default function LanguagesTab() {
+export default function LanguagesTab({ projectRole }) {
   const toast = useToast();
   const [languages, setLanguages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -177,14 +177,16 @@ export default function LanguagesTab() {
           <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em' }}>语种字典管理</h2>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>定义与配置本翻译系统支持的翻译目标语种。顺序将决定智能矩阵及版本比对时的列表呈现顺序。</p>
         </div>
-        <button 
-          onClick={() => setAddModalOpen(true)}
-          className="btn btn-primary"
-          style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
-        >
-          <Plus size={16} />
-          <span>新增目标语种</span>
-        </button>
+        {projectRole === 'owner' && (
+          <button 
+            onClick={() => setAddModalOpen(true)}
+            className="btn btn-primary"
+            style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
+          >
+            <Plus size={16} />
+            <span>新增目标语种</span>
+          </button>
+        )}
       </div>
 
       {/* Safety Alert */}
@@ -229,18 +231,18 @@ export default function LanguagesTab() {
                     <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
                       <button 
                         onClick={() => handleMoveOrder(lang, -1)}
-                        disabled={idx === 0}
+                        disabled={idx === 0 || projectRole !== 'owner'}
                         className="icon-btn"
-                        style={{ padding: '2px', opacity: idx === 0 ? 0.3 : 1 }}
+                        style={{ padding: '2px', opacity: (idx === 0 || projectRole !== 'owner') ? 0.3 : 1 }}
                         title="上移"
                       >
                         <ArrowUp size={14} />
                       </button>
                       <button 
                         onClick={() => handleMoveOrder(lang, 1)}
-                        disabled={idx === languages.length - 1}
+                        disabled={idx === languages.length - 1 || projectRole !== 'owner'}
                         className="icon-btn"
-                        style={{ padding: '2px', opacity: idx === languages.length - 1 ? 0.3 : 1 }}
+                        style={{ padding: '2px', opacity: (idx === languages.length - 1 || projectRole !== 'owner') ? 0.3 : 1 }}
                         title="下移"
                         aria-label="下移"
                       >
@@ -274,23 +276,29 @@ export default function LanguagesTab() {
                   {/* Actions */}
                   <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                      <button 
-                        onClick={() => handleOpenRename(lang)}
-                        className="btn btn-secondary" 
-                        style={{ height: '26px', padding: '0 0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
-                      >
-                        <Edit2 size={11} />
-                        <span>重命名</span>
-                      </button>
-                      
-                      <button 
-                        onClick={() => handleDeleteLanguage(lang)}
-                        className="btn btn-secondary" 
-                        style={{ height: '26px', padding: '0 0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem', color: 'var(--red)', borderColor: 'rgba(239,68,68,0.2)' }}
-                      >
-                        <Trash2 size={11} />
-                        <span>删除</span>
-                      </button>
+                      {projectRole === 'owner' ? (
+                        <>
+                          <button 
+                            onClick={() => handleOpenRename(lang)}
+                            className="btn btn-secondary" 
+                            style={{ height: '26px', padding: '0 0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                          >
+                            <Edit2 size={11} />
+                            <span>重命名</span>
+                          </button>
+                          
+                          <button 
+                            onClick={() => handleDeleteLanguage(lang)}
+                            className="btn btn-secondary" 
+                            style={{ height: '26px', padding: '0 0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem', color: 'var(--red)', borderColor: 'rgba(239,68,68,0.2)' }}
+                          >
+                            <Trash2 size={11} />
+                            <span>删除</span>
+                          </button>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>只读 (仅限Owner)</span>
+                      )}
                     </div>
                   </td>
 

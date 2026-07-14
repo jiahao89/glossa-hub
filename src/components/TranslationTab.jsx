@@ -30,7 +30,9 @@ export default function TranslationTab({
   modifiedCells = {},
   setModifiedCells = () => {},
   selectedTableId: propSelectedTableId,
-  setSelectedTableId: propSetSelectedTableId
+  setSelectedTableId: propSetSelectedTableId,
+  projectRole = 'viewer',
+  userRole = 'user'
 }) {
   // 全局 Toast 通知（替代 alert 弹窗）
   const toast = useToast();
@@ -2150,40 +2152,48 @@ export default function TranslationTab({
         <div className="toolbar-right">
           {/* 常规操作组 */}
           <div className="toolbar-group">
-            <button onClick={() => { setAddTargetTableId(selectedTableId); setAddModalOpen(true); }} className="btn btn-secondary">
-              <Plus size={14} /> 新增
-            </button>
-            <button onClick={() => { setBatchAddModalOpen(true); initBatchAddRows(); }} className="btn btn-secondary">
-              <Layers size={14} /> 批量新增
-            </button>
-            <button onClick={handleDataClean} className="btn btn-secondary" title="清除无 KW 或无中文的空记录">
-              <Trash2 size={14} /> 数据清理
-            </button>
-            <button onClick={handleTriggerImport} className="btn btn-secondary" title="导入 CSV">
-              <FileInput size={14} /> 导入
-            </button>
+            {projectRole !== 'viewer' && (
+              <>
+                <button onClick={() => { setAddTargetTableId(selectedTableId); setAddModalOpen(true); }} className="btn btn-secondary">
+                  <Plus size={14} /> 新增
+                </button>
+                <button onClick={() => { setBatchAddModalOpen(true); initBatchAddRows(); }} className="btn btn-secondary">
+                  <Layers size={14} /> 批量新增
+                </button>
+                <button onClick={handleDataClean} className="btn btn-secondary" title="清除无 KW 或无中文的空记录">
+                  <Trash2 size={14} /> 数据清理
+                </button>
+                <button onClick={handleTriggerImport} className="btn btn-secondary" title="导入 CSV">
+                  <FileInput size={14} /> 导入
+                </button>
+              </>
+            )}
             <button onClick={handleExportXLS} className="btn btn-secondary" title="导出 XLS">
               <FileOutput size={14} /> 导出xls
             </button>
           </div>
 
           {/* 翻译操作组 */}
-          <div className="toolbar-divider" />
-          <div className="toolbar-group">
-            <button onClick={handleOpenBatchTranslate} className="btn btn-primary">
-              <RefreshCw size={14} /> 批量翻译
-            </button>
-            <button onClick={() => { setSyncInheritSourceId(''); setSyncInheritOpen(true); }} className="btn btn-secondary" title="从其他大表继承补全缺失翻译">
-              <Layers size={14} /> 继承翻译
-            </button>
-          </div>
-
-          {/* 选中操作组 —— 仅在有选中时显示 */}
-          {selectedRecordIds.size > 0 && (
+          {projectRole !== 'viewer' && (
             <>
               <div className="toolbar-divider" />
               <div className="toolbar-group">
-                {currentUser?.role === 'admin' && (
+                <button onClick={handleOpenBatchTranslate} className="btn btn-primary">
+                  <RefreshCw size={14} /> 批量翻译
+                </button>
+                <button onClick={() => { setSyncInheritSourceId(''); setSyncInheritOpen(true); }} className="btn btn-secondary" title="从其他大表继承补全缺失翻译">
+                  <Layers size={14} /> 继承翻译
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* 选中操作组 —— 仅在有选中时显示 */}
+          {selectedRecordIds.size > 0 && projectRole !== 'viewer' && (
+            <>
+              <div className="toolbar-divider" />
+              <div className="toolbar-group">
+                {(currentUser?.role === 'admin' || projectRole === 'owner') && (
                   <button
                     onClick={() => { setBatchApproveStatus('APPROVED'); setBatchApproveRejectReason(''); setBatchApproveOpen(true); }}
                     className="toolbar-action-btn is-success"
@@ -2337,23 +2347,23 @@ export default function TranslationTab({
                         ) : isLocked ? (
                           <Lock 
                             size={12} 
-                            style={{ color: 'var(--red)', cursor: currentUser?.role === 'admin' ? 'pointer' : 'not-allowed' }} 
+                            style={{ color: 'var(--red)', cursor: (currentUser?.role === 'admin' || projectRole === 'owner') ? 'pointer' : 'not-allowed' }} 
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (currentUser?.role === 'admin') handleToggleRowLock(recId, true);
+                              if (currentUser?.role === 'admin' || projectRole === 'owner') handleToggleRowLock(recId, true);
                             }}
-                            title="已被管理员锁定只读"
+                            title={(currentUser?.role === 'admin' || projectRole === 'owner') ? "点击解锁此行" : "已被管理员锁定只读"}
                           />
                         ) : (
                           <Unlock 
                             size={12} 
                             className="unlock-icon-hover"
-                            style={{ color: 'var(--text-muted)', opacity: 0.25, cursor: currentUser?.role === 'admin' ? 'pointer' : 'default' }} 
+                            style={{ color: 'var(--text-muted)', opacity: 0.25, cursor: (currentUser?.role === 'admin' || projectRole === 'owner') ? 'pointer' : 'default' }} 
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (currentUser?.role === 'admin') handleToggleRowLock(recId, false);
+                              if (currentUser?.role === 'admin' || projectRole === 'owner') handleToggleRowLock(recId, false);
                             }}
-                            title={currentUser?.role === 'admin' ? "点击锁定此行" : "未锁定"}
+                            title={(currentUser?.role === 'admin' || projectRole === 'owner') ? "点击锁定此行" : "未锁定"}
                           />
                         )}
                         
@@ -2478,21 +2488,36 @@ export default function TranslationTab({
                 🔒 锁定只读
               </span>
             )}
+            {projectRole === 'viewer' && (
+              <span className="diff-tag" style={{ backgroundColor: 'var(--accent)', color: '#fff', fontSize: '0.75rem', padding: '0.1rem 0.5rem' }}>
+                👁️ 只读查看
+              </span>
+            )}
           </span>}
           maxWidth="1000px"
           width="95%"
           closeDisabled={aiTranslatingSingle}
           footer={<>
-            <button onClick={() => setEditModalRecord(null)} className="btn btn-secondary" disabled={aiTranslatingSingle}>取消</button>
-            <button
-              onClick={handleSaveEdit}
-              disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
-              className="btn btn-primary"
-            >
-              保存修改
+            <button onClick={() => setEditModalRecord(null)} className="btn btn-secondary" disabled={aiTranslatingSingle}>
+              {projectRole === 'viewer' ? '关闭' : '取消'}
             </button>
+            {projectRole !== 'viewer' && (
+              <button
+                onClick={handleSaveEdit}
+                disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                className="btn btn-primary"
+              >
+                保存修改
+              </button>
+            )}
           </>}
         >
+          {projectRole === 'viewer' && (
+            <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', padding: '0.6rem 1.5rem', color: 'var(--accent)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <AlertCircle size={14} />
+              <span>您的项目角色为只读审核人员。仅可浏览数据，无法提交保存修改。</span>
+            </div>
+          )}
           {(editModalRecord.isLocked === 1 || editModalRecord.isLocked === true) && (
             <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', padding: '0.6rem 1.5rem', color: 'var(--red)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <AlertCircle size={14} />
@@ -2510,7 +2535,7 @@ export default function TranslationTab({
                       type="text" 
                       value={editModalRecord.KW} 
                       onChange={(e) => setEditModalRecord({ ...editModalRecord, KW: e.target.value })}
-                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true || projectRole === 'viewer'}
                       className="text-input"
                     />
                   </div>
@@ -2521,18 +2546,20 @@ export default function TranslationTab({
                         type="text" 
                         value={editModalRecord.中文} 
                         onChange={(e) => setEditModalRecord({ ...editModalRecord, 中文: e.target.value })}
-                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true || projectRole === 'viewer'}
                         className="text-input"
                         style={{ flex: 1 }}
                       />
-                      <button
-                        onClick={handleEditModalAiTranslate}
-                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
-                        className="btn btn-secondary"
-                        title="调用 Dify 进行 AI 自动预翻译"
-                      >
-                        {aiTranslatingSingle ? <><Loader2 className="animate-spin" size={14} /> 翻译中...</> : 'AI 智能翻译'}
-                      </button>
+                      {projectRole !== 'viewer' && (
+                        <button
+                          onClick={handleEditModalAiTranslate}
+                          disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                          className="btn btn-secondary"
+                          title="调用 Dify 进行 AI 自动预翻译"
+                        >
+                          {aiTranslatingSingle ? <><Loader2 className="animate-spin" size={14} /> 翻译中...</> : 'AI 智能翻译'}
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="form-group">
@@ -2541,7 +2568,7 @@ export default function TranslationTab({
                       type="text" 
                       value={editModalRecord.所在页面} 
                       onChange={(e) => setEditModalRecord({ ...editModalRecord, 所在页面: e.target.value })}
-                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true || projectRole === 'viewer'}
                       className="text-input"
                     />
                   </div>
@@ -2551,7 +2578,7 @@ export default function TranslationTab({
                       type="text" 
                       value={editModalRecord.字号类别} 
                       onChange={(e) => setEditModalRecord({ ...editModalRecord, 字号类别: e.target.value })}
-                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true || projectRole === 'viewer'}
                       className="text-input"
                     />
                   </div>
@@ -2569,7 +2596,7 @@ export default function TranslationTab({
                           sessionMetaRef.current[lang] = 'human'; // P1-1: 标记为人工编辑
                           setEditModalRecord({ ...editModalRecord, translations: trans });
                         }}
-                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true || projectRole === 'viewer'}
                         className="text-input"
                       />
                     </div>

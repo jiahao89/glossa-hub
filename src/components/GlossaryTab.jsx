@@ -6,7 +6,7 @@ import { apiFetch } from '../utils/api';
 import { parseCSV, arrayToCSV } from '../utils/csvHelper';
 import GlossaModal from './GlossaModal';
 
-export default function GlossaryTab() {
+export default function GlossaryTab({ projectRole }) {
   const toast = useToast();
   const [tables, setTables] = useState([]);
   const [selectedTableId, setSelectedTableId] = useState('');
@@ -358,10 +358,12 @@ export default function GlossaryTab() {
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>管理迈金骑行行业专有词汇与缩写。支持导出为 CSV 导入至 Dify 知识库。</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn btn-secondary" onClick={() => setAddTableModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Plus size={15} />
-            新建词汇表
-          </button>
+          {projectRole !== 'viewer' && (
+            <button className="btn btn-secondary" onClick={() => setAddTableModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Plus size={15} />
+              新建词汇表
+            </button>
+          )}
         </div>
       </div>
 
@@ -381,15 +383,17 @@ export default function GlossaryTab() {
           </select>
           {selectedTableId && (
             <>
-              <button 
-                onClick={handleDeleteTable}
-                className="icon-btn" 
-                style={{ color: 'var(--red)', padding: '0.4rem', marginLeft: '0.25rem' }} 
-                title="删除此词汇大表"
-                aria-label="删除此词汇大表"
-              >
-                <Trash2 size={16} />
-              </button>
+              {projectRole === 'owner' && (
+                <button 
+                  onClick={handleDeleteTable}
+                  className="icon-btn" 
+                  style={{ color: 'var(--red)', padding: '0.4rem', marginLeft: '0.25rem' }} 
+                  title="删除此词汇大表"
+                  aria-label="删除此词汇大表"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginLeft: '0.75rem', borderLeft: '1px solid var(--border-color)', paddingLeft: '0.75rem' }}>
                 共包含词条：<strong style={{ color: 'var(--accent)' }}>{terms.length}</strong> 条
               </span>
@@ -411,15 +415,19 @@ export default function GlossaryTab() {
               />
             </div>
 
-            <button onClick={() => setAddTermModal(true)} className="btn btn-primary" style={{ padding: '0.45rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}>
-              <Plus size={14} />
-              添加术语
-            </button>
+            {projectRole !== 'viewer' && (
+              <>
+                <button onClick={() => setAddTermModal(true)} className="btn btn-primary" style={{ padding: '0.45rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}>
+                  <Plus size={14} />
+                  添加术语
+                </button>
 
-            <button onClick={() => fileInputRef.current.click()} disabled={importing} className="btn btn-secondary" style={{ padding: '0.45rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}>
-              {importing ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
-              {importing ? '导入中...' : '导入 CSV'}
-            </button>
+                <button onClick={() => fileInputRef.current.click()} disabled={importing} className="btn btn-secondary" style={{ padding: '0.45rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}>
+                  {importing ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
+                  {importing ? '导入中...' : '导入 CSV'}
+                </button>
+              </>
+            )}
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -492,15 +500,19 @@ export default function GlossaryTab() {
                           );
                         })}
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          <button 
-                            onClick={() => handleDeleteTerm(term)}
-                            className="icon-btn" 
-                            style={{ color: 'var(--red)', display: 'inline-flex' }}
-                            title="删除术语"
-                            aria-label="删除术语"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {projectRole !== 'viewer' ? (
+                            <button 
+                              onClick={() => handleDeleteTerm(term)}
+                              className="icon-btn" 
+                              style={{ color: 'var(--red)', display: 'inline-flex' }}
+                              title="删除术语"
+                              aria-label="删除术语"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
                         </td>
                       </tr>
                     ))}

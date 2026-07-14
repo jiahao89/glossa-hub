@@ -4,7 +4,7 @@ import { Plus, Trash2, FileText, LayoutGrid, AlertOctagon, ArrowRight, Clock, Us
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
 
-export default function VersionsTab({ onNavigate }) {
+export default function VersionsTab({ onNavigate, projectRole }) {
   const toast = useToast();
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,10 +170,12 @@ export default function VersionsTab({ onNavigate }) {
           <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em' }}>数据表管理</h2>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>创建、删除与维护词条大表的生命周期，可一键跳转查看和编辑翻译详情。</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Plus size={16} />
-          新建数据表
-        </button>
+        {projectRole !== 'viewer' && (
+          <button className="btn btn-primary" onClick={() => setAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Plus size={16} />
+            新建数据表
+          </button>
+        )}
       </div>
 
       {error && (
@@ -228,29 +230,33 @@ export default function VersionsTab({ onNavigate }) {
                         <span>查看详情</span>
                         <ArrowRight size={12} />
                       </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingTable(table);
-                          setEditVersionName(table.name);
-                          setEditModalOpen(true);
-                        }}
-                        className="icon-btn" 
-                        style={{ color: 'var(--text-secondary)', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}
-                        title="修改数据表名称"
-                        aria-label="修改数据表名称"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button 
-                        onClick={(e) => handleDeleteTable(table, e)}
-                        className="icon-btn" 
-                        style={{ color: 'var(--red)', padding: '0.4rem', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.2)', backgroundColor: 'rgba(239, 68, 68, 0.05)' }}
-                        title="删除此固件大表"
-                        aria-label="删除此固件大表"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {projectRole === 'owner' && (
+                        <>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTable(table);
+                              setEditVersionName(table.name);
+                              setEditModalOpen(true);
+                            }}
+                            className="icon-btn" 
+                            style={{ color: 'var(--text-secondary)', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}
+                            title="修改数据表名称"
+                            aria-label="修改数据表名称"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button 
+                            onClick={(e) => handleDeleteTable(table, e)}
+                            className="icon-btn" 
+                            style={{ color: 'var(--red)', padding: '0.4rem', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.2)', backgroundColor: 'rgba(239, 68, 68, 0.05)' }}
+                            title="删除此固件大表"
+                            aria-label="删除此固件大表"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
