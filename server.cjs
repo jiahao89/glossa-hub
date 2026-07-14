@@ -599,7 +599,7 @@ function authenticateToken(req, res, next) {
 
   jwt.verify(token, EFFECTIVE_JWT_SECRET, (err, user) => {
     if (err) {
-      return res.status(403).json({ error: '无访问权限或登录已过期，请重新登录。' });
+      return res.status(401).json({ error: '无访问权限或登录已过期，请重新登录。' });
     }
     req.user = user;
     next();
