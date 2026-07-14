@@ -665,6 +665,14 @@ const writeLimiter = rateLimit({
   message: { error: '操作过于频繁，请稍后再试。' }
 });
 
+// 重型耗能操作限流 (如大表同步、AI翻译代理等)
+const heavyOperationLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 分钟
+  max: 20,                 // 限制 20 次
+  message: { error: '检测到高耗能操作过于频繁，请稍候再试。' }
+});
+
+
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
@@ -800,7 +808,7 @@ app.get('/api/tables/:tableId/records', authenticateToken, async (req, res) => {
 });
 
 // 4. POST /api/sync-table - 批量同步词条数据 (向后兼容 Bitable 缓存逻辑)
-app.post('/api/sync-table', authenticateToken, async (req, res) => {
+app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req, res) => {
   const { tableId, tableName, records } = req.body;
   if (!tableId || !tableName || !Array.isArray(records)) {
     return res.status(400).json({ error: '必须包含 tableId, tableName 和 records 数组！' });
@@ -853,16 +861,30 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
 
     // 在单个事务内批量写入，避免逐条 autocommit 导致性能极差
     const recordIds = records.map(r => r.recordId).filter(Boolean);
+    // PostgreSQL BOOLEAN 列需要用 FALSE，SQLite 使用 0
+    const lockedFalse = dbType === 'postgres' ? 'FALSE' : '0';
 
     await db.transaction(async (tx) => {
       // 清理已删除记录（在写入前执行）
-      if (records.length > 0 && recordIds.length > 0) {
-        // P1-3: 保护已锁定词条不被全量替换删除
-        const placeholders = recordIds.map((_, idx) => `$${idx + 2}`).join(',');
-        await tx.run(
-          `DELETE FROM terms WHERE version_id = $1 AND id NOT IN (${placeholders}) AND (is_locked = 0 OR is_locked IS NULL)`,
-          [tableId, ...recordIds]
+      if (records.length > 0) {
+        // 先找出数据库中该版本已有的、未锁定的所有词条 ID
+        const existingTerms = await tx.query(
+          `SELECT id FROM terms WHERE version_id = $1 AND (is_locked = ${lockedFalse} OR is_locked IS NULL)`,
+          [tableId]
         );
+        const existingIds = existingTerms.map(t => t.id);
+        const idsToDelete = existingIds.filter(id => !recordIds.includes(id));
+
+        // 分批删除以防超出 SQLite 999 变量限制
+        const chunkSize = 500;
+        for (let i = 0; i < idsToDelete.length; i += chunkSize) {
+          const chunk = idsToDelete.slice(i, i + chunkSize);
+          const placeholders = chunk.map((_, idx) => `$${idx + 2}`).join(',');
+          await tx.run(
+            `DELETE FROM terms WHERE version_id = $1 AND id IN (${placeholders})`,
+            [tableId, ...chunk]
+          );
+        }
       } else if (records.length === 0) {
         // P0-2: 安全守卫 - 拒绝空数组全量删除已有数据
         const existing = await tx.queryOne(
@@ -924,10 +946,10 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
                owner = EXCLUDED.owner,
                zh_cn = EXCLUDED.zh_cn,
                translations = EXCLUDED.translations,
-               translations_meta = COALESCE(NULLIF(EXCLUDED.translations_meta, '{}'), terms.translations_meta),
+               translations_meta = COALESCE(NULLIF(EXCLUDED.translations_meta, '{}'::jsonb), terms.translations_meta),
                updated_at = NOW(),
                updated_by = EXCLUDED.updated_by
-             WHERE terms.is_locked = 0 OR terms.is_locked IS NULL`,
+             WHERE terms.is_locked = FALSE OR terms.is_locked IS NULL`,
             [termId, tableId, kw, context, owner, zh_cn, translationsStr, transMetaStr, req.user.id]
           );
         } else {
@@ -960,7 +982,7 @@ app.post('/api/sync-table', authenticateToken, async (req, res) => {
 });
 
 // 4b. POST /api/versions/sync-terms - 版本对比一键同步合并
-app.post('/api/versions/sync-terms', authenticateToken, async (req, res) => {
+app.post('/api/versions/sync-terms', authenticateToken, heavyOperationLimiter, async (req, res) => {
   const { sourceVersionId, targetVersionId, syncActions } = req.body;
   if (!sourceVersionId || !targetVersionId || !Array.isArray(syncActions)) {
     return res.status(400).json({ error: '必须包含 sourceVersionId, targetVersionId 和 syncActions 数组！' });
@@ -2065,7 +2087,7 @@ app.get('/api/projects/:projectId/dify', authenticateToken, requireProjectMember
 });
 
 // 13. POST /api/projects/:projectId/ai-translate - 后端中转 Dify AI 翻译代理
-app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProjectMember, async (req, res) => {
+app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProjectMember, heavyOperationLimiter, async (req, res) => {
   const { projectId } = req.params;
   const { inputs } = req.body;
   const userId = req.user?.id || null;
@@ -2836,12 +2858,40 @@ app.get('/api/debug-status', authenticateToken, async (req, res) => {
 });
 
 // Start Server
+let server = null;
 initDatabase().then(() => {
   ensureIndexes();
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     console.log(`🌐 GlossaHub 协同数据日志服务已启动，监听端口: ${PORT}`);
     console.log(`📡 数据库引擎: [${dbType.toUpperCase()}]`);
   });
 }).catch(err => {
   console.error('❌ 服务器启动时初始化数据库失败:', err.message);
 });
+
+// 优雅关机 (Graceful Shutdown)
+const shutdown = async () => {
+  console.log('\n📡 正在接收到关闭信号，开始优雅关闭 GlossaHub 后端服务...');
+  if (server) {
+    server.close(() => {
+      console.log('🌐 Express Web 服务已停止接收新连接。');
+    });
+  }
+
+  try {
+    if (dbType === 'sqlite' && sqliteDb) {
+      await new Promise((resolve) => sqliteDb.close(() => resolve()));
+      console.log('💾 本地 SQLite 数据库连接已安全释放。');
+    } else if (dbType === 'postgres' && pgPool) {
+      await pgPool.end();
+      console.log('⚡ 云端 PostgreSQL 连接池已安全销毁。');
+    }
+  } catch (err) {
+    console.error('⚠️ 关闭数据库连接时发生错误:', err);
+  }
+  process.exit(0);
+};
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+

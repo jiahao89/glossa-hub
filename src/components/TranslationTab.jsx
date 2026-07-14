@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { parseCSV, arrayToCSV } from '../utils/csvHelper';
-import { apiFetch } from '../utils/api';
+import { parseCSV } from '../utils/csvHelper';
+import { apiFetch, safeGetLocalStorage } from '../utils/api';
 import { useToast } from './Toast';
 import EmptyState from './EmptyState';
 import { SkeletonTable } from './Skeleton';
@@ -103,7 +103,17 @@ export default function TranslationTab({
   });
 
   // Filter/Search State
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  // 搜索关键字防抖（250ms），避免高频重新过滤大列表造成的卡顿
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchInput);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   const [filterUntranslated, setFilterUntranslated] = useState(false);
   const [filterStatus, setFilterStatus] = useState(''); // '' | DRAFT | TRANSLATING | PENDING_REVIEW | APPROVED | REJECTED | PUBLISHED
   const [currentPage, setCurrentPage] = useState(1);
@@ -166,14 +176,7 @@ export default function TranslationTab({
   const [importDiff, setImportDiff] = useState(null); // { added: [], modified: [], unchanged: [], removed: [], csvRecords: [] }
   const [importPreviewOpen, setImportPreviewOpen] = useState(false);
 
-  const currentUser = useMemo(() => {
-    try {
-      const uStr = localStorage.getItem('user');
-      return uStr ? JSON.parse(uStr) : null;
-    } catch {
-      return null;
-    }
-  }, []);
+  const currentUser = useMemo(() => safeGetLocalStorage('user', null), []);
 
   const loadTmReferences = useCallback(async (kw) => {
     if (!kw || !selectedTableId) return;
@@ -350,6 +353,29 @@ export default function TranslationTab({
     const tableName = activeTableMeta ? activeTableMeta.name : '';
     onAddLogOriginal(action, kw, chinese, details, tableName);
   }, [onAddLogOriginal, tables, selectedTableId]);
+
+  // 映射 Dify 翻译接口常见 HTTP 错误与业务异常，提供更人性化的中文指引
+  const getFriendlyAiErrorMessage = (errMessage) => {
+    if (!errMessage) return '未知翻译错误';
+    const msgLower = errMessage.toLowerCase();
+    if (msgLower.includes('401') || msgLower.includes('unauthorized') || msgLower.includes('invalid api key') || msgLower.includes('auth')) {
+      return 'Dify 引擎认证失效，请确认管理员是否在【引擎设置】页签配置了正确的 API 密钥。';
+    }
+    if (msgLower.includes('403') || msgLower.includes('forbidden')) {
+      return '访问被拒绝 (HTTP 403)，可能是 Dify 接口权限不足或 IP 被策略限制，请确认 API Key 权限配置。';
+    }
+    if (msgLower.includes('404') || msgLower.includes('not found')) {
+      return 'Dify 工作流未找到，请确认 API 接口地址与配置路径是否正确。';
+    }
+    if (msgLower.includes('500') || msgLower.includes('internal server error')) {
+      return 'Dify 服务端异常 (HTTP 500)，可能由于其大模型系统暂不可用或服务过载，请稍后重试。';
+    }
+    if (msgLower.includes('504') || msgLower.includes('gateway timeout')) {
+      return 'Dify 服务响应超时，可能由于翻译任务过重或大模型响应延迟，请稍后重试。';
+    }
+    return errMessage;
+  };
+
 
   // Sync the latest records list to backend SQLite via /api/sync-table (full replace)
   const saveOfflineRecords = useCallback(async (tableId, recordsList) => {
@@ -596,8 +622,8 @@ export default function TranslationTab({
       const kw = getRecordValueByName(rec, 'KW');
       const zh = getRecordValueByName(rec, 'CN（中文）');
       const matchesSearch = 
-        kw.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        zh.toLowerCase().includes(searchQuery.toLowerCase());
+        kw.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) || 
+        zh.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
       
       if (!matchesSearch) return false;
 
@@ -655,7 +681,7 @@ export default function TranslationTab({
 
     return list; // fallback default sorting
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, searchQuery, filterUntranslated, filterStatus, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, TARGET_LANGUAGES]);
+  }, [records, debouncedSearchQuery, filterUntranslated, filterStatus, getRecordValueByName, sortBy, modifiedCells, recordIndexMap, TARGET_LANGUAGES]);
 
   // 分页：当筛选条件/搜索/版本变化导致总数变化时，自动重置到第 1 页
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
@@ -664,7 +690,7 @@ export default function TranslationTab({
 
   // Render-during-render pattern: detect stale page without extra useEffect cycle
   // Track the filter signature that last caused a reset
-  const filterSignature = `${selectedTableId}|${searchQuery}|${filterStatus}|${filterUntranslated}|${sortBy}|${pageSize}`;
+  const filterSignature = `${selectedTableId}|${debouncedSearchQuery}|${filterStatus}|${filterUntranslated}|${sortBy}|${pageSize}`;
   const lastFilterRef = useRef(filterSignature);
   if (lastFilterRef.current !== filterSignature) {
     lastFilterRef.current = filterSignature;
@@ -967,7 +993,7 @@ export default function TranslationTab({
       setNewTerm(prev => ({ ...prev, translations: updatedTrans }));
       showStatus('success', 'AI 自动预翻译完成，请审查！');
     } catch (err) {
-      showStatus('danger', `AI 翻译失败: ${err.message}`);
+      showStatus('danger', `AI 翻译失败: ${getFriendlyAiErrorMessage(err.message)}`);
     } finally {
       setAiTranslatingSingle(false);
     }
@@ -1082,9 +1108,15 @@ export default function TranslationTab({
         [newRecordId]: { ...addedLangs, isAdded: true }
       }));
 
-      showStatus('success', `成功新增词条 (目标版本: ${tables.find(t => t.id === addTargetTableId)?.name || '未名'})！`);
+      // 关闭弹窗 → toast 提示保存成功 → 重置表单
       setAddModalOpen(false);
       setNewTerm({ KW: '', 中文: '', 所在页面: '', 字号类别: '', translations: {} });
+      toast.success(`新增词条成功！(目标版本: ${tables.find(t => t.id === addTargetTableId)?.name || '未名'})`);
+
+      // 如果新增目标是当前选中的版本，刷新表格数据
+      if (addTargetTableId === selectedTableId) {
+        await loadTableData(selectedTableId);
+      }
     } catch (err) {
       showStatus('danger', `新增词条失败: ${err.message}`);
     } finally {
@@ -1157,7 +1189,7 @@ export default function TranslationTab({
       setBatchTranslateOpen(true);
       setBatchProgress({ total: items.length, current: 0, status: items.length > 0 ? '等待开始批量翻译' : '该版本下没有未翻译词条' });
     } catch (err) {
-      showStatus('danger', `初始化批量翻译失败: ${err.message}`);
+      showStatus('danger', `初始化批量翻译失败: ${getFriendlyAiErrorMessage(err.message)}`);
     } finally {
       setLoading(false);
     }
@@ -1171,7 +1203,7 @@ export default function TranslationTab({
       setBatchPreviewList(items);
       setBatchProgress({ total: items.length, current: 0, status: items.length > 0 ? '等待开始批量翻译' : '该版本下没有未翻译词条' });
     } catch (err) {
-      showStatus('danger', `载入目标版本词条失败: ${err.message}`);
+      showStatus('danger', `载入目标版本词条失败: ${getFriendlyAiErrorMessage(err.message)}`);
     } finally {
       setLoading(false);
     }
@@ -1533,8 +1565,8 @@ export default function TranslationTab({
       await saveOfflineRecords(batchAddTargetTableId, fullRecords);
 
       setModifiedCells(updatedCellsDict);
-      showStatus('success', `批量新增成功！共写入 ${completedRows.length} 条已翻译词条。`);
       setBatchAddModalOpen(false);
+      toast.success(`批量新增成功！共写入 ${completedRows.length} 条已翻译词条。`);
 
       if (batchAddTargetTableId === selectedTableId) {
         await loadTableData(selectedTableId);
@@ -1589,7 +1621,7 @@ export default function TranslationTab({
       setEditModalRecord(prev => ({ ...prev, translations: updatedTrans }));
       showStatus('success', 'AI 智能翻译完成，请审查并保存修改！');
     } catch (err) {
-      showStatus('danger', `AI 翻译失败: ${err.message}`);
+      showStatus('danger', `AI 翻译失败: ${getFriendlyAiErrorMessage(err.message)}`);
     } finally {
       setAiTranslatingSingle(false);
     }
@@ -2000,8 +2032,8 @@ export default function TranslationTab({
             <Search size={16} className="search-icon" />
             <input 
               type="text" 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="搜索 KW / 中文..."
               className="text-input search-input"
             />
@@ -2216,19 +2248,21 @@ export default function TranslationTab({
         ) : filteredRecords.length === 0 ? (
           <EmptyState
             icon={Search}
-            title={searchQuery || filterStatus || filterUntranslated ? '没有匹配的词条' : '当前版本暂无词条'}
+            title={debouncedSearchQuery || filterStatus || filterUntranslated ? '没有匹配的词条' : '当前版本暂无词条'}
             description={
-              searchQuery || filterStatus || filterUntranslated
+              debouncedSearchQuery || filterStatus || filterUntranslated
                 ? '当前筛选条件下没有词条，试试清除筛选条件或调整搜索关键字。'
                 : '点击右上角“新增词条”按钮，或导入 CSV 创建第一批词条。'
             }
-            actionLabel={searchQuery || filterStatus || filterUntranslated ? '清除筛选' : '新增第一条词条'}
+            actionLabel={debouncedSearchQuery || filterStatus || filterUntranslated ? '清除筛选' : '新增第一条词条'}
             onAction={() => {
-              if (searchQuery || filterStatus || filterUntranslated) {
-                setSearchQuery('');
+              if (debouncedSearchQuery || filterStatus || filterUntranslated) {
+                setSearchInput('');
+                setDebouncedSearchQuery('');
                 setFilterStatus('');
                 setFilterUntranslated(false);
               } else {
+                setAddTargetTableId(selectedTableId);
                 setAddModalOpen(true);
               }
             }}
@@ -2447,11 +2481,12 @@ export default function TranslationTab({
           </span>}
           maxWidth="1000px"
           width="95%"
+          closeDisabled={aiTranslatingSingle}
           footer={<>
-            <button onClick={() => setEditModalRecord(null)} className="btn btn-secondary">取消</button>
+            <button onClick={() => setEditModalRecord(null)} className="btn btn-secondary" disabled={aiTranslatingSingle}>取消</button>
             <button
               onClick={handleSaveEdit}
-              disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+              disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
               className="btn btn-primary"
             >
               保存修改
@@ -2475,7 +2510,7 @@ export default function TranslationTab({
                       type="text" 
                       value={editModalRecord.KW} 
                       onChange={(e) => setEditModalRecord({ ...editModalRecord, KW: e.target.value })}
-                      disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
                       className="text-input"
                     />
                   </div>
@@ -2486,7 +2521,7 @@ export default function TranslationTab({
                         type="text" 
                         value={editModalRecord.中文} 
                         onChange={(e) => setEditModalRecord({ ...editModalRecord, 中文: e.target.value })}
-                        disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
                         className="text-input"
                         style={{ flex: 1 }}
                       />
@@ -2506,7 +2541,7 @@ export default function TranslationTab({
                       type="text" 
                       value={editModalRecord.所在页面} 
                       onChange={(e) => setEditModalRecord({ ...editModalRecord, 所在页面: e.target.value })}
-                      disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
                       className="text-input"
                     />
                   </div>
@@ -2516,7 +2551,7 @@ export default function TranslationTab({
                       type="text" 
                       value={editModalRecord.字号类别} 
                       onChange={(e) => setEditModalRecord({ ...editModalRecord, 字号类别: e.target.value })}
-                      disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
                       className="text-input"
                     />
                   </div>
@@ -2534,7 +2569,7 @@ export default function TranslationTab({
                           sessionMetaRef.current[lang] = 'human'; // P1-1: 标记为人工编辑
                           setEditModalRecord({ ...editModalRecord, translations: trans });
                         }}
-                        disabled={editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
                         className="text-input"
                       />
                     </div>
@@ -2777,9 +2812,10 @@ export default function TranslationTab({
           isOpen={true}
           onClose={() => setAddModalOpen(false)}
           title="新增翻译词条"
+          closeDisabled={aiTranslatingSingle}
           footer={<>
-            <button onClick={() => setAddModalOpen(false)} className="btn btn-secondary">取消</button>
-            <button onClick={handleSaveAdd} className="btn btn-primary">保存新增</button>
+            <button onClick={() => setAddModalOpen(false)} className="btn btn-secondary" disabled={aiTranslatingSingle}>取消</button>
+            <button onClick={handleSaveAdd} className="btn btn-primary" disabled={aiTranslatingSingle}>保存新增</button>
           </>}
         >
               <div className="edit-grid">
@@ -2790,6 +2826,7 @@ export default function TranslationTab({
                     onChange={(e) => setAddTargetTableId(e.target.value)}
                     className="select-input"
                     style={{ width: '100%' }}
+                    disabled={aiTranslatingSingle}
                   >
                     {tables.map(t => (
                       <option key={t.id} value={t.id}>{t.name}</option>
@@ -2803,6 +2840,7 @@ export default function TranslationTab({
                     type="text" 
                     value={newTerm.KW} 
                     onChange={(e) => setNewTerm({ ...newTerm, KW: e.target.value })}
+                    disabled={aiTranslatingSingle}
                     className="text-input"
                     placeholder="请输入大写唯一键"
                   />
@@ -2815,6 +2853,7 @@ export default function TranslationTab({
                       type="text" 
                       value={newTerm.中文} 
                       onChange={(e) => setNewTerm({ ...newTerm, 中文: e.target.value })}
+                      disabled={aiTranslatingSingle}
                       className="text-input"
                       placeholder="例如: 平均踏频"
                       style={{ flex: 1 }}
@@ -2836,6 +2875,7 @@ export default function TranslationTab({
                     type="text" 
                     value={newTerm.所在页面} 
                     onChange={(e) => setNewTerm({ ...newTerm, 所在页面: e.target.value })}
+                    disabled={aiTranslatingSingle}
                     className="text-input"
                     placeholder="如: 表盘页面"
                   />
@@ -2846,6 +2886,7 @@ export default function TranslationTab({
                     type="text" 
                     value={newTerm.字号类别} 
                     onChange={(e) => setNewTerm({ ...newTerm, 字号类别: e.target.value })}
+                    disabled={aiTranslatingSingle}
                     className="text-input"
                     placeholder="例如: H3、H5"
                   />
@@ -2863,6 +2904,7 @@ export default function TranslationTab({
                         const trans = { ...newTerm.translations, [lang]: e.target.value };
                         setNewTerm({ ...newTerm, translations: trans });
                       }}
+                      disabled={aiTranslatingSingle}
                       className="text-input"
                     />
                   </div>

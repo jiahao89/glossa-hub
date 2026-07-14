@@ -421,7 +421,18 @@ export default function ComparisonTab() {
     }
 
     const targetVerName = tables.find(t => t.id === targetTableId)?.name || '目标版本';
-    const confirmMsg = `是否确认将选中的 ${actions.length} 条差异一键合并同步到 [${targetVerName}]？\n\n(此操作会自动写入数据库并记录合并日志。)`
+    
+    // 统计各类型变更数量
+    const addedCount = actions.filter(a => a.type === 'ADD').length;
+    const modifiedCount = actions.filter(a => a.type === 'MOD').length;
+    const deletedCount = actions.filter(a => a.type === 'DEL').length;
+
+    let summaryDetail = '';
+    if (addedCount > 0) summaryDetail += ` - 新增: ${addedCount} 条\n`;
+    if (modifiedCount > 0) summaryDetail += ` - 修改: ${modifiedCount} 条\n`;
+    if (deletedCount > 0) summaryDetail += ` - 删除: ${deletedCount} 条\n`;
+
+    const confirmMsg = `⚠️ 差异合并确认 ⚠️\n\n即将向目标版本 [${targetVerName}] 一键合并同步以下变动：\n${summaryDetail}\n共计 ${actions.length} 项变更。\n\n此操作将直接写入数据库并自动记录合并日志，是否确认继续同步？`;
     if (!window.confirm(confirmMsg)) return;
 
     try {

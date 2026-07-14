@@ -26,3 +26,17 @@ export async function apiFetch(url, options = {}) {
 
   return res;
 }
+
+/**
+ * 安全读取和解析 localStorage 中的 JSON 数据
+ */
+export function safeGetLocalStorage(key, defaultValue) {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultValue;
+  } catch (err) {
+    console.warn(`读取/解析 localStorage 中的 [${key}] 失败，使用默认值:`, err);
+    return defaultValue;
+  }
+}
+

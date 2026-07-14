@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { apiFetch } from './utils/api.js';
+import { apiFetch, safeGetLocalStorage } from './utils/api.js';
 import DashboardTab from './components/DashboardTab';
 import { SkeletonTab } from './components/Skeleton';
 
@@ -74,21 +74,14 @@ export default function App() {
   
   // Auth state
   const [token, setToken] = useState(() => localStorage.getItem('token') || '');
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+   const [user, setUser] = useState(() => safeGetLocalStorage('user', null));
 
   // Multi-tab sync: update user state when storage changes in another tab
   useEffect(() => {
     const loadUser = () => {
       const stored = localStorage.getItem('user');
       if (stored) {
-        try { setUser(JSON.parse(stored)); } catch(e) {}
+        setUser(safeGetLocalStorage('user', null));
       }
     };
     window.addEventListener('storage', loadUser);
@@ -105,14 +98,7 @@ export default function App() {
   const [difyConnected, setDifyConnected] = useState(false);
 
   // Cell highlight modified state
-  const [modifiedCells, setModifiedCells] = useState(() => {
-    try {
-      const saved = localStorage.getItem('glossahub_modified_cells');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [modifiedCells, setModifiedCells] = useState(() => safeGetLocalStorage('glossahub_modified_cells', {}));
 
   // Debounced localStorage persistence (avoids blocking main thread on every cell edit)
   useEffect(() => {

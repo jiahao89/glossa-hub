@@ -180,7 +180,7 @@ export default function LogsTab() {
     if (!rollbackTermId || !snapshotId) return;
     // R3: 二次确认
     const snap = snapshots.find(s => s.id === snapshotId);
-    const confirmMsg = `确认要将词条 [${rollbackLog?.kw}] 回退到 [${snap?.createdAt}] 的历史版本吗？\n\n回退前会自动保存当前状态作为"后悔药"。`;
+    const confirmMsg = `⚠️ 警告：回退操作确认 ⚠️\n\n确认要将词条 [${rollbackLog?.kw}] 回退到 [${snap?.createdAt}] 的历史快照状态吗？\n\n此操作会覆盖该词条当前的所有语言翻译（系统已自动生成当前最新状态的备份快照以防数据丢失，您依然可以反向回退），确认是否继续回退？`;
     if (!window.confirm(confirmMsg)) return;
     setRollingBack(snapshotId); // R4: 记录正在回退的 snapshotId
     try {
