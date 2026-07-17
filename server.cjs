@@ -2350,6 +2350,9 @@ app.post('/api/projects/:projectId/dify', authenticateToken, requireProjectMembe
 
 // GET /api/projects/:projectId/role - 获取当前用户在该项目中的角色
 app.get('/api/projects/:projectId/role', authenticateToken, requireProjectMember, async (req, res) => {
+  if (req.user.role === 'admin') {
+    return res.json({ role: 'owner' });
+  }
   res.json({ role: req.projectRole });
 });
 

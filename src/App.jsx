@@ -519,7 +519,7 @@ export default function App() {
           <div key={activeTab} className="tab-fade-in" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
             <Suspense fallback={<SkeletonTab />}>
             {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
-            {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} projectRole={projectRole} />}
+            {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
             {activeTab === 'translate' && (
               <TranslationTab
                 difyConnected={difyConnected}
@@ -528,14 +528,14 @@ export default function App() {
                 setModifiedCells={setModifiedCells}
                 selectedTableId={selectedTableId}
                 setSelectedTableId={setSelectedTableId}
-                projectRole={projectRole}
+                projectRole={user?.role === 'admin' ? 'owner' : projectRole}
               />
             )}
-            {activeTab === 'compare' && <ComparisonTab projectRole={projectRole} />}
-            {activeTab === 'glossary' && <GlossaryTab projectRole={projectRole} />}
-            {activeTab === 'languages' && <LanguagesTab projectRole={projectRole} />}
-            {activeTab === 'logs' && <LogsTab projectRole={projectRole} />}
-            {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} projectRole={projectRole} />}
+            {activeTab === 'compare' && <ComparisonTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
+            {activeTab === 'glossary' && <GlossaryTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
+            {activeTab === 'languages' && <LanguagesTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
+            {activeTab === 'logs' && <LogsTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
+            {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
             {activeTab === 'guide' && (
               <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <iframe
