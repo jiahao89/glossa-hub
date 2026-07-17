@@ -220,11 +220,18 @@ export default function ComparisonTab() {
       // 2. Fetch Target Data (Version B - Historical Baseline)
       const targetRecords = await fetchRecordsFromTable(targetTableId);
 
-      // Create maps for efficient comparison using composite key (KW + 所在页面 + 中文) + occurrence index
+      // Create maps for efficient comparison using priority key (KW first, then 中文) + occurrence index
+      const getBaseKey = (r) => {
+        const kw = (r.KW || '').trim();
+        if (kw) return `KW|||${kw}`;
+        const zh = (r.中文 || '').trim();
+        return `ZH|||${zh}`;
+      };
+
       const sourceMap = {};
       const sourceKeyCounts = {};
       sourceRecords.forEach(r => {
-        const baseKey = `${(r.KW || '').trim()}|||${(r.所在页面 || '').trim()}|||${(r.中文 || '').trim()}`;
+        const baseKey = getBaseKey(r);
         sourceKeyCounts[baseKey] = (sourceKeyCounts[baseKey] || 0) + 1;
         const uniqueKey = `${baseKey}|||${sourceKeyCounts[baseKey]}`;
         sourceMap[uniqueKey] = r;
@@ -233,7 +240,7 @@ export default function ComparisonTab() {
       const targetMap = {};
       const targetKeyCounts = {};
       targetRecords.forEach(r => {
-        const baseKey = `${(r.KW || '').trim()}|||${(r.所在页面 || '').trim()}|||${(r.中文 || '').trim()}`;
+        const baseKey = getBaseKey(r);
         targetKeyCounts[baseKey] = (targetKeyCounts[baseKey] || 0) + 1;
         const uniqueKey = `${baseKey}|||${targetKeyCounts[baseKey]}`;
         targetMap[uniqueKey] = r;
@@ -244,7 +251,7 @@ export default function ComparisonTab() {
       // 3. Scan Source Records A (find Added and Modified in A relative to B)
       const scanSourceKeyCounts = {};
       sourceRecords.forEach(itemA => {
-        const baseKey = `${(itemA.KW || '').trim()}|||${(itemA.所在页面 || '').trim()}|||${(itemA.中文 || '').trim()}`;
+        const baseKey = getBaseKey(itemA);
         scanSourceKeyCounts[baseKey] = (scanSourceKeyCounts[baseKey] || 0) + 1;
         const uniqueKey = `${baseKey}|||${scanSourceKeyCounts[baseKey]}`;
         const itemB = targetMap[uniqueKey];
@@ -262,6 +269,20 @@ export default function ComparisonTab() {
           // Both have it -> Compare translations (Subject A vs Baseline B)
           const changes = {};
           let isModified = false;
+
+          const zhA = normalizeText(itemA.中文);
+          const zhB = normalizeText(itemB.中文);
+          if (zhA !== zhB) {
+            isModified = true;
+            changes['CN（中文）'] = { old: zhB, new: zhA };
+          }
+
+          const pageA = normalizeText(itemA.所在页面);
+          const pageB = normalizeText(itemB.所在页面);
+          if (pageA !== pageB) {
+            isModified = true;
+            changes['所在页面'] = { old: pageB, new: pageA };
+          }
           
           TARGET_LANGUAGES.forEach(lang => {
             const valA = normalizeText(itemA.translations[lang]);
@@ -287,7 +308,7 @@ export default function ComparisonTab() {
       // 4. Scan Target Records B (find Deleted in A relative to B)
       const scanTargetKeyCounts = {};
       targetRecords.forEach(itemB => {
-        const baseKey = `${(itemB.KW || '').trim()}|||${(itemB.所在页面 || '').trim()}|||${(itemB.中文 || '').trim()}`;
+        const baseKey = getBaseKey(itemB);
         scanTargetKeyCounts[baseKey] = (scanTargetKeyCounts[baseKey] || 0) + 1;
         const uniqueKey = `${baseKey}|||${scanTargetKeyCounts[baseKey]}`;
         const itemA = sourceMap[uniqueKey];
