@@ -150,6 +150,7 @@ export default function TranslationTab({
     translations: {} // { langName: value }
   });
   const [aiTranslatingSingle, setAiTranslatingSingle] = useState(false);
+  const [generatingKw, setGeneratingKw] = useState(false);
 
   // v1.2 state hooks
   const [tmReferences, setTmReferences] = useState([]);
@@ -2640,17 +2641,22 @@ export default function TranslationTab({
                       {projectRole !== 'viewer' && (
                         <button
                           onClick={async () => {
-                            const generated = await generateKWForText(editModalRecord.中文);
-                            if (generated) {
-                              setEditModalRecord(prev => ({ ...prev, KW: generated }));
-                              toast.success('KW 自动生成成功！');
+                            setGeneratingKw(true);
+                            try {
+                              const generated = await generateKWForText(editModalRecord.中文);
+                              if (generated) {
+                                setEditModalRecord(prev => ({ ...prev, KW: generated }));
+                                toast.success('KW 自动生成成功！');
+                              }
+                            } finally {
+                              setGeneratingKw(false);
                             }
                           }}
-                          disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                          disabled={generatingKw || aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
                           className="btn btn-secondary"
                           title="根据中文语义生成 KW 键名"
                         >
-                          生成 KW
+                          {generatingKw ? '生成中...' : '生成 KW'}
                         </button>
                       )}
                     </div>
@@ -2991,17 +2997,22 @@ export default function TranslationTab({
                     />
                     <button
                       onClick={async () => {
-                        const generated = await generateKWForText(newTerm.中文);
-                        if (generated) {
-                          setNewTerm(prev => ({ ...prev, KW: generated }));
-                          toast.success('KW 自动生成成功！');
+                        setGeneratingKw(true);
+                        try {
+                          const generated = await generateKWForText(newTerm.中文);
+                          if (generated) {
+                            setNewTerm(prev => ({ ...prev, KW: generated }));
+                            toast.success('KW 自动生成成功！');
+                          }
+                        } finally {
+                          setGeneratingKw(false);
                         }
                       }}
-                      disabled={aiTranslatingSingle}
+                      disabled={generatingKw || aiTranslatingSingle}
                       className="btn btn-secondary"
                       title="根据中文语义生成 KW 键名"
                     >
-                      生成 KW
+                      {generatingKw ? '生成中...' : '生成 KW'}
                     </button>
                   </div>
                 </div>
