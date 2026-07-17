@@ -658,5 +658,12 @@
     // 初始状态
     prevBtn.disabled = true;
   </script>
+  <script>
+    if (window.location.search.includes('demo=true')) {
+      var script = document.createElement('script');
+      script.src = '/demo.js';
+      document.head.appendChild(script);
+    }
+  </script>
 </body>
 </html>

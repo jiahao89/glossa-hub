@@ -867,30 +867,77 @@ export default function TranslationTab({
         }
       });
 
+      // Send single term update to backend via REST API
+      const res = await apiFetch(`/api/terms/${editModalRecord.recordId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kw: editModalRecord.KW,
+          context: editModalRecord.所在页面,
+          owner: editModalRecord.字号类别,
+          zh_cn: editModalRecord.中文,
+          translations: editModalRecord.translations,
+          translationsMeta: sessionMetaRef.current,
+          oldUpdatedAt: recordObj.updatedAt
+        })
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.message || errBody.error || `保存修改失败 (HTTP ${res.status})`);
+      }
+
+      const savedTerm = await res.json();
+
+      // Reformat savedTerm database fields to match Bitable schema used in records state
+      let trans = {};
+      try {
+        let temp = savedTerm.translations;
+        while (typeof temp === 'string' && temp.trim() !== '') {
+          temp = JSON.parse(temp);
+        }
+        if (typeof temp === 'object' && temp !== null) {
+          trans = temp;
+        }
+      } catch { trans = {}; }
+
+      let transMeta = {};
+      try {
+        let metaTemp = savedTerm.translations_meta;
+        while (typeof metaTemp === 'string' && metaTemp.trim() !== '') {
+          metaTemp = JSON.parse(metaTemp);
+        }
+        if (typeof metaTemp === 'object' && metaTemp !== null) {
+          transMeta = metaTemp;
+        }
+      } catch { transMeta = {}; }
+
+      const updatedRecObj = {
+        recordId: savedTerm.id,
+        createdAt: savedTerm.created_at,
+        updatedAt: savedTerm.updated_at,
+        isLocked: savedTerm.is_locked || 0,
+        lockedBy: savedTerm.locked_by || '',
+        lockedAt: savedTerm.locked_at || '',
+        status: savedTerm.status || 'DRAFT',
+        rejectReason: savedTerm.reject_reason || '',
+        translationsMeta: transMeta,
+        fields: {
+          KW: savedTerm.kw,
+          'CN（中文）': savedTerm.zh_cn,
+          所在页面: savedTerm.context || '',
+          字号类别: savedTerm.owner || '',
+          ...trans
+        }
+      };
+
       const updatedRecordsList = recordsRef.current.map(rec => {
         if (rec.recordId === editModalRecord.recordId) {
-          const updatedFields = { ...rec.fields };
-          TARGET_LANGUAGES.forEach(lang => {
-            updatedFields[lang] = editModalRecord.translations[lang] || '';
-          });
-          updatedFields['KW'] = editModalRecord.KW;
-          updatedFields['CN（中文）'] = editModalRecord.中文;
-          updatedFields['所在页面'] = editModalRecord.所在页面;
-          updatedFields['字号类别'] = editModalRecord.字号类别;
-          
-          return { 
-            ...rec, 
-            fields: updatedFields,
-            translationsMeta: { ...sessionMetaRef.current },
-            updatedAt: new Date().toISOString()
-          };
+          return updatedRecObj;
         }
         return rec;
       });
       setRecords(updatedRecordsList);
-
-      // Sync changes to SQLite in background
-      await saveOfflineRecords(selectedTableId, updatedRecordsList);
 
       logsList.forEach(log => {
         onAddLog('修改翻译', editModalRecord.KW, editModalRecord.中文, JSON.stringify({ field: log.lang, oldVal: log.oldVal, newVal: log.newVal }));

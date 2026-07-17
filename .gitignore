@@ -35,3 +35,7 @@ test-screenshots/
 .env.local
 .env.*
 !.env.example
+
+# Recordings & videos
+videos/
+

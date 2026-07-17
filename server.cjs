@@ -748,7 +748,7 @@ async function requireTermOwnership(userId, termId) {
 // 登录限流: 每分钟最多 5 次尝试
 const loginLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: process.env.NODE_ENV === 'production' ? 5 : 100,
   message: { error: '尝试过于频繁，请 1 分钟后再试。' }
 });
 
@@ -997,62 +997,107 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
         await tx.run('DELETE FROM terms WHERE version_id = $1', [tableId]);
       }
 
-      // 批量 upsert
-      for (const rec of records) {
-        const fields = rec.fields || {};
-        const kw = fields['KW'] || '';
-        const zh_cn = fields['CN（中文）'] || fields['中文'] || '';
-        const context = fields['所在页面'] || fields['词条所在界面（注意是界面不是模块！！）'] || '';
-        const owner = fields['字号类别'] || fields['负责人'] || '';
+      if (dbType === 'postgres') {
+        if (records.length > 0) {
+          const values = [];
+          const valuePlaceholders = [];
+          let paramIdx = 1;
 
-        const rawTranslations = {};
-        TARGET_LANGUAGES.forEach(lang => {
-          if (fields[lang] !== undefined) rawTranslations[lang] = fields[lang];
-        });
-        Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
-          if (fields[legacyKey] !== undefined) rawTranslations[legacyKey] = fields[legacyKey];
-        });
+          for (const rec of records) {
+            const fields = rec.fields || {};
+            const kw = fields['KW'] || '';
+            const zh_cn = fields['CN（中文）'] || fields['中文'] || '';
+            const context = fields['所在页面'] || fields['词条所在界面（注意是界面不是模块！！）'] || '';
+            const owner = fields['字号类别'] || fields['负责人'] || '';
 
-        // Normalize translations
-        const normalizedTrans = {};
-        for (const [key, val] of Object.entries(rawTranslations)) {
-          if (TARGET_LANGUAGES.includes(key)) {
-            normalizedTrans[key] = val;
-          } else if (LEGACY_TO_NEW_LANG_MAP[key]) {
-            normalizedTrans[LEGACY_TO_NEW_LANG_MAP[key]] = val;
-          } else {
-            normalizedTrans[key] = val;
+            const rawTranslations = {};
+            TARGET_LANGUAGES.forEach(lang => {
+              if (fields[lang] !== undefined) rawTranslations[lang] = fields[lang];
+            });
+            Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
+              if (fields[legacyKey] !== undefined) rawTranslations[legacyKey] = fields[legacyKey];
+            });
+
+            // Normalize translations
+            const normalizedTrans = {};
+            for (const [key, val] of Object.entries(rawTranslations)) {
+              if (TARGET_LANGUAGES.includes(key)) {
+                normalizedTrans[key] = val;
+              } else if (LEGACY_TO_NEW_LANG_MAP[key]) {
+                normalizedTrans[LEGACY_TO_NEW_LANG_MAP[key]] = val;
+              } else {
+                normalizedTrans[key] = val;
+              }
+            }
+
+            const translationsStr = JSON.stringify(normalizedTrans);
+            const termId = rec.recordId || crypto.randomUUID();
+            const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
+
+            valuePlaceholders.push(`($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6}::jsonb, $${paramIdx+7}::jsonb, $${paramIdx+8}, NOW())`);
+            values.push(termId, tableId, kw, context, owner, zh_cn, translationsStr, transMetaStr, req.user.id);
+            paramIdx += 9;
+          }
+
+          if (values.length > 0) {
+            const sql = `
+              INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
+              VALUES ${valuePlaceholders.join(',\n')}
+              ON CONFLICT (version_id, kw) DO UPDATE SET
+                context = EXCLUDED.context,
+                owner = EXCLUDED.owner,
+                zh_cn = EXCLUDED.zh_cn,
+                translations = EXCLUDED.translations,
+                translations_meta = COALESCE(NULLIF(EXCLUDED.translations_meta, '{}'::jsonb), terms.translations_meta),
+                updated_at = NOW(),
+                updated_by = EXCLUDED.updated_by
+              WHERE terms.is_locked = FALSE OR terms.is_locked IS NULL
+            `;
+            await tx.run(sql, values);
           }
         }
+      } else {
+        // SQLite: Keep original loop as is, because SQLite has parameter limit (999) which is easily exceeded in bulk upsert,
+        // and local SQLite has 0 network latency so loop is fast.
+        for (const rec of records) {
+          const fields = rec.fields || {};
+          const kw = fields['KW'] || '';
+          const zh_cn = fields['CN（中文）'] || fields['中文'] || '';
+          const context = fields['所在页面'] || fields['词条所在界面（注意是界面不是模块！！）'] || '';
+          const owner = fields['字号类别'] || fields['负责人'] || '';
 
-        const translationsStr = JSON.stringify(normalizedTrans);
-        const termId = rec.recordId || crypto.randomUUID();
+          const rawTranslations = {};
+          TARGET_LANGUAGES.forEach(lang => {
+            if (fields[lang] !== undefined) rawTranslations[lang] = fields[lang];
+          });
+          Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
+            if (fields[legacyKey] !== undefined) rawTranslations[legacyKey] = fields[legacyKey];
+          });
 
-        // P1-1: 翻译来源标记
-        const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
+          // Normalize translations
+          const normalizedTrans = {};
+          for (const [key, val] of Object.entries(rawTranslations)) {
+            if (TARGET_LANGUAGES.includes(key)) {
+              normalizedTrans[key] = val;
+            } else if (LEGACY_TO_NEW_LANG_MAP[key]) {
+              normalizedTrans[LEGACY_TO_NEW_LANG_MAP[key]] = val;
+            } else {
+              normalizedTrans[key] = val;
+            }
+          }
 
-        // P1-3: 跳过已锁定词条的更新
-        const existingTerm = await tx.queryOne('SELECT is_locked FROM terms WHERE id = $1', [termId]);
-        if (existingTerm && (existingTerm.is_locked === 1 || existingTerm.is_locked === true)) {
-          continue; // 已锁定词条不允许通过 sync-table 覆盖
-        }
+          const translationsStr = JSON.stringify(normalizedTrans);
+          const termId = rec.recordId || crypto.randomUUID();
 
-        if (dbType === 'postgres') {
-          await tx.run(
-            `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, NOW())
-             ON CONFLICT (version_id, kw) DO UPDATE SET
-               context = EXCLUDED.context,
-               owner = EXCLUDED.owner,
-               zh_cn = EXCLUDED.zh_cn,
-               translations = EXCLUDED.translations,
-               translations_meta = COALESCE(NULLIF(EXCLUDED.translations_meta, '{}'::jsonb), terms.translations_meta),
-               updated_at = NOW(),
-               updated_by = EXCLUDED.updated_by
-             WHERE terms.is_locked = FALSE OR terms.is_locked IS NULL`,
-            [termId, tableId, kw, context, owner, zh_cn, translationsStr, transMetaStr, req.user.id]
-          );
-        } else {
+          // P1-1: 翻译来源标记
+          const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
+
+          // P1-3: 跳过已锁定词条的更新
+          const existingTerm = await tx.queryOne('SELECT is_locked FROM terms WHERE id = $1', [termId]);
+          if (existingTerm && (existingTerm.is_locked === 1 || existingTerm.is_locked === true)) {
+            continue; // 已锁定词条不允许通过 sync-table 覆盖
+          }
+
           // SQLite: 保留现有 meta（如果新 meta 为空）
           let finalMetaStr = transMetaStr;
           if (transMetaStr === '{}') {
@@ -1427,7 +1472,7 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
         return await tx.run(
           `UPDATE terms
            SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5::jsonb, translations_meta = $6::jsonb, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
-           WHERE id = $9 AND updated_at::text = $10`,
+           WHERE id = $9 AND (date_trunc('ms', updated_at) = date_trunc('ms', $10::timestamptz) OR updated_at::text = $10)`,
           [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
         );
       } else {
