@@ -51,6 +51,96 @@ async function getEffectiveDifyConfig(projectId) {
   return { ...DEFAULT_DIFY_CONFIG, isCustom: false };
 }
 
+// Helper to generate KW from Chinese semantics using Dify (preferred) or Google Translate (fallback)
+async function generateKwHelper(projectId, text) {
+  if (!text || !text.trim()) return '';
+
+  let englishText = '';
+
+  // 1. Try Dify first if config has apiKey
+  try {
+    const config = await getEffectiveDifyConfig(projectId);
+    if (config.apiKey) {
+      const cleanBaseUrl = config.baseUrl.replace(/\/$/, '');
+      const url = `${cleanBaseUrl}/workflows/run`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`
+        },
+        body: JSON.stringify({
+          inputs: {
+            KW: 'KW_GENERATE_TEMP',
+            text: text.trim(),
+            context: '自动生成键名',
+            target_languages: 'EN（英文）'
+          },
+          response_mode: 'blocking',
+          user: 'glossahub_generate_kw'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.ok ? await response.json() : null;
+        if (data && data.status !== 'failed' && data.data?.outputs) {
+          const outputs = data.data.outputs;
+          const resultStr = outputs.result || outputs.translations;
+          if (resultStr) {
+            try {
+              const parsed = JSON.parse(resultStr);
+              const keys = Object.keys(parsed);
+              const enKey = keys.find(k => k.toLowerCase().includes('en') || k.toLowerCase().includes('英') || k.toLowerCase().includes('english'));
+              if (enKey && parsed[enKey]) {
+                englishText = parsed[enKey];
+              }
+            } catch (e) {
+              // ignore parse error
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Dify KW generation failed, falling back to Google Translate:', err.message);
+  }
+
+  // 2. Fallback to Google Translate if Dify didn't work or returned empty
+  if (!englishText) {
+    try {
+      const googleUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=${encodeURIComponent(text.trim())}`;
+      const response = await fetch(googleUrl);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data[0] && data[0][0] && data[0][0][0]) {
+          englishText = data[0][0][0];
+        }
+      }
+    } catch (err) {
+      console.error('Google Translate fallback failed:', err.message);
+    }
+  }
+
+  if (!englishText) {
+    // If all else fails, use a timestamp-based fallback
+    englishText = 'AUTO_GEN_' + Date.now();
+  }
+
+  // Format to standard KW
+  let clean = englishText
+    .replace(/[^a-zA-Z0-9\s-_]/g, '') // remove special characters
+    .trim()
+    .replace(/[\s-_]+/g, '_')        // replace spaces/hyphens with single underscore
+    .toUpperCase();
+
+  if (!clean.startsWith('KW_')) {
+    clean = 'KW_' + clean;
+  }
+  return clean;
+}
+
+
 // CORS 白名单限制
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
 app.use(cors({
@@ -1421,6 +1511,31 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'LOCKED', message: '该词条目前已被锁定，无法修改。如需变更请联系管理员解锁！' });
     }
 
+    let finalKw = (kw !== undefined ? kw : term.kw).trim();
+    if (!finalKw) {
+      const targetText = (zh_cn || term.zh_cn || '').trim();
+      if (!targetText) {
+        return res.status(400).json({ error: '中文源词和 KW 标识不能同时为空。' });
+      }
+      const versionInfo = await db.queryOne('SELECT project_id FROM versions WHERE id = $1', [term.version_id]);
+      const projectId = versionInfo?.project_id || 'proj-default';
+      finalKw = await generateKwHelper(projectId, targetText);
+    }
+
+    // Check duplicate KW (case-insensitive) in the same version
+    if (finalKw !== term.kw) {
+      const duplicate = await db.queryOne(
+        'SELECT id, zh_cn FROM terms WHERE version_id = $1 AND LOWER(kw) = LOWER($2) AND id <> $3',
+        [term.version_id, finalKw, termId]
+      );
+      if (duplicate) {
+        return res.status(409).json({
+          error: 'DUPLICATE_KW',
+          message: `无法保存！该 KW [${finalKw}] 已被当前表内其他词条占用 (中文: “${duplicate.zh_cn}”)。`
+        });
+      }
+    }
+
     let updatedTrans = '';
     const inputTrans = translations !== undefined ? translations : term.translations;
     if (typeof inputTrans === 'string') {
@@ -1442,7 +1557,7 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
     const dbTransStr = typeof term.translations === 'string' ? term.translations : JSON.stringify(term.translations || {});
     const isTransChanged = dbTransStr !== updatedTrans;
     const isZhChanged = zh_cn && term.zh_cn !== zh_cn;
-    const isKwChanged = kw && term.kw !== kw;
+    const isKwChanged = finalKw !== term.kw;
 
     let nextStatus = 'PENDING_REVIEW';
     if (req.user.role === 'admin') {
@@ -1473,14 +1588,14 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
           `UPDATE terms
            SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5::jsonb, translations_meta = $6::jsonb, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
            WHERE id = $9 AND date_trunc('ms', updated_at) = date_trunc('ms', $10::timestamptz)`,
-          [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
+          [finalKw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
         );
       } else {
         return await tx.run(
           `UPDATE terms
            SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = datetime('now'), updated_by = $8
            WHERE id = $9 AND updated_at = $10`,
-          [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
+          [finalKw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
         );
       }
     });
@@ -2554,6 +2669,24 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
     }
   } catch (err) {
     console.error('中转 AI 翻译失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// 13.1. POST /api/projects/:projectId/generate-kw - 根据中文源词生成 KW 标识
+app.post('/api/projects/:projectId/generate-kw', authenticateToken, requireProjectMember, async (req, res) => {
+  const { projectId } = req.params;
+  const { text } = req.body;
+
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: '中文源词 (text) 不能为空' });
+  }
+
+  try {
+    const generated = await generateKwHelper(projectId, text);
+    res.json({ kw: generated });
+  } catch (err) {
+    console.error('生成 KW 失败:', err);
+    res.status(500).json({ error: '生成 KW 失败，请重试。' });
   }
 });
 

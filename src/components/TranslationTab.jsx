@@ -1004,6 +1004,30 @@ export default function TranslationTab({
     return undefined;
   };
 
+  // Helper to call backend API and generate KW from Chinese
+  const generateKWForText = async (text) => {
+    if (!text || !text.trim()) {
+      toast.error('请先输入中文源词！');
+      return '';
+    }
+    try {
+      const res = await apiFetch('/api/projects/proj-default/generate-kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim() })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || err.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return data.kw || '';
+    } catch (err) {
+      toast.error(`自动生成 KW 失败: ${err.message}`);
+      return '';
+    }
+  };
+
   // AI pre-translate single term in Add Modal
   const handleSingleAiTranslate = async () => {
     if (!newTerm.中文) {
@@ -1066,21 +1090,32 @@ export default function TranslationTab({
 
   // Add Term Save
   const handleSaveAdd = async () => {
-    if (!newTerm.KW || !newTerm.中文) {
-      toast.error('KW 唯一标识和中文源词为必填项！');
+    if (!newTerm.中文) {
+      toast.error('中文源词为必填项！');
       return;
     }
 
     try {
       setLoading(true);
       
+      let finalKW = (newTerm.KW || '').trim();
+      if (!finalKW) {
+        const generated = await generateKWForText(newTerm.中文);
+        if (!generated) {
+          setLoading(false);
+          return;
+        }
+        finalKW = generated;
+        setNewTerm(prev => ({ ...prev, KW: generated }));
+      }
+      
       // Perform duplicate and synonym checks
       const existingList = await fetchTargetTableKWAndChinese(addTargetTableId);
       
       // 1. Check exact KW duplicate
-      const duplicateKWItem = existingList.find(item => item.kw.toLowerCase() === newTerm.KW.trim().toLowerCase());
+      const duplicateKWItem = existingList.find(item => item.kw.toLowerCase() === finalKW.toLowerCase());
       if (duplicateKWItem) {
-        toast.error(`无法保存！已维护相同KW词条：\n- KW: ${newTerm.KW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
+        toast.error(`无法保存！已维护相同KW词条：\n- KW: ${finalKW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
         setLoading(false);
         return;
       }
@@ -1102,7 +1137,7 @@ export default function TranslationTab({
       });
 
       if (similarItem) {
-        const proceed = window.confirm(`系统检测到有同义或相近词条：\n\n- 已存在：【${similarItem.kw}】“${similarItem.chinese}”\n- 当前新增：【${newTerm.KW}】“${newTerm.中文}”\n\n是否确认继续添加？`);
+        const proceed = window.confirm(`系统检测到有同义或相近词条：\n\n- 已存在：【${similarItem.kw}】“${similarItem.chinese}”\n- 当前新增：【${finalKW}】“${newTerm.中文}”\n\n是否确认继续添加？`);
         if (!proceed) {
           setLoading(false);
           return;
@@ -1118,7 +1153,7 @@ export default function TranslationTab({
 
       const newRecordId = crypto.randomUUID();
       const newFields = {
-        'KW': newTerm.KW,
+        'KW': finalKW,
         'CN（中文）': newTerm.中文,
         '所在页面': newTerm.所在页面 || '',
         '字号类别': newTerm.字号类别 || ''
@@ -1150,7 +1185,7 @@ export default function TranslationTab({
 
       await saveOfflineRecords(addTargetTableId, updatedRecordsList);
 
-      onAddLog('新增词条', newTerm.KW, newTerm.中文);
+      onAddLog('新增词条', finalKW, newTerm.中文);
       setModifiedCells(prev => ({
         ...prev,
         [newRecordId]: { ...addedLangs, isAdded: true }
@@ -1503,7 +1538,7 @@ export default function TranslationTab({
 
   const handleConfirmBatchAddWrite = async () => {
     const completedRows = batchAddRows.filter(row => {
-      if (!row.KW || !row.中文 || !row.所在页面) return false;
+      if (!row.中文) return false;
       return TARGET_LANGUAGES.some(lang => row.translations[lang] && row.translations[lang].trim() !== '');
     });
 
@@ -1514,27 +1549,42 @@ export default function TranslationTab({
 
     setLoading(true);
     try {
+      // 1. Auto-generate KW for rows with empty KW
+      const resolvedRows = await Promise.all(
+        completedRows.map(async row => {
+          let trimmedKW = (row.KW || '').trim();
+          if (!trimmedKW) {
+            const generated = await generateKWForText(row.中文);
+            if (!generated) {
+              throw new Error(`自动为中文 “${row.中文}” 生成 KW 失败。`);
+            }
+            trimmedKW = generated;
+          }
+          return { ...row, KW: trimmedKW };
+        })
+      );
+
       // Perform duplicate and similarity checks
       const existingList = await fetchTargetTableKWAndChinese(batchAddTargetTableId);
       
-      // 1. Check duplicate KWs
+      // 2. Check duplicate KWs
       const batchKWSet = new Set();
-      for (const row of completedRows) {
-        const duplicateKWItem = existingList.find(item => item.kw.toLowerCase() === row.KW.trim().toLowerCase());
+      for (const row of resolvedRows) {
+        const duplicateKWItem = existingList.find(item => item.kw.toLowerCase() === row.KW.toLowerCase());
         if (duplicateKWItem) {
           toast.error(`无法保存！批处理中发现已维护相同KW词条：\n- KW: ${row.KW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
           setLoading(false);
           return;
         }
-        if (batchKWSet.has(row.KW.trim().toLowerCase())) {
+        if (batchKWSet.has(row.KW.toLowerCase())) {
           toast.error(`无法保存！批量列表中含有重复的KW：${row.KW}`);
           setLoading(false);
           return;
         }
-        batchKWSet.add(row.KW.trim().toLowerCase());
+        batchKWSet.add(row.KW.toLowerCase());
       }
       
-      // 2. Check similarity
+      // 3. Check similarity
       const getOverlap = (strA, strB) => {
         if (strA === strB) return 1.0;
         const setA = new Set(strA.split(''));
@@ -1544,7 +1594,7 @@ export default function TranslationTab({
         return union.size > 0 ? intersection.size / union.size : 0;
       };
 
-      for (const row of completedRows) {
+      for (const row of resolvedRows) {
         const similarItem = existingList.find(item => {
           const overlap = getOverlap(item.chinese, row.中文);
           const sharedCount = [...new Set(item.chinese.split(''))].filter(x => new Set(row.中文.split('')).has(x)).length;
@@ -1572,12 +1622,12 @@ export default function TranslationTab({
       const addedRecordsForSync = [];
       const nowStr = new Date().toISOString();
 
-      for (let i = 0; i < completedRows.length; i++) {
-        const row = completedRows[i];
+      for (let i = 0; i < resolvedRows.length; i++) {
+        const row = resolvedRows[i];
         const fields = {
           'KW': row.KW,
           'CN（中文）': row.中文,
-          '所在页面': row.所在页面,
+          '所在页面': row.所在页面 || '',
           '字号类别': 'AI/Manual'
         };
 
@@ -1614,7 +1664,7 @@ export default function TranslationTab({
 
       setModifiedCells(updatedCellsDict);
       setBatchAddModalOpen(false);
-      toast.success(`批量新增成功！共写入 ${completedRows.length} 条已翻译词条。`);
+      toast.success(`批量新增成功！共写入 ${resolvedRows.length} 条已翻译词条。`);
 
       if (batchAddTargetTableId === selectedTableId) {
         await loadTableData(selectedTableId);
@@ -2577,13 +2627,33 @@ export default function TranslationTab({
                 <div className="edit-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
                     <label>KW 标识 (唯一主键)</label>
-                    <input 
-                      type="text" 
-                      value={editModalRecord.KW} 
-                      onChange={(e) => setEditModalRecord({ ...editModalRecord, KW: e.target.value })}
-                      disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true || projectRole === 'viewer'}
-                      className="text-input"
-                    />
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input 
+                        type="text" 
+                        value={editModalRecord.KW} 
+                        onChange={(e) => setEditModalRecord({ ...editModalRecord, KW: e.target.value })}
+                        disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true || projectRole === 'viewer'}
+                        className="text-input"
+                        style={{ flex: 1 }}
+                        placeholder="选填，留空将在保存时自动根据中文生成"
+                      />
+                      {projectRole !== 'viewer' && (
+                        <button
+                          onClick={async () => {
+                            const generated = await generateKWForText(editModalRecord.中文);
+                            if (generated) {
+                              setEditModalRecord(prev => ({ ...prev, KW: generated }));
+                              toast.success('KW 自动生成成功！');
+                            }
+                          }}
+                          disabled={aiTranslatingSingle || editModalRecord.isLocked === 1 || editModalRecord.isLocked === true}
+                          className="btn btn-secondary"
+                          title="根据中文语义生成 KW 键名"
+                        >
+                          生成 KW
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
                     <label>CN（中文）</label>
@@ -2909,14 +2979,31 @@ export default function TranslationTab({
                 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>KW 标识 (例如: KW_AVG_CADENCE)</label>
-                  <input 
-                    type="text" 
-                    value={newTerm.KW} 
-                    onChange={(e) => setNewTerm({ ...newTerm, KW: e.target.value })}
-                    disabled={aiTranslatingSingle}
-                    className="text-input"
-                    placeholder="请输入大写唯一键"
-                  />
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type="text" 
+                      value={newTerm.KW} 
+                      onChange={(e) => setNewTerm({ ...newTerm, KW: e.target.value })}
+                      disabled={aiTranslatingSingle}
+                      className="text-input"
+                      style={{ flex: 1 }}
+                      placeholder="选填，留空将在保存时自动根据中文生成"
+                    />
+                    <button
+                      onClick={async () => {
+                        const generated = await generateKWForText(newTerm.中文);
+                        if (generated) {
+                          setNewTerm(prev => ({ ...prev, KW: generated }));
+                          toast.success('KW 自动生成成功！');
+                        }
+                      }}
+                      disabled={aiTranslatingSingle}
+                      className="btn btn-secondary"
+                      title="根据中文语义生成 KW 键名"
+                    >
+                      生成 KW
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
@@ -3190,9 +3277,9 @@ export default function TranslationTab({
                   <thead>
                     <tr>
                       <th style={{ width: '50px' }}>#</th>
-                      <th style={{ width: '220px' }}>KW 标识 <span style={{ color: 'red' }}>*</span></th>
+                      <th style={{ width: '220px' }}>KW 标识 (选填)</th>
                       <th style={{ width: '220px' }}>中文源词 <span style={{ color: 'red' }}>*</span></th>
-                      <th style={{ width: '180px' }}>所在页面 <span style={{ color: 'red' }}>*</span></th>
+                      <th style={{ width: '180px' }}>所在页面 (选填)</th>
                       <th>翻译预览 (AI 翻译后生成)</th>
                       <th style={{ width: '60px' }}>操作</th>
                     </tr>
@@ -3211,7 +3298,7 @@ export default function TranslationTab({
                               setBatchAddRows(updated);
                             }}
                             className="text-input"
-                            placeholder="例如: KW_HOME_TITLE"
+                            placeholder="选填，留空将自动生成"
                             disabled={isTranslatingBatchAdd}
                           />
                         </td>
@@ -3239,7 +3326,7 @@ export default function TranslationTab({
                               setBatchAddRows(updated);
                             }}
                             className="text-input"
-                            placeholder="例如: 首页"
+                            placeholder="选填"
                             disabled={isTranslatingBatchAdd}
                           />
                         </td>
