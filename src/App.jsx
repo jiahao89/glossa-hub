@@ -12,6 +12,7 @@ const ComparisonTab = lazy(() => import('./components/ComparisonTab'));
 const GlossaryTab = lazy(() => import('./components/GlossaryTab'));
 const LanguagesTab = lazy(() => import('./components/LanguagesTab'));
 const LogsTab = lazy(() => import('./components/LogsTab'));
+const UsersTab = lazy(() => import('./components/UsersTab'));
 const SettingsTab = lazy(() => import('./components/SettingsTab'));
 import { 
   LayoutDashboard, 
@@ -225,6 +226,7 @@ export default function App() {
       case 'glossary': return '专业词汇库';
       case 'languages': return '语种字典管理';
       case 'logs': return '词条修改日志';
+      case 'users': return '用户管理';
       case 'settings': return '翻译引擎设置';
       case 'guide': return '使用指南';
       default: return '词条管理平台';
@@ -401,6 +403,19 @@ export default function App() {
             {!sidebarCollapsed && <span>词条修改日志</span>}
           </button>
 
+          {/* Users (Admin Only) */}
+          {user?.role === 'admin' && (
+            <button 
+              onClick={() => setActiveTab('users')}
+              className={`nav-item-btn ${activeTab === 'users' ? 'active' : ''}`}
+              title="用户管理"
+              aria-label="用户管理"
+            >
+              <ShieldCheck size={16} />
+              {!sidebarCollapsed && <span>用户管理</span>}
+            </button>
+          )}
+
           {/* Settings */}
           <button 
             onClick={() => setActiveTab('settings')}
@@ -535,6 +550,7 @@ export default function App() {
             {activeTab === 'glossary' && <GlossaryTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
             {activeTab === 'languages' && <LanguagesTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
             {activeTab === 'logs' && <LogsTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
+            {activeTab === 'users' && <UsersTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
             {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
             {activeTab === 'guide' && (
               <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
