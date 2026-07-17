@@ -115,7 +115,7 @@ async function initDatabase() {
     try {
       const { Pool } = require('pg');
       const { parse } = require('pg-connection-string');
-      const dns = require('dns');
+
 
       const pgConfig = parse(pgUrl);
 
@@ -1472,7 +1472,7 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
         return await tx.run(
           `UPDATE terms
            SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5::jsonb, translations_meta = $6::jsonb, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
-           WHERE id = $9 AND (date_trunc('ms', updated_at) = date_trunc('ms', $10::timestamptz) OR updated_at::text = $10)`,
+           WHERE id = $9 AND date_trunc('ms', updated_at) = date_trunc('ms', $10::timestamptz)`,
           [kw || term.kw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
         );
       } else {
