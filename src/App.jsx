@@ -40,7 +40,7 @@ export default function App() {
   });
 
   // 主题状态: 'dark' 或 'light'
-  const [theme, setTheme] = useState(() => localStorage.getItem('glossahub_theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('glossahub_theme') || 'light');
 
   // 主题切换时动态应用 light-mode CSS 样式并持久化存储
   useEffect(() => {
