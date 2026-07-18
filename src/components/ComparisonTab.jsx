@@ -220,41 +220,53 @@ export default function ComparisonTab() {
       // 2. Fetch Target Data (Version B - Historical Baseline)
       const targetRecords = await fetchRecordsFromTable(targetTableId);
 
-      // Create maps for efficient comparison using priority key (KW first, then 中文) + occurrence index
-      const getBaseKey = (r) => {
+      // Create pools for target records to allow flexible matching
+      // We index them by KW and ZH for fast lookup
+      const targetPoolByKW = {};
+      const targetPoolByZH = {};
+      
+      targetRecords.forEach((r, idx) => {
+        r._originalIndex = idx; // keep track of consumed status
         const kw = (r.KW || '').trim();
-        if (kw) return `KW|||${kw}`;
         const zh = (r.中文 || '').trim();
-        return `ZH|||${zh}`;
-      };
-
-      const sourceMap = {};
-      const sourceKeyCounts = {};
-      sourceRecords.forEach(r => {
-        const baseKey = getBaseKey(r);
-        sourceKeyCounts[baseKey] = (sourceKeyCounts[baseKey] || 0) + 1;
-        const uniqueKey = `${baseKey}|||${sourceKeyCounts[baseKey]}`;
-        sourceMap[uniqueKey] = r;
-      });
-
-      const targetMap = {};
-      const targetKeyCounts = {};
-      targetRecords.forEach(r => {
-        const baseKey = getBaseKey(r);
-        targetKeyCounts[baseKey] = (targetKeyCounts[baseKey] || 0) + 1;
-        const uniqueKey = `${baseKey}|||${targetKeyCounts[baseKey]}`;
-        targetMap[uniqueKey] = r;
+        
+        if (kw) {
+          if (!targetPoolByKW[kw]) targetPoolByKW[kw] = [];
+          targetPoolByKW[kw].push(r);
+        }
+        if (zh) {
+          if (!targetPoolByZH[zh]) targetPoolByZH[zh] = [];
+          targetPoolByZH[zh].push(r);
+        }
       });
 
       const compared = [];
+      const consumedTargetIndices = new Set();
 
       // 3. Scan Source Records A (find Added and Modified in A relative to B)
-      const scanSourceKeyCounts = {};
       sourceRecords.forEach(itemA => {
-        const baseKey = getBaseKey(itemA);
-        scanSourceKeyCounts[baseKey] = (scanSourceKeyCounts[baseKey] || 0) + 1;
-        const uniqueKey = `${baseKey}|||${scanSourceKeyCounts[baseKey]}`;
-        const itemB = targetMap[uniqueKey];
+        const kw = (itemA.KW || '').trim();
+        const zh = (itemA.中文 || '').trim();
+
+        let itemB = null;
+
+        // Try match by KW first
+        if (kw && targetPoolByKW[kw] && targetPoolByKW[kw].length > 0) {
+          const matchIdx = targetPoolByKW[kw].findIndex(r => !consumedTargetIndices.has(r._originalIndex));
+          if (matchIdx !== -1) {
+            itemB = targetPoolByKW[kw][matchIdx];
+            consumedTargetIndices.add(itemB._originalIndex);
+          }
+        }
+
+        // If no match by KW, gracefully degrade to try match by ZH (useful when KW was just generated)
+        if (!itemB && zh && targetPoolByZH[zh] && targetPoolByZH[zh].length > 0) {
+          const matchIdx = targetPoolByZH[zh].findIndex(r => !consumedTargetIndices.has(r._originalIndex));
+          if (matchIdx !== -1) {
+            itemB = targetPoolByZH[zh][matchIdx];
+            consumedTargetIndices.add(itemB._originalIndex);
+          }
+        }
         
         if (!itemB) {
           // A has it, B doesn't -> Added in A
@@ -305,14 +317,9 @@ export default function ComparisonTab() {
         }
       });
 
-      // 4. Scan Target Records B (find Deleted in A relative to B)
-      const scanTargetKeyCounts = {};
-      targetRecords.forEach(itemB => {
-        const baseKey = getBaseKey(itemB);
-        scanTargetKeyCounts[baseKey] = (scanTargetKeyCounts[baseKey] || 0) + 1;
-        const uniqueKey = `${baseKey}|||${scanTargetKeyCounts[baseKey]}`;
-        const itemA = sourceMap[uniqueKey];
-        if (!itemA) {
+      // 4. Scan Target Records B for unconsumed items (Deleted)
+      targetRecords.forEach((itemB, idx) => {
+        if (!consumedTargetIndices.has(idx)) {
           // B has it, A doesn't -> Deleted in A
           compared.push({
             KW: itemB.KW,
