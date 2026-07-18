@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useToast } from './Toast';
-import { parseCSV } from '../utils/csvHelper';
+import { parseCSV, fuzzyFindIndex } from '../utils/csvHelper';
 import { Search, Loader2, ArrowLeftRight, FileInput, AlertCircle, HelpCircle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
@@ -154,19 +154,6 @@ export default function ComparisonTab() {
 
         const headers = parsed[0].map(h => h.trim());
         const rows = parsed.slice(1);
-
-        const fuzzyFindIndex = (headers, exactMatches, fuzzyKeywords) => {
-          // 1. Exact match
-          for (const match of exactMatches) {
-            const idx = headers.findIndex(h => h === match);
-            if (idx !== -1) return idx;
-          }
-          // 2. Fuzzy match
-          return headers.findIndex(h => {
-            const lowerH = h.toLowerCase();
-            return fuzzyKeywords.some(kw => lowerH.includes(kw.toLowerCase()));
-          });
-        };
 
         const kwIdx = fuzzyFindIndex(headers, ['KW', 'Key'], ['kw', 'key']);
         const zhIdx = fuzzyFindIndex(headers, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);

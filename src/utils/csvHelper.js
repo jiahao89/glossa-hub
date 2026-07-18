@@ -47,6 +47,26 @@ export function parseCSV(text) {
 }
 
 /**
+ * Finds the index of a column in headers using exact matches and fallback fuzzy keyword matches.
+ * @param {string[]} headers - The CSV headers.
+ * @param {string[]} exactMatches - Array of strings for exact matching.
+ * @param {string[]} fuzzyKeywords - Array of substrings for fuzzy matching (case-insensitive).
+ * @returns {number} The index of the matched header, or -1 if not found.
+ */
+export function fuzzyFindIndex(headers, exactMatches, fuzzyKeywords) {
+  // 1. Exact match
+  for (const match of exactMatches) {
+    const idx = headers.findIndex(h => h === match);
+    if (idx !== -1) return idx;
+  }
+  // 2. Fuzzy match
+  return headers.findIndex(h => {
+    const lowerH = h.toLowerCase();
+    return fuzzyKeywords.some(kw => lowerH.includes(kw.toLowerCase()));
+  });
+}
+
+/**
  * Converts a 2D array of rows to a CSV string.
  * Automatically wraps cells containing commas, quotes, or newlines in double quotes.
  * Prepends the UTF-8 Byte Order Mark (BOM) \ufeff for Excel compatibility.

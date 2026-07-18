@@ -3,7 +3,7 @@ import { useToast } from './Toast';
 import Pagination from './Pagination';
 import { Plus, Trash2, Download, Upload, BookOpen, FileSpreadsheet, Search, Loader2 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
-import { parseCSV, arrayToCSV } from '../utils/csvHelper';
+import { parseCSV, arrayToCSV, fuzzyFindIndex } from '../utils/csvHelper';
 import GlossaModal from './GlossaModal';
 
 export default function GlossaryTab({ projectRole }) {
@@ -234,29 +234,22 @@ export default function GlossaryTab({ projectRole }) {
           return;
         }
 
+        const cnIdx = fuzzyFindIndex(firstRow, ['cn', 'zh', 'term', 'chinese', 'key'], ['中文', '词条', '键名']);
+        const enIdx = fuzzyFindIndex(firstRow, ['en', 'english', 'translation'], ['英文', '翻译', '译文']);
+        const descIdx = fuzzyFindIndex(firstRow, ['desc', 'description', 'info', 'context', 'remark'], ['说明', '定义', '释义', '备注']);
+
+        const hasHeader = cnIdx !== -1 || enIdx !== -1 || descIdx !== -1;
+        
         let startIdx = 0;
-        let cnIdx = 0;
-        let enIdx = 1;
-        let descIdx = 2;
-
-        const firstRow = csvRows[0].map(h => h.trim().toLowerCase());
-        const isHeaderMatch = (h) => {
-          if (h === 'cn' || h === 'zh' || h === 'term' || h === 'chinese' || h === 'key' || h.includes('中文') || h.includes('词条') || h.includes('键名')) return 'cn';
-          if (h === 'en' || h === 'english' || h === 'translation' || h.includes('英文') || h.includes('翻译') || h.includes('译文')) return 'en';
-          if (h === 'desc' || h === 'description' || h === 'info' || h === 'context' || h === 'remark' || h.includes('说明') || h.includes('定义') || h.includes('释义') || h.includes('备注')) return 'desc';
-          return null;
-        };
-
-        const hasHeader = firstRow.some(h => isHeaderMatch(h) !== null);
+        let finalCnIdx = 0;
+        let finalEnIdx = 1;
+        let finalDescIdx = 2;
 
         if (hasHeader) {
           startIdx = 1;
-          const foundCn = firstRow.findIndex(h => isHeaderMatch(h) === 'cn');
-          if (foundCn !== -1) cnIdx = foundCn;
-          const foundEn = firstRow.findIndex(h => isHeaderMatch(h) === 'en');
-          if (foundEn !== -1) enIdx = foundEn;
-          const foundDesc = firstRow.findIndex(h => isHeaderMatch(h) === 'desc');
-          if (foundDesc !== -1) descIdx = foundDesc;
+          if (cnIdx !== -1) finalCnIdx = cnIdx;
+          if (enIdx !== -1) finalEnIdx = enIdx;
+          if (descIdx !== -1) finalDescIdx = descIdx;
         }
 
         const rawHeaders = csvRows[0].map(h => h.trim());
@@ -265,9 +258,9 @@ export default function GlossaryTab({ projectRole }) {
           const row = csvRows[i];
           if (!row || row.length === 0) continue;
           
-          const cnTerm = (row[cnIdx] || '').trim();
-          const enTerm = (row[enIdx] || '').trim();
-          const description = (row[descIdx] || '').trim();
+          const cnTerm = (row[finalCnIdx] || '').trim();
+          const enTerm = (row[finalEnIdx] || '').trim();
+          const description = (row[finalDescIdx] || '').trim();
 
           const rowFields = {};
           rawHeaders.forEach((headerName, index) => {
