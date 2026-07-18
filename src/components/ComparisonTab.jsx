@@ -155,9 +155,22 @@ export default function ComparisonTab() {
         const headers = parsed[0].map(h => h.trim());
         const rows = parsed.slice(1);
 
-        const kwIdx = headers.findIndex(h => h === 'KW');
-        const zhIdx = headers.findIndex(h => h === 'CN（中文）' || h === '中文');
-        const pageIdx = headers.findIndex(h => h === '所在页面' || h === '词条所在界面（注意是界面不是模块！！）');
+        const fuzzyFindIndex = (headers, exactMatches, fuzzyKeywords) => {
+          // 1. Exact match
+          for (const match of exactMatches) {
+            const idx = headers.findIndex(h => h === match);
+            if (idx !== -1) return idx;
+          }
+          // 2. Fuzzy match
+          return headers.findIndex(h => {
+            const lowerH = h.toLowerCase();
+            return fuzzyKeywords.some(kw => lowerH.includes(kw.toLowerCase()));
+          });
+        };
+
+        const kwIdx = fuzzyFindIndex(headers, ['KW', 'Key'], ['kw', 'key']);
+        const zhIdx = fuzzyFindIndex(headers, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);
+        const pageIdx = fuzzyFindIndex(headers, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
 
         if (kwIdx === -1 || zhIdx === -1) {
           toast.error('CSV 必须包含 "KW" 和 "CN（中文）" 列！');
@@ -171,7 +184,17 @@ export default function ComparisonTab() {
 
           const translations = {};
           TARGET_LANGUAGES.forEach(lang => {
-            const csvLangIdx = headers.findIndex(h => h === lang);
+            let fuzzyKeywords = [lang.toLowerCase()];
+            const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
+            if (match) {
+              fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
+            } else {
+              const letters = lang.match(/[a-zA-Z]+/);
+              const chars = lang.match(/[\u4e00-\u9fa5]+/);
+              if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
+              if (chars) fuzzyKeywords.push(chars[0]);
+            }
+            const csvLangIdx = fuzzyFindIndex(headers, [lang], fuzzyKeywords);
             translations[lang] = csvLangIdx !== -1 ? row[csvLangIdx]?.trim() || '' : '';
           });
 

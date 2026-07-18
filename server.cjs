@@ -1180,6 +1180,20 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
         }
         await tx.run('DELETE FROM terms WHERE version_id = $1', [tableId]);
       }
+      // Helper for fuzzy field mapping
+      const fuzzyGetFieldValue = (fields, exactMatches, fuzzyKeywords) => {
+        for (const match of exactMatches) {
+          if (fields[match] !== undefined) return fields[match];
+        }
+        const keys = Object.keys(fields);
+        for (const k of keys) {
+          const lowerK = k.toLowerCase();
+          if (fuzzyKeywords.some(kw => lowerK.includes(kw.toLowerCase()))) {
+            return fields[k];
+          }
+        }
+        return '';
+      };
 
       if (dbType === 'postgres') {
         if (records.length > 0) {
@@ -1189,14 +1203,27 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
 
           for (const rec of records) {
             const fields = rec.fields || {};
-            const kw = fields['KW'] || '';
-            const zh_cn = fields['CN（中文）'] || fields['中文'] || '';
-            const context = fields['所在页面'] || fields['词条所在界面（注意是界面不是模块！！）'] || '';
-            const owner = fields['字号类别'] || fields['负责人'] || '';
+            const kw = fuzzyGetFieldValue(fields, ['KW', 'Key'], ['kw', 'key']);
+            const zh_cn = fuzzyGetFieldValue(fields, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);
+            const context = fuzzyGetFieldValue(fields, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
+            const owner = fuzzyGetFieldValue(fields, ['字号类别', '负责人'], ['字号', '负责人', 'owner']);
 
             const rawTranslations = {};
             TARGET_LANGUAGES.forEach(lang => {
-              if (fields[lang] !== undefined) rawTranslations[lang] = fields[lang];
+              let fuzzyKeywords = [lang.toLowerCase()];
+              const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
+              if (match) {
+                fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
+              } else {
+                const letters = lang.match(/[a-zA-Z]+/);
+                const chars = lang.match(/[\u4e00-\u9fa5]+/);
+                if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
+                if (chars) fuzzyKeywords.push(chars[0]);
+              }
+              const val = fuzzyGetFieldValue(fields, [lang], fuzzyKeywords);
+              if (val !== '') {
+                rawTranslations[lang] = val;
+              }
             });
             Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
               if (fields[legacyKey] !== undefined) rawTranslations[legacyKey] = fields[legacyKey];
@@ -1245,14 +1272,27 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
         // and local SQLite has 0 network latency so loop is fast.
         for (const rec of records) {
           const fields = rec.fields || {};
-          const kw = fields['KW'] || '';
-          const zh_cn = fields['CN（中文）'] || fields['中文'] || '';
-          const context = fields['所在页面'] || fields['词条所在界面（注意是界面不是模块！！）'] || '';
-          const owner = fields['字号类别'] || fields['负责人'] || '';
+          const kw = fuzzyGetFieldValue(fields, ['KW', 'Key'], ['kw', 'key']);
+          const zh_cn = fuzzyGetFieldValue(fields, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);
+          const context = fuzzyGetFieldValue(fields, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
+          const owner = fuzzyGetFieldValue(fields, ['字号类别', '负责人'], ['字号', '负责人', 'owner']);
 
           const rawTranslations = {};
           TARGET_LANGUAGES.forEach(lang => {
-            if (fields[lang] !== undefined) rawTranslations[lang] = fields[lang];
+            let fuzzyKeywords = [lang.toLowerCase()];
+            const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
+            if (match) {
+              fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
+            } else {
+              const letters = lang.match(/[a-zA-Z]+/);
+              const chars = lang.match(/[\u4e00-\u9fa5]+/);
+              if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
+              if (chars) fuzzyKeywords.push(chars[0]);
+            }
+            const val = fuzzyGetFieldValue(fields, [lang], fuzzyKeywords);
+            if (val !== '') {
+              rawTranslations[lang] = val;
+            }
           });
           Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
             if (fields[legacyKey] !== undefined) rawTranslations[legacyKey] = fields[legacyKey];
