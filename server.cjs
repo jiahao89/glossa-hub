@@ -1313,12 +1313,16 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
           const translationsStr = JSON.stringify(normalizedTrans);
           const termId = rec.recordId || crypto.randomUUID();
 
+          // DEBUG: log fuzzy matching results
+          console.log(`[DEBUG sync-table] termId=${termId} kw=${JSON.stringify(kw)} zh_cn=${JSON.stringify(zh_cn)} trans=${translationsStr}`);
+
           // P1-1: 翻译来源标记
           const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
 
           // P1-3: 跳过已锁定词条的更新
           const existingTerm = await tx.queryOne('SELECT is_locked FROM terms WHERE id = $1', [termId]);
           if (existingTerm && (existingTerm.is_locked === 1 || existingTerm.is_locked === true)) {
+            console.log(`[DEBUG sync-table] SKIP locked term ${termId}`);
             continue; // 已锁定词条不允许通过 sync-table 覆盖
           }
 
