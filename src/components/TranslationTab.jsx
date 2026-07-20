@@ -119,7 +119,7 @@ export default function TranslationTab({
   const [filterStatus, setFilterStatus] = useState(''); // '' | DRAFT | TRANSLATING | PENDING_REVIEW | APPROVED | REJECTED | PUBLISHED
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [sortBy, setSortBy] = useState('changeFirst'); // 'changeFirst' | 'default' | 'createdTime' | 'modifiedTime'
+  const [sortBy, setSortBy] = useState('createdTime'); // 'changeFirst' | 'default' | 'createdTime' | 'modifiedTime'
 
   // Field mappings
   const [fieldMap, setFieldMap] = useState({}); // { name: id }
@@ -679,6 +679,21 @@ export default function TranslationTab({
         const idxB = recordIndexMap[b.recordId] ?? 0;
         return idxB - idxA;
       });
+    } else if (sortBy === 'createdTime') {
+      return [...list].sort((a, b) => {
+        const parseTime = (dateStr) => {
+          if (!dateStr) return 0;
+          const t = new Date(dateStr).getTime();
+          return isNaN(t) ? 0 : t;
+        };
+        const timeA = parseTime(a.createdAt);
+        const timeB = parseTime(b.createdAt);
+        if (timeA !== timeB) return timeB - timeA;
+        
+        const idxA = recordIndexMap[a.recordId] ?? 0;
+        const idxB = recordIndexMap[b.recordId] ?? 0;
+        return idxB - idxA;
+      });
     }
 
     return list; // fallback default sorting
@@ -1057,13 +1072,16 @@ export default function TranslationTab({
       
       // Merge results
       const updatedTrans = { ...newTerm.translations };
+      const updatedMeta = { ...(newTerm.translationsMeta || {}) };
+      const source = result._source === 'tm' ? 'tm' : 'ai';
       TARGET_LANGUAGES.forEach(lang => {
         const val = findValueInDifyResult(lang, result);
         if (val !== undefined) {
           updatedTrans[lang] = val;
+          updatedMeta[lang] = source;
         }
       });
-      setNewTerm(prev => ({ ...prev, translations: updatedTrans }));
+      setNewTerm(prev => ({ ...prev, translations: updatedTrans, translationsMeta: updatedMeta }));
       showStatus('success', 'AI 自动预翻译完成，请审查！');
     } catch (err) {
       showStatus('danger', `AI 翻译失败: ${getFriendlyAiErrorMessage(err.message)}`);
@@ -1325,14 +1343,17 @@ export default function TranslationTab({
         
         // Merge translations
         const trans = {};
+        const meta = {};
+        const source = result._source === 'tm' ? 'tm' : 'ai';
         item.missingLangs.forEach(lang => {
           const val = findValueInDifyResult(lang, result);
           if (val !== undefined) {
             trans[lang] = val;
+            meta[lang] = source;
           }
         });
         
-        updatedList[i] = { ...updatedList[i], translations: trans };
+        updatedList[i] = { ...updatedList[i], translations: trans, translationsMeta: meta };
         setBatchPreviewList([...updatedList]);
       } catch (err) {
         console.error(`翻译词条 ${item.KW} 失败:`, err);
@@ -1369,7 +1390,7 @@ export default function TranslationTab({
           const fieldId = targetFieldMap[lang];
           if (fieldId && item.translations[lang]) {
             fields[fieldId] = item.translations[lang];
-            batchMeta[lang] = 'ai'; // P1-1: 标记为 AI 翻译
+            batchMeta[lang] = item.translationsMeta?.[lang] || 'ai'; // P1-1: 标记为对应的翻译来源
             rowModifiedDict[lang] = true;
             hasNewTrans = true;
           }
@@ -1710,11 +1731,12 @@ export default function TranslationTab({
       try { result = await res.json(); } catch { result = {}; }
       
       const updatedTrans = { ...editModalRecord.translations };
+      const source = result._source === 'tm' ? 'tm' : 'ai';
       TARGET_LANGUAGES.forEach(lang => {
         const val = findValueInDifyResult(lang, result);
         if (val !== undefined) {
           updatedTrans[lang] = val;
-          sessionMetaRef.current[lang] = 'ai'; // P1-1: 标记为 AI 翻译来源
+          sessionMetaRef.current[lang] = source; // P1-1: 标记来源
         }
       });
       setEditModalRecord(prev => ({ ...prev, translations: updatedTrans }));
@@ -2273,7 +2295,8 @@ export default function TranslationTab({
               className="select-input"
               style={{ height: '34px', fontSize: '0.8rem', padding: '0 0.4rem' }}
             >
-              <option value="changeFirst">变更/新增优先</option>
+              <option value="createdTime">新增时间优先</option>
+              <option value="changeFirst">变更优先</option>
               <option value="default">默认顺序</option>
             </select>
           </div>
@@ -2425,6 +2448,7 @@ export default function TranslationTab({
                     }}
                   />
                 </th>
+                <th style={{ width: '50px', textAlign: 'center' }}>序号</th>
                 <th style={{ width: '120px', textAlign: 'center' }}>状态</th>
                 <th className="sticky-col-1" style={{ width: '150px' }}>KW (Key)</th>
                 <th className="sticky-col-2" style={{ width: '180px' }}>CN（中文）</th>
@@ -2439,7 +2463,7 @@ export default function TranslationTab({
               </tr>
             </thead>
             <tbody>
-              {pagedRecords.map(rec => {
+              {pagedRecords.map((rec, index) => {
                 const recId = rec.recordId;
                 const kw = getRecordValueByName(rec, 'KW');
                 const zh = getRecordValueByName(rec, 'CN（中文）');
@@ -2469,6 +2493,9 @@ export default function TranslationTab({
                           setSelectedRecordIds(updated);
                         }}
                       />
+                    </td>
+                    <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                      {(safePage - 1) * pageSize + index + 1}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>

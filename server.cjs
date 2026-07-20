@@ -1581,7 +1581,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
       // 2. Inherit terms from base version if specified
       if (baseVersionId) {
         const baseTerms = await tx.query(
-          'SELECT kw, context, owner, zh_cn, translations FROM terms WHERE version_id = $1',
+          'SELECT kw, context, owner, zh_cn, translations, translations_meta FROM terms WHERE version_id = $1',
           [baseVersionId]
         );
 
@@ -1590,16 +1590,20 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
           const translationsStr = typeof term.translations === 'string'
             ? term.translations
             : JSON.stringify(term.translations || {});
+            
+          const translationsMetaStr = typeof term.translations_meta === 'string'
+            ? term.translations_meta
+            : JSON.stringify(term.translations_meta || {});
 
           if (dbType === 'postgres') {
             await tx.run(
-              'INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), 0)',
-              [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr]
+              'INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW(), 0)',
+              [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr, translationsMetaStr]
             );
           } else {
             await tx.run(
-              "INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7, datetime('now'), datetime('now'), 0)",
-              [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr]
+              "INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'), datetime('now'), 0)",
+              [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr, translationsMetaStr]
             );
           }
           inheritedCount++;
@@ -2740,6 +2744,66 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
   const targetLangs = inputs.target_languages || inputs.languages || '';
 
   try {
+    // === START GLOSSARY INTERCEPTION ===
+    const glossaryQuery = `
+      SELECT t.cn_term, t.en_term, t.fields 
+      FROM glossary_terms t
+      JOIN glossary_tables tb ON t.table_id = tb.id
+      WHERE tb.project_id = $1
+    `;
+    const glossaryTerms = await db.query(glossaryQuery, [projectId]);
+
+    const fullMatch = glossaryTerms.find(term => term.cn_term === zhCn);
+    if (fullMatch) {
+      const parsedTargetLangs = (typeof targetLangs === 'string' ? targetLangs.split(',') : targetLangs).map(l => l.trim()).filter(Boolean);
+      let tmTranslations = {};
+      let termFields = {};
+      try {
+        termFields = typeof fullMatch.fields === 'string' ? JSON.parse(fullMatch.fields || '{}') : (fullMatch.fields || {});
+      } catch (e) { }
+
+      const fieldsKeys = Object.keys(termFields);
+      parsedTargetLangs.forEach(lang => {
+        if (lang === '英文' || lang.includes('EN') || lang.toLowerCase() === 'english') {
+          tmTranslations[lang] = fullMatch.en_term || '';
+        } else {
+          const normLang = lang.replace(/语|文/g, '');
+          const matchedKey = fieldsKeys.find(k => k === lang || k.includes(normLang));
+          tmTranslations[lang] = matchedKey ? termFields[matchedKey] : '';
+        }
+      });
+      // Bypass Dify, return immediately
+      return res.json({ ...tmTranslations, _source: 'tm' });
+    }
+
+    // Partial match context injection
+    let matchedTerms = [];
+    glossaryTerms.forEach(term => {
+      if (zhCn.includes(term.cn_term)) {
+        let termFields = {};
+        try {
+          termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
+        } catch (e) { }
+        
+        let targetConstraints = { "英文": term.en_term };
+        Object.keys(termFields).forEach(k => {
+           targetConstraints[k] = termFields[k];
+        });
+        
+        matchedTerms.push({
+          "中文名词": term.cn_term,
+          "各语种强制翻译": targetConstraints
+        });
+      }
+    });
+
+    if (matchedTerms.length > 0) {
+      inputs.glossary_context = JSON.stringify(matchedTerms, null, 2);
+    } else {
+      inputs.glossary_context = "";
+    }
+    // === END GLOSSARY INTERCEPTION ===
+
     // 使用统一配置获取函数：优先数据库覆盖，否则回退默认
     const config = await getEffectiveDifyConfig(projectId);
 
