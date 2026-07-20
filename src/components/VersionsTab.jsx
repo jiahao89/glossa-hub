@@ -39,6 +39,10 @@ export default function VersionsTab({ onNavigate, projectRole }) {
     fetchTables();
   }, []);
 
+  // Progress bar state
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressStatus, setProgressStatus] = useState('');
+
   const handleAddTable = async (e) => {
     e.preventDefault();
     if (!newVersionName.trim()) {
@@ -47,6 +51,9 @@ export default function VersionsTab({ onNavigate, projectRole }) {
     }
 
     setAdding(true);
+    setProgressPercent(5);
+    setProgressStatus('正在创建固件版本记录...');
+
     try {
       const res = await apiFetch('/api/projects/proj-default/versions', {
         method: 'POST',
@@ -58,18 +65,66 @@ export default function VersionsTab({ onNavigate, projectRole }) {
       });
 
       const data = await res.json();
-      if (res.ok) {
+      if (!res.ok) {
+        toast.error(`创建失败: ${data.error || '未知错误'}`);
+        setAdding(false);
+        return;
+      }
+
+      const { id: versionId, totalTerms } = data;
+
+      if (baseVersionId && totalTerms > 0) {
+        let currentProcessed = 0;
+        const CHUNK_SIZE = 100;
+
+        for (let offset = 0; offset < totalTerms; offset += CHUNK_SIZE) {
+          const currentCount = Math.min(offset, totalTerms);
+          const percent = Math.min(95, Math.round(5 + (currentCount / totalTerms) * 90));
+          setProgressPercent(percent);
+          setProgressStatus(`正在分批克隆词条与翻译数据 (${currentCount}/${totalTerms})...`);
+
+          const chunkRes = await apiFetch(`/api/projects/proj-default/versions/${versionId}/inherit-chunk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              baseVersionId,
+              offset,
+              limit: CHUNK_SIZE
+            })
+          });
+
+          const chunkData = await chunkRes.json();
+          if (!chunkRes.ok) {
+            throw new Error(chunkData.error || '分批继承中断');
+          }
+
+          currentProcessed += chunkData.processed || 0;
+          if (chunkData.processed === 0) break;
+        }
+
+        setProgressPercent(100);
+        setProgressStatus('继承完成！');
+        toast.success(`成功创建数据表，并顺利继承 ${totalTerms} 条历史词条与翻译！`);
+      } else {
+        setProgressPercent(100);
+        toast.success('成功创建空白固件数据表！');
+      }
+
+      setTimeout(() => {
         setNewVersionName('');
         setBaseVersionId('');
         setAddModalOpen(false);
+        setAdding(false);
+        setProgressPercent(0);
+        setProgressStatus('');
         fetchTables();
-      } else {
-        toast.error(`创建失败: ${data.error || '未知错误'}`);
-      }
+      }, 500);
+
     } catch (err) {
-      toast.error(`网络错误: ${err.message}`);
-    } finally {
+      toast.error(`过程出错: ${err.message}`);
       setAdding(false);
+      setProgressPercent(0);
+      setProgressStatus('');
     }
   };
 
@@ -311,12 +366,32 @@ export default function VersionsTab({ onNavigate, projectRole }) {
                 <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>* 选择一个大表，新表在创建后会秒级自动克隆其全部历史词条和翻译数据。</p>
               </div>
 
+              {adding && (
+                <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{progressStatus}</span>
+                    <span style={{ color: '#3b82f6', fontWeight: '700' }}>{progressPercent}%</span>
+                  </div>
+                  <div style={{ width: '100%', height: '8px', backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        width: `${progressPercent}%`,
+                        height: '100%',
+                        backgroundColor: '#3b82f6',
+                        borderRadius: '4px',
+                        transition: 'width 0.25s ease-in-out'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setAddModalOpen(false)} className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>
+                <button type="button" disabled={adding} onClick={() => setAddModalOpen(false)} className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>
                   取消
                 </button>
                 <button type="submit" disabled={adding} className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>
-                  {adding ? '正在创建...' : '确认创建'}
+                  {adding ? '正在处理...' : '确认创建'}
                 </button>
               </div>
             </form>

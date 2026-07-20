@@ -1020,7 +1020,7 @@ app.get('/api/tables', authenticateToken, async (req, res) => {
       `SELECT v.id, v.version_name AS name, v.created_at, u.name AS creator_name,
         (SELECT l.timestamp FROM ${logsTable} l
          WHERE l.version_name = v.version_name
-         ORDER BY l.id DESC LIMIT 1) AS last_modified
+         ORDER BY l.timestamp DESC LIMIT 1) AS last_modified
        FROM versions v
        LEFT JOIN users u ON v.created_by = u.id
        WHERE v.project_id = $1
@@ -1580,9 +1580,6 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
     }
 
     const versionId = crypto.randomUUID();
-    let inheritedCount = 0;
-
-    // 校验 createdBy 用户在关联表中是否存在（防止外键失败）
     let createdBy = req.user?.id || null;
     if (createdBy) {
       try {
@@ -1593,104 +1590,119 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
       }
     }
 
-    await db.transaction(async (tx) => {
-      // 1. 插入新版本记录
-      if (dbType === 'postgres') {
-        await tx.run(
-          'INSERT INTO versions (id, project_id, version_name, created_at, created_by) VALUES ($1, $2, $3, NOW(), $4)',
-          [versionId, projectId, versionName, createdBy]
-        );
-      } else {
-        await tx.run(
-          "INSERT INTO versions (id, project_id, version_name, created_at, created_by) VALUES ($1, $2, $3, datetime('now'), $4)",
-          [versionId, projectId, versionName, createdBy]
-        );
-      }
+    if (dbType === 'postgres') {
+      await db.run(
+        'INSERT INTO versions (id, project_id, version_name, created_at, created_by) VALUES ($1, $2, $3, NOW(), $4)',
+        [versionId, projectId, versionName, createdBy]
+      );
+    } else {
+      await db.run(
+        "INSERT INTO versions (id, project_id, version_name, created_at, created_by) VALUES ($1, $2, $3, datetime('now'), $4)",
+        [versionId, projectId, versionName, createdBy]
+      );
+    }
 
-      // 2. 批量继承词条（采用 100 条分批批量写入，将几百次网络往返压缩至几次，解决 Vercel 10s 超时）
-      if (baseVersionId) {
-        const baseTerms = await tx.query(
-          'SELECT kw, context, owner, zh_cn, translations, translations_meta FROM terms WHERE version_id = $1',
-          [baseVersionId]
-        );
+    let totalTerms = 0;
+    if (baseVersionId) {
+      const countRes = await db.queryOne(
+        'SELECT COUNT(*) AS count FROM terms WHERE version_id = $1',
+        [baseVersionId]
+      );
+      totalTerms = parseInt(countRes?.count || 0, 10);
+    }
 
-        if (baseTerms.length > 0) {
-          const CHUNK_SIZE = 100;
-          for (let i = 0; i < baseTerms.length; i += CHUNK_SIZE) {
-            const chunk = baseTerms.slice(i, i + CHUNK_SIZE);
-
-            if (dbType === 'postgres') {
-              const valuePlaceholders = [];
-              const values = [];
-              let paramIdx = 1;
-
-              for (const term of chunk) {
-                const newTermId = crypto.randomUUID();
-                const translationsStr = typeof term.translations === 'string'
-                  ? term.translations
-                  : JSON.stringify(term.translations || {});
-                const translationsMetaStr = typeof term.translations_meta === 'string'
-                  ? term.translations_meta
-                  : JSON.stringify(term.translations_meta || {});
-
-                valuePlaceholders.push(
-                  `($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6}::jsonb, $${paramIdx+7}::jsonb, NOW(), NOW(), FALSE)`
-                );
-                values.push(
-                  newTermId,
-                  versionId,
-                  term.kw,
-                  term.context ?? null,
-                  term.owner ?? null,
-                  term.zh_cn,
-                  translationsStr,
-                  translationsMetaStr
-                );
-                paramIdx += 8;
-              }
-
-              const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
-              await tx.run(sql, values);
-            } else {
-              const valuePlaceholders = [];
-              const values = [];
-
-              for (const term of chunk) {
-                const newTermId = crypto.randomUUID();
-                const translationsStr = typeof term.translations === 'string'
-                  ? term.translations
-                  : JSON.stringify(term.translations || {});
-                const translationsMetaStr = typeof term.translations_meta === 'string'
-                  ? term.translations_meta
-                  : JSON.stringify(term.translations_meta || {});
-
-                valuePlaceholders.push(`(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 0)`);
-                values.push(
-                  newTermId,
-                  versionId,
-                  term.kw,
-                  term.context ?? null,
-                  term.owner ?? null,
-                  term.zh_cn,
-                  translationsStr,
-                  translationsMetaStr
-                );
-              }
-
-              const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
-              await tx.run(sql, values);
-            }
-
-            inheritedCount += chunk.length;
-          }
-        }
-      }
-    });
-
-    res.status(201).json({ id: versionId, versionName, inheritedCount: baseVersionId ? inheritedCount : 0 });
+    res.status(201).json({ id: versionId, versionName, totalTerms });
   } catch (err) {
     console.error('新建固件版本失败:', err);
     res.status(500).json({ error: `创建版本失败: ${err.message}` });
+  }
+});
+
+// 9b. POST /api/projects/:projectId/versions/:versionId/inherit-chunk - 分批继承词条 API (支持前端进度条)
+app.post('/api/projects/:projectId/versions/:versionId/inherit-chunk', authenticateToken, requireProjectMember, requireRole(['owner', 'editor']), async (req, res) => {
+  const { versionId } = req.params;
+  const { baseVersionId, offset = 0, limit = 100 } = req.body;
+
+  if (!baseVersionId) {
+    return res.status(400).json({ error: '基准版本 ID 不能为空' });
+  }
+
+  try {
+    const baseTerms = await db.query(
+      'SELECT kw, context, owner, zh_cn, translations, translations_meta FROM terms WHERE version_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
+      [baseVersionId, limit, offset]
+    );
+
+    if (baseTerms.length === 0) {
+      return res.json({ success: true, processed: 0 });
+    }
+
+    if (dbType === 'postgres') {
+      const valuePlaceholders = [];
+      const values = [];
+      let paramIdx = 1;
+
+      for (const term of baseTerms) {
+        const newTermId = crypto.randomUUID();
+        const translationsStr = typeof term.translations === 'string'
+          ? term.translations
+          : JSON.stringify(term.translations || {});
+        const translationsMetaStr = typeof term.translations_meta === 'string'
+          ? term.translations_meta
+          : JSON.stringify(term.translations_meta || {});
+
+        valuePlaceholders.push(
+          `($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6}::jsonb, $${paramIdx+7}::jsonb, NOW(), NOW(), FALSE)`
+        );
+        values.push(
+          newTermId,
+          versionId,
+          term.kw,
+          term.context ?? null,
+          term.owner ?? null,
+          term.zh_cn,
+          translationsStr,
+          translationsMetaStr
+        );
+        paramIdx += 8;
+      }
+
+      const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
+      await db.run(sql, values);
+    } else {
+      const valuePlaceholders = [];
+      const values = [];
+
+      for (const term of baseTerms) {
+        const newTermId = crypto.randomUUID();
+        const translationsStr = typeof term.translations === 'string'
+          ? term.translations
+          : JSON.stringify(term.translations || {});
+        const translationsMetaStr = typeof term.translations_meta === 'string'
+          ? term.translations_meta
+          : JSON.stringify(term.translations_meta || {});
+
+        valuePlaceholders.push(`(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 0)`);
+        values.push(
+          newTermId,
+          versionId,
+          term.kw,
+          term.context ?? null,
+          term.owner ?? null,
+          term.zh_cn,
+          translationsStr,
+          translationsMetaStr
+        );
+      }
+
+      const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
+      await db.run(sql, values);
+    }
+
+    res.json({ success: true, processed: baseTerms.length });
+  } catch (err) {
+    console.error('分批继承词条失败:', err);
+    res.status(500).json({ error: `继承词条失败: ${err.message}` });
   }
 });
 
