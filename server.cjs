@@ -275,12 +275,65 @@ async function initDatabase() {
       dbType = 'postgres';
       console.log('⚡ 成功连接到云端 PostgreSQL 数据库 (DATABASE_URL)');
 
-      // Auto-migrate: ensure translations_meta exists on existing tables
+      // Auto-migrate: ensure all essential tables and columns exist in Postgres
       try {
-        await pgPool.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS translations_meta JSONB NOT NULL DEFAULT '{}'::jsonb`);
-        console.log('✅ 数据库同步完成: translations_meta 列已就绪 (Postgres)');
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS projects (
+              id VARCHAR(64) PRIMARY KEY,
+              name TEXT NOT NULL UNIQUE,
+              description TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS versions (
+              id VARCHAR(64) PRIMARY KEY,
+              project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+              version_name TEXT NOT NULL,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              created_by VARCHAR(64),
+              UNIQUE(project_id, version_name)
+          );
+
+          CREATE TABLE IF NOT EXISTS terms (
+              id VARCHAR(64) PRIMARY KEY,
+              version_id VARCHAR(64) NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+              kw TEXT NOT NULL,
+              context TEXT,
+              owner TEXT,
+              zh_cn TEXT NOT NULL,
+              translations JSONB NOT NULL DEFAULT '{}'::jsonb,
+              translations_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_by VARCHAR(64),
+              is_locked BOOLEAN DEFAULT FALSE,
+              locked_by VARCHAR(64),
+              locked_at TIMESTAMP WITH TIME ZONE,
+              status TEXT DEFAULT 'DRAFT',
+              reject_reason TEXT,
+              UNIQUE(version_id, kw)
+          );
+
+          CREATE TABLE IF NOT EXISTS logs (
+              id SERIAL PRIMARY KEY,
+              timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              kw TEXT,
+              chinese TEXT,
+              action TEXT NOT NULL,
+              details TEXT,
+              version_name TEXT,
+              user_id VARCHAR(64)
+          );
+
+          INSERT INTO projects (id, name, description)
+          VALUES ('proj-default', '迈金智能骑行码表', 'Magene 码表固件词条多人协同翻译项目')
+          ON CONFLICT (id) DO NOTHING;
+
+          ALTER TABLE terms ADD COLUMN IF NOT EXISTS translations_meta JSONB NOT NULL DEFAULT '{}'::jsonb;
+        `);
+        console.log('✅ 数据库同步完成: Postgres 基础表结构与属性列已就绪');
       } catch (err) {
-        console.warn('⚠️ 数据库同步警告 (translations_meta):', err.message);
+        console.warn('⚠️ 数据库同步警告 (Postgres):', err.message);
       }
     } catch (err) {
       pgError = err.message;
@@ -1015,12 +1068,8 @@ app.delete('/api/admin/users/:id', authenticateToken, requireSystemAdmin, async 
 // 2. GET /api/tables - 获取所有固件版本表 (带创建人及最近修改时间)
 app.get('/api/tables', authenticateToken, async (req, res) => {
   try {
-    const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
     const versions = await db.query(
-      `SELECT v.id, v.version_name AS name, v.created_at, u.name AS creator_name,
-        (SELECT l.timestamp FROM ${logsTable} l
-         WHERE l.version_name = v.version_name
-         ORDER BY l.timestamp DESC LIMIT 1) AS last_modified
+      `SELECT v.id, v.version_name AS name, v.created_at, u.name AS creator_name
        FROM versions v
        LEFT JOIN users u ON v.created_by = u.id
        WHERE v.project_id = $1
@@ -1033,12 +1082,13 @@ app.get('/api/tables', authenticateToken, async (req, res) => {
       name: ver.name,
       created_at: ver.created_at,
       creator_name: ver.creator_name || '系统默认',
-      last_modified: ver.last_modified || ver.created_at
+      last_modified: ver.created_at
     }));
 
     res.json(updatedVersions);
   } catch (err) {
-    console.error('获取版本列表失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+    console.error('获取版本列表失败:', err);
+    res.status(500).json({ error: `获取版本列表失败: ${err.message}` });
   }
 });
 
