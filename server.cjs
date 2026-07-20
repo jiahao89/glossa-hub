@@ -156,23 +156,7 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-let dbInitPromise = null;
-function ensureDbInit() {
-  if (!dbInitPromise) {
-    dbInitPromise = initDatabase();
-  }
-  return dbInitPromise;
-}
 
-app.use(async (req, res, next) => {
-  try {
-    await ensureDbInit();
-    next();
-  } catch (err) {
-    console.error('⚠️ 数据库初始化异常:', err);
-    res.status(500).json({ error: '数据库未就绪，请稍后重试。' });
-  }
-});
 
 const DB_PATH = path.join(__dirname, 'glossahub.db');
 const pgUrl = process.env.DATABASE_URL;
@@ -285,7 +269,7 @@ async function initDatabase() {
       pgPool.on('error', (err) => {
         console.error('⚠️ PG 连接池空闲连接错误 (已自动恢复):', err.message);
       });
-      
+
       // Test the pg connection
       await pgPool.query('SELECT 1');
       dbType = 'postgres';
@@ -311,7 +295,7 @@ async function initDatabase() {
 async function initSqlite() {
   dbType = 'sqlite';
   const sqlite3 = require('sqlite3').verbose();
-  
+
   return new Promise((resolve, reject) => {
     sqliteDb = new sqlite3.Database(DB_PATH, async (err) => {
       if (err) {
@@ -502,7 +486,7 @@ function initSqliteTables() {
               ('mem-viewer2', 'proj-default', 'user-viewer2', 'viewer', datetime('now'))
             `, (insMemErr) => {
               if (insMemErr) console.error('⚠️ 预置 SQLite 成员关联失败:', insMemErr.message);
-              
+
               // 7. languages
               sqliteDb.run(`
                 CREATE TABLE IF NOT EXISTS languages (
@@ -554,7 +538,7 @@ function initSqliteTables() {
                           console.error('❌ 创建 glossary_terms 表失败:', gTermErr.message);
                           return reject(gTermErr);
                         }
-                        
+
                         // Safely alter existing tables to upgrade columns for old DB files
                         sqliteDb.run("ALTER TABLE glossary_tables ADD COLUMN headers TEXT", () => {
                           sqliteDb.run("ALTER TABLE glossary_terms ADD COLUMN fields TEXT", () => {
@@ -586,6 +570,7 @@ function initSqliteTables() {
                                             resolve();
                                           });
                                         });
+                                      });
                                     });
                                   });
                                 });
@@ -594,42 +579,41 @@ function initSqliteTables() {
                           });
                         });
                       });
-                    });
-                  };
+                    };
 
-                  if (row && row.count === 0) {
-                    const defaultLangs = [
-                      { code: 'EN', name: 'EN（英文）' },
-                      { code: 'FR', name: 'FR（法）' },
-                      { code: 'DE', name: 'DE（德）' },
-                      { code: 'ES', name: 'ES（西班牙）' },
-                      { code: 'IT', name: 'IT（意大利）' },
-                      { code: 'PT', name: 'PT（葡萄牙）' },
-                      { code: 'KO', name: 'KO（韩）' },
-                      { code: 'JP', name: 'JP（日）' },
-                      { code: 'RU', name: 'RU（俄罗斯）' },
-                      { code: 'PL', name: 'PL（波兰）' },
-                      { code: 'TC', name: 'TC（繁）' },
-                      { code: 'DA', name: 'DA（丹麦）' },
-                      { code: 'CZ', name: 'CZ(捷克)' },
-                      { code: 'SE', name: '瑞典' },
-                      { code: 'NO', name: '挪威' },
-                      { code: 'NL', name: '荷兰' }
-                    ];
-                    
-                    const stmt = sqliteDb.prepare("INSERT OR IGNORE INTO languages (id, project_id, lang_code, lang_name, display_order, created_at) VALUES (?, 'proj-default', ?, ?, ?, datetime('now'))");
-                    defaultLangs.forEach((lang, idx) => {
-                      stmt.run([`lang-${lang.code.toLowerCase()}`, lang.code, lang.name, idx]);
-                    });
-                    stmt.finalize((finErr) => {
-                      if (finErr) console.error('⚠️ 预置 SQLite 默认语言失败:', finErr.message);
-                      else console.log('⚡ 成功预置迈金默认 16 个语种词典表');
+                    if (row && row.count === 0) {
+                      const defaultLangs = [
+                        { code: 'EN', name: 'EN（英文）' },
+                        { code: 'FR', name: 'FR（法）' },
+                        { code: 'DE', name: 'DE（德）' },
+                        { code: 'ES', name: 'ES（西班牙）' },
+                        { code: 'IT', name: 'IT（意大利）' },
+                        { code: 'PT', name: 'PT（葡萄牙）' },
+                        { code: 'KO', name: 'KO（韩）' },
+                        { code: 'JP', name: 'JP（日）' },
+                        { code: 'RU', name: 'RU（俄罗斯）' },
+                        { code: 'PL', name: 'PL（波兰）' },
+                        { code: 'TC', name: 'TC（繁）' },
+                        { code: 'DA', name: 'DA（丹麦）' },
+                        { code: 'CZ', name: 'CZ(捷克)' },
+                        { code: 'SE', name: '瑞典' },
+                        { code: 'NO', name: '挪威' },
+                        { code: 'NL', name: '荷兰' }
+                      ];
+
+                      const stmt = sqliteDb.prepare("INSERT OR IGNORE INTO languages (id, project_id, lang_code, lang_name, display_order, created_at) VALUES (?, 'proj-default', ?, ?, ?, datetime('now'))");
+                      defaultLangs.forEach((lang, idx) => {
+                        stmt.run([`lang-${lang.code.toLowerCase()}`, lang.code, lang.name, idx]);
+                      });
+                      stmt.finalize((finErr) => {
+                        if (finErr) console.error('⚠️ 预置 SQLite 默认语言失败:', finErr.message);
+                        else console.log('⚡ 成功预置迈金默认 16 个语种词典表');
+                        initGlossaryTables();
+                      });
+                    } else {
                       initGlossaryTables();
-                    });
-                  } else {
-                    initGlossaryTables();
-                  }
-                });
+                    }
+                  });
               });
             });
           });
@@ -712,7 +696,7 @@ const db = {
       } catch (e) {
         try {
           await this.run('ROLLBACK');
-        } catch {}
+        } catch { }
         throw e;
       }
     }
@@ -826,7 +810,7 @@ async function backupToRecycleBin(entityType, entityId, entityName, userId) {
 
   const id = crypto.randomUUID();
   const deletedAt = dbType === 'postgres' ? new Date() : new Date().toISOString();
-  
+
   const expiresAtDate = new Date();
   expiresAtDate.setDate(expiresAtDate.getDate() + 30);
   const expiresAt = dbType === 'postgres' ? expiresAtDate : expiresAtDate.toISOString();
@@ -966,7 +950,7 @@ app.post('/api/admin/users', authenticateToken, requireSystemAdmin, async (req, 
     const userId = crypto.randomUUID();
     const targetRole = role === 'admin' ? 'admin' : 'user';
     const createdAt = dbType === 'postgres' ? new Date() : new Date().toISOString();
-    
+
     await db.run(
       'INSERT INTO users (id, username, password_hash, name, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
       [userId, username, hashedPwd, name, targetRole, createdAt]
@@ -981,14 +965,14 @@ app.post('/api/admin/users', authenticateToken, requireSystemAdmin, async (req, 
 app.put('/api/admin/users/:id', authenticateToken, requireSystemAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, role, password } = req.body;
-  
+
   if (!name || !role) {
     return res.status(400).json({ error: '姓名和角色不能为空' });
   }
-  
+
   try {
     const targetRole = role === 'admin' ? 'admin' : 'user';
-    
+
     if (password && password.trim() !== '') {
       const hashedPwd = hashPassword(password);
       await db.run(
@@ -1010,11 +994,11 @@ app.put('/api/admin/users/:id', authenticateToken, requireSystemAdmin, async (re
 
 app.delete('/api/admin/users/:id', authenticateToken, requireSystemAdmin, async (req, res) => {
   const { id } = req.params;
-  
+
   if (req.user.id === id) {
     return res.status(400).json({ error: '系统保护：无法删除自己。' });
   }
-  
+
   try {
     await db.run('DELETE FROM users WHERE id = $1', [id]);
     res.json({ success: true });
@@ -1108,7 +1092,7 @@ app.get('/api/tables/:tableId/records', authenticateToken, async (req, res) => {
         }
       };
     });
-    
+
     res.json(formatted);
   } catch (err) {
     console.error('获取词条数据失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
@@ -1152,8 +1136,8 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
 
     // Prepare translation keys maps
     const TARGET_LANGUAGES = [
-      'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
-      'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
+      'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）',
+      'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）',
       'CZ(捷克)', '瑞典', '挪威', '荷兰'
     ];
     const LEGACY_TO_NEW_LANG_MAP = {
@@ -1275,7 +1259,7 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
             const termId = rec.recordId || crypto.randomUUID();
             const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
 
-            valuePlaceholders.push(`($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6}::jsonb, $${paramIdx+7}::jsonb, $${paramIdx+8}, NOW())`);
+            valuePlaceholders.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}::jsonb, $${paramIdx + 7}::jsonb, $${paramIdx + 8}, NOW())`);
             values.push(termId, tableId, kw, context, owner, zh_cn, translationsStr, transMetaStr, req.user.id);
             paramIdx += 9;
           }
@@ -1514,7 +1498,7 @@ app.get('/api/logs', authenticateToken, async (req, res) => {
        LEFT JOIN users u ON l.user_id = u.id
        ORDER BY l.id DESC`
     );
-    
+
     const formatted = rows.map(r => ({
       id: r.id,
       timestamp: r.timestamp,
@@ -1525,7 +1509,7 @@ app.get('/api/logs', authenticateToken, async (req, res) => {
       version: r.version_name,
       operator: r.operator_name || '王赵云'
     }));
-    
+
     res.json(formatted);
   } catch (err) {
     console.error('读取修改记录日志失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
@@ -1620,7 +1604,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
           const translationsStr = typeof term.translations === 'string'
             ? term.translations
             : JSON.stringify(term.translations || {});
-            
+
           const translationsMetaStr = typeof term.translations_meta === 'string'
             ? term.translations_meta
             : JSON.stringify(term.translations_meta || {});
@@ -1644,7 +1628,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
     res.status(201).json({ id: versionId, versionName, inheritedCount: baseVersionId ? inheritedCount : 0 });
   } catch (err) {
     console.error('新建固件版本失败:', err);
-    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+    res.status(500).json({ error: `创建版本失败: ${err.message}` });
   }
 });
 
@@ -1720,7 +1704,7 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
     } else {
       updatedTrans = JSON.stringify(inputTrans || {});
     }
-    
+
     // Save history snapshot if contents changed
     const dbTransStr = typeof term.translations === 'string' ? term.translations : JSON.stringify(term.translations || {});
     const isTransChanged = dbTransStr !== updatedTrans;
@@ -1940,7 +1924,7 @@ app.post('/api/versions/:versionId/inherit-translations', authenticateToken, asy
       if (inheritCount > 0) {
         const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
         const details = `从版本 [${sourceVer.version_name}] 批量继承翻译覆盖到 [${targetVer.version_name}]，合并继承了 ${inheritCount} 条词条。`;
-        
+
         if (dbType === 'postgres') {
           await tx.run(
             `INSERT INTO ${logsTable} (timestamp, action, details, version_name, user_id)
@@ -2015,7 +1999,7 @@ app.post('/api/terms/batch-update', authenticateToken, async (req, res) => {
       const updateFields = [];
       const updateParams = [];
       let idx = 1;
-      
+
       if (updatesNormalized.context !== undefined) {
         updateFields.push(`context = $${idx++}`);
         updateParams.push(updatesNormalized.context);
@@ -2030,7 +2014,7 @@ app.post('/api/terms/batch-update', authenticateToken, async (req, res) => {
       const baseQuery = dbType === 'postgres'
         ? `UPDATE terms SET ${updateFields.join(', ')}, updated_at = NOW(), updated_by = $${idx}`
         : `UPDATE terms SET ${updateFields.join(', ')}, updated_at = datetime('now'), updated_by = $${idx}`;
-      
+
       updateParams.push(req.user.id);
       const termIdParamIndex = idx + 1;
 
@@ -2120,7 +2104,7 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
       for (const term of sourceTerms) {
         const exist = existingMap[term.kw];
         const newId = crypto.randomUUID();
-        
+
         let transStr = '{}';
         try {
           let temp = term.translations;
@@ -2147,7 +2131,7 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
             }
 
             await tx.run('DELETE FROM terms WHERE id = $1', [exist.id]);
-            
+
             if (dbType === 'postgres') {
               await tx.run(
                 `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
@@ -2242,7 +2226,7 @@ app.get('/api/terms/by-kw-version', authenticateToken, async (req, res) => {
     );
     const formatted = snapshots.map(s => {
       let trans = {};
-      try { trans = typeof s.translations === 'string' ? JSON.parse(s.translations) : s.translations; } catch {}
+      try { trans = typeof s.translations === 'string' ? JSON.parse(s.translations) : s.translations; } catch { }
       return {
         id: s.id, kw: s.kw, zh_cn: s.zh_cn,
         translations: trans, createdAt: s.created_at,
@@ -2273,7 +2257,7 @@ app.get('/api/terms/:termId/snapshots', authenticateToken, async (req, res) => {
       let trans = {};
       try {
         trans = typeof s.translations === 'string' ? JSON.parse(s.translations) : s.translations;
-      } catch {}
+      } catch { }
       return {
         id: s.id,
         termId: s.term_id,
@@ -2324,7 +2308,7 @@ app.post('/api/terms/:termId/rollback', authenticateToken, writeLimiter, async (
     // 在覆盖还原前，先把当前的数据作为新快照保存，以免后悔！
     const newSnapshotId = crypto.randomUUID();
     const currentTransStr = typeof term.translations === 'string' ? term.translations : JSON.stringify(term.translations || {});
-    
+
     // 执行事务操作
     await db.transaction(async (tx) => {
       // 1. 存下后悔药快照
@@ -2370,7 +2354,7 @@ app.post('/api/terms/:termId/rollback', authenticateToken, writeLimiter, async (
       const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
       const versionObj = await tx.queryOne('SELECT version_name FROM versions WHERE id = $1', [term.version_id]);
       const details = `将词条 [${term.kw}] 的内容回退到了 [${snapshot.created_at}] 的历史版本。`;
-      
+
       if (dbType === 'postgres') {
         await tx.run(
           `INSERT INTO ${logsTable} (timestamp, kw, chinese, action, details, version_name, user_id)
@@ -2595,7 +2579,7 @@ app.post('/api/recycle-bin/:id/restore', authenticateToken, async (req, res) => 
           const lockedVal = dbType === 'postgres' ? (term.is_locked ? true : false) : (term.is_locked ? 1 : 0);
           const translationsStr = typeof term.translations === 'string' ? term.translations : JSON.stringify(term.translations || {});
           const metaStr = typeof term.translations_meta === 'string' ? term.translations_meta : JSON.stringify(term.translations_meta || {});
-          
+
           if (dbType === 'postgres') {
             await tx.run(
               `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, updated_by, is_locked, locked_by, locked_at, status, reject_reason)
@@ -2653,7 +2637,7 @@ app.post('/api/recycle-bin/:id/restore', authenticateToken, async (req, res) => 
         }
       } else if (item.entity_type === 'language') {
         const { language, term_translations } = payload;
-        
+
         const existingLang = await tx.queryOne(
           'SELECT id FROM languages WHERE project_id = $1 AND lang_code = $2',
           [language.project_id, language.lang_code]
@@ -2673,7 +2657,7 @@ app.post('/api/recycle-bin/:id/restore', authenticateToken, async (req, res) => 
           if (term) {
             const trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
             const meta = typeof term.translations_meta === 'string' ? JSON.parse(term.translations_meta || '{}') : (term.translations_meta || {});
-            
+
             trans[langName] = data.translation;
             if (data.meta) {
               meta[langName] = data.meta;
@@ -2814,12 +2798,12 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
         try {
           termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
         } catch (e) { }
-        
+
         let targetConstraints = { "英文": term.en_term };
         Object.keys(termFields).forEach(k => {
-           targetConstraints[k] = termFields[k];
+          targetConstraints[k] = termFields[k];
         });
-        
+
         matchedTerms.push({
           "中文名词": term.cn_term,
           "各语种强制翻译": targetConstraints
@@ -3574,10 +3558,10 @@ app.post('/api/glossary-tables/:tableId/terms', authenticateToken, async (req, r
       [termId, tableId, cnTerm.trim(), enTerm.trim(), (description || '').trim(), createdTime, JSON.stringify(defaultFields)]
     );
 
-    res.status(201).json({ 
-      id: termId, 
-      cn_term: cnTerm, 
-      en_term: enTerm, 
+    res.status(201).json({
+      id: termId,
+      cn_term: cnTerm,
+      en_term: enTerm,
       description,
       fields: defaultFields
     });
