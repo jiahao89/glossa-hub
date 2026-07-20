@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { parseCSV } from '../utils/csvHelper';
+import { parseCSV, fuzzyFindIndex } from '../utils/csvHelper';
 import { apiFetch, safeGetLocalStorage } from '../utils/api';
 import { useToast } from './Toast';
 import EmptyState from './EmptyState';
@@ -1834,32 +1834,65 @@ export default function TranslationTab({
           return;
         }
 
-        // Map CSV header indexes to internal field names
-        const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')');
-        const colMap = []; // [{ idx, fieldName }]
-        headers.forEach((h, idx) => {
-          if (!h) return;
-          const nh = normalize(h);
-          let fieldName = null;
-          if (nh.includes('kw') || h.includes('词条')) fieldName = 'KW';
-          else if (h.includes('中文') || nh.includes('cn') || nh.includes('cn(中文)')) fieldName = 'CN（中文）';
-          else if (h.includes('所在页面') || h.includes('页面')) fieldName = '所在页面';
-          else if (h.includes('字号') || h.includes('类别') || h.includes('负责人')) fieldName = '字号类别';
-          else {
-            // 匹配目标语种列
-            const langMatch = TARGET_LANGUAGES.find(lang =>
-              lang.includes(h) || h.includes(lang) ||
-              normalize(lang).includes(nh) || nh.includes(normalize(lang))
-            );
-            if (langMatch) fieldName = langMatch;
-          }
-          if (fieldName) colMap.push({ idx, fieldName });
-        });
+        // Use unified fuzzy matching to map headers to internal fields
+        const colMap = [];
+        const mappings = [];
 
-        const kwCol = colMap.find(c => c.fieldName === 'KW');
-        if (!kwCol) {
+        const kwIdx = fuzzyFindIndex(headers, ['KW', 'Key'], ['kw', 'key', '词条']);
+        const zhIdx = fuzzyFindIndex(headers, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);
+        const pageIdx = fuzzyFindIndex(headers, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
+        const typeIdx = fuzzyFindIndex(headers, ['字号类别', '负责人'], ['字号', '类别', '负责人']);
+
+        if (kwIdx === -1) {
           showStatus('danger', 'CSV 结构非法：必须包含 "KW" 列！');
           return;
+        }
+
+        colMap.push({ idx: kwIdx, fieldName: 'KW' });
+        if (headers[kwIdx] !== 'KW') mappings.push(`[${headers[kwIdx]}] -> KW`);
+
+        if (zhIdx !== -1) {
+          colMap.push({ idx: zhIdx, fieldName: 'CN（中文）' });
+          if (headers[zhIdx] !== 'CN（中文）') mappings.push(`[${headers[zhIdx]}] -> CN（中文）`);
+        }
+
+        if (pageIdx !== -1) {
+          colMap.push({ idx: pageIdx, fieldName: '所在页面' });
+          if (!['所在页面', '词条所在界面（注意是界面不是模块！！）'].includes(headers[pageIdx])) {
+            mappings.push(`[${headers[pageIdx]}] -> 所在页面`);
+          }
+        }
+
+        if (typeIdx !== -1) {
+          colMap.push({ idx: typeIdx, fieldName: '字号类别' });
+          if (!['字号类别'].includes(headers[typeIdx])) {
+            mappings.push(`[${headers[typeIdx]}] -> 字号类别`);
+          }
+        }
+
+        // 匹配目标语种列
+        TARGET_LANGUAGES.forEach(lang => {
+          let fuzzyKeywords = [lang.toLowerCase()];
+          const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
+          if (match) {
+            fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
+          } else {
+            const letters = lang.match(/[a-zA-Z]+/);
+            const chars = lang.match(/[\u4e00-\u9fa5]+/);
+            if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
+            if (chars) fuzzyKeywords.push(chars[0]);
+          }
+          const csvLangIdx = fuzzyFindIndex(headers, [lang], fuzzyKeywords);
+          if (csvLangIdx !== -1) {
+            colMap.push({ idx: csvLangIdx, fieldName: lang });
+            if (headers[csvLangIdx] !== lang) {
+              mappings.push(`[${headers[csvLangIdx]}] -> ${lang}`);
+            }
+          }
+        });
+
+        if (mappings.length > 0) {
+          showStatus('success', `已智能映射非标准表头: ${mappings.join(', ')}`);
         }
 
         // Build CSV record objects
