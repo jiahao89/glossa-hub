@@ -164,6 +164,37 @@ export default function ComparisonTab() {
           return;
         }
 
+        const mappings = [];
+        if (headers[kwIdx] !== 'KW') mappings.push(`[${headers[kwIdx]}] -> KW`);
+        if (headers[zhIdx] !== 'CN（中文）') mappings.push(`[${headers[zhIdx]}] -> CN（中文）`);
+        if (pageIdx !== -1 && !['所在页面', '词条所在界面（注意是界面不是模块！！）'].includes(headers[pageIdx])) {
+          mappings.push(`[${headers[pageIdx]}] -> 所在页面`);
+        }
+
+        const langIndices = {};
+        TARGET_LANGUAGES.forEach(lang => {
+          let fuzzyKeywords = [lang.toLowerCase()];
+          const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
+          if (match) {
+            fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
+          } else {
+            const letters = lang.match(/[a-zA-Z]+/);
+            const chars = lang.match(/[\u4e00-\u9fa5]+/);
+            if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
+            if (chars) fuzzyKeywords.push(chars[0]);
+          }
+          const csvLangIdx = fuzzyFindIndex(headers, [lang], fuzzyKeywords);
+          langIndices[lang] = csvLangIdx;
+          
+          if (csvLangIdx !== -1 && headers[csvLangIdx] !== lang) {
+            mappings.push(`[${headers[csvLangIdx]}] -> ${lang}`);
+          }
+        });
+
+        if (mappings.length > 0) {
+          toast.success(`已智能映射非标准表头: ${mappings.join(', ')}`, { duration: 6000 });
+        }
+
         const formatted = rows.map(row => {
           const kw = row[kwIdx]?.trim();
           const zh = row[zhIdx]?.trim();
@@ -171,17 +202,7 @@ export default function ComparisonTab() {
 
           const translations = {};
           TARGET_LANGUAGES.forEach(lang => {
-            let fuzzyKeywords = [lang.toLowerCase()];
-            const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
-            if (match) {
-              fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
-            } else {
-              const letters = lang.match(/[a-zA-Z]+/);
-              const chars = lang.match(/[\u4e00-\u9fa5]+/);
-              if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
-              if (chars) fuzzyKeywords.push(chars[0]);
-            }
-            const csvLangIdx = fuzzyFindIndex(headers, [lang], fuzzyKeywords);
+            const csvLangIdx = langIndices[lang];
             translations[lang] = csvLangIdx !== -1 ? row[csvLangIdx]?.trim() || '' : '';
           });
 

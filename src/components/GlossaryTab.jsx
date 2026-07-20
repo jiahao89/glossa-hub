@@ -247,9 +247,28 @@ export default function GlossaryTab({ projectRole }) {
 
         if (hasHeader) {
           startIdx = 1;
-          if (cnIdx !== -1) finalCnIdx = cnIdx;
-          if (enIdx !== -1) finalEnIdx = enIdx;
-          if (descIdx !== -1) finalDescIdx = descIdx;
+          const mappings = [];
+          if (cnIdx !== -1) {
+            finalCnIdx = cnIdx;
+            if (!['cn', 'zh', 'term', 'chinese', 'key', '中文', '词条', '键名'].includes(firstRow[cnIdx])) {
+              mappings.push(`[${csvRows[0][cnIdx].trim()}] -> 中文源词`);
+            }
+          }
+          if (enIdx !== -1) {
+            finalEnIdx = enIdx;
+            if (!['en', 'english', 'translation', '英文', '翻译', '译文'].includes(firstRow[enIdx])) {
+              mappings.push(`[${csvRows[0][enIdx].trim()}] -> 英文翻译`);
+            }
+          }
+          if (descIdx !== -1) {
+            finalDescIdx = descIdx;
+            if (!['desc', 'description', 'info', 'context', 'remark', '说明', '定义', '释义', '备注'].includes(firstRow[descIdx])) {
+              mappings.push(`[${csvRows[0][descIdx].trim()}] -> 备注释义`);
+            }
+          }
+          if (mappings.length > 0) {
+            toast.success(`已智能映射非标准表头: ${mappings.join(', ')}`, { duration: 6000 });
+          }
         }
 
         const rawHeaders = csvRows[0].map(h => h.trim());
