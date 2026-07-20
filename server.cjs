@@ -726,6 +726,10 @@ function authenticateToken(req, res, next) {
 // Project membership authorization middleware
 async function requireProjectMember(req, res, next) {
   const projectId = req.params.projectId || 'proj-default';
+  if (req.user?.role === 'admin') {
+    req.projectRole = 'owner';
+    return next();
+  }
   try {
     const member = await db.queryOne(
       'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
@@ -1578,49 +1582,107 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
     const versionId = crypto.randomUUID();
     let inheritedCount = 0;
 
+    // 校验 createdBy 用户在关联表中是否存在（防止外键失败）
+    let createdBy = req.user?.id || null;
+    if (createdBy) {
+      try {
+        const u = await db.queryOne('SELECT id FROM users WHERE id = $1', [createdBy]);
+        if (!u) createdBy = null;
+      } catch {
+        createdBy = null;
+      }
+    }
+
     await db.transaction(async (tx) => {
-      // 1. Insert version record
+      // 1. 插入新版本记录
       if (dbType === 'postgres') {
         await tx.run(
           'INSERT INTO versions (id, project_id, version_name, created_at, created_by) VALUES ($1, $2, $3, NOW(), $4)',
-          [versionId, projectId, versionName, req.user.id]
+          [versionId, projectId, versionName, createdBy]
         );
       } else {
         await tx.run(
           "INSERT INTO versions (id, project_id, version_name, created_at, created_by) VALUES ($1, $2, $3, datetime('now'), $4)",
-          [versionId, projectId, versionName, req.user.id]
+          [versionId, projectId, versionName, createdBy]
         );
       }
 
-      // 2. Inherit terms from base version if specified
+      // 2. 批量继承词条（采用 100 条分批批量写入，将几百次网络往返压缩至几次，解决 Vercel 10s 超时）
       if (baseVersionId) {
         const baseTerms = await tx.query(
           'SELECT kw, context, owner, zh_cn, translations, translations_meta FROM terms WHERE version_id = $1',
           [baseVersionId]
         );
 
-        for (const term of baseTerms) {
-          const newTermId = crypto.randomUUID();
-          const translationsStr = typeof term.translations === 'string'
-            ? term.translations
-            : JSON.stringify(term.translations || {});
+        if (baseTerms.length > 0) {
+          const CHUNK_SIZE = 100;
+          for (let i = 0; i < baseTerms.length; i += CHUNK_SIZE) {
+            const chunk = baseTerms.slice(i, i + CHUNK_SIZE);
 
-          const translationsMetaStr = typeof term.translations_meta === 'string'
-            ? term.translations_meta
-            : JSON.stringify(term.translations_meta || {});
+            if (dbType === 'postgres') {
+              const valuePlaceholders = [];
+              const values = [];
+              let paramIdx = 1;
 
-          if (dbType === 'postgres') {
-            await tx.run(
-              'INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW(), FALSE)',
-              [newTermId, versionId, term.kw, term.context ?? null, term.owner ?? null, term.zh_cn, translationsStr, translationsMetaStr]
-            );
-          } else {
-            await tx.run(
-              "INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'), datetime('now'), 0)",
-              [newTermId, versionId, term.kw, term.context ?? null, term.owner ?? null, term.zh_cn, translationsStr, translationsMetaStr]
-            );
+              for (const term of chunk) {
+                const newTermId = crypto.randomUUID();
+                const translationsStr = typeof term.translations === 'string'
+                  ? term.translations
+                  : JSON.stringify(term.translations || {});
+                const translationsMetaStr = typeof term.translations_meta === 'string'
+                  ? term.translations_meta
+                  : JSON.stringify(term.translations_meta || {});
+
+                valuePlaceholders.push(
+                  `($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6}::jsonb, $${paramIdx+7}::jsonb, NOW(), NOW(), FALSE)`
+                );
+                values.push(
+                  newTermId,
+                  versionId,
+                  term.kw,
+                  term.context ?? null,
+                  term.owner ?? null,
+                  term.zh_cn,
+                  translationsStr,
+                  translationsMetaStr
+                );
+                paramIdx += 8;
+              }
+
+              const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
+              await tx.run(sql, values);
+            } else {
+              const valuePlaceholders = [];
+              const values = [];
+
+              for (const term of chunk) {
+                const newTermId = crypto.randomUUID();
+                const translationsStr = typeof term.translations === 'string'
+                  ? term.translations
+                  : JSON.stringify(term.translations || {});
+                const translationsMetaStr = typeof term.translations_meta === 'string'
+                  ? term.translations_meta
+                  : JSON.stringify(term.translations_meta || {});
+
+                valuePlaceholders.push(`(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 0)`);
+                values.push(
+                  newTermId,
+                  versionId,
+                  term.kw,
+                  term.context ?? null,
+                  term.owner ?? null,
+                  term.zh_cn,
+                  translationsStr,
+                  translationsMetaStr
+                );
+              }
+
+              const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
+              await tx.run(sql, values);
+            }
+
+            inheritedCount += chunk.length;
           }
-          inheritedCount++;
         }
       }
     });
