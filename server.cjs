@@ -1684,7 +1684,7 @@ app.post('/api/projects/:projectId/versions/:versionId/inherit-chunk', authentic
         paramIdx += 8;
       }
 
-      const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
+      const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')} ON CONFLICT (version_id, kw) DO NOTHING`;
       await db.run(sql, values);
     } else {
       const valuePlaceholders = [];
@@ -1712,7 +1712,7 @@ app.post('/api/projects/:projectId/versions/:versionId/inherit-chunk', authentic
         );
       }
 
-      const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
+      const sql = `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
       await db.run(sql, values);
     }
 
