@@ -156,6 +156,24 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+let dbInitPromise = null;
+function ensureDbInit() {
+  if (!dbInitPromise) {
+    dbInitPromise = initDatabase();
+  }
+  return dbInitPromise;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureDbInit();
+    next();
+  } catch (err) {
+    console.error('⚠️ 数据库初始化异常:', err);
+    res.status(500).json({ error: '数据库未就绪，请稍后重试。' });
+  }
+});
+
 const DB_PATH = path.join(__dirname, 'glossahub.db');
 const pgUrl = process.env.DATABASE_URL;
 let dbType = 'sqlite';
@@ -1610,12 +1628,12 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
           if (dbType === 'postgres') {
             await tx.run(
               'INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW(), FALSE)',
-              [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr, translationsMetaStr]
+              [newTermId, versionId, term.kw, term.context ?? null, term.owner ?? null, term.zh_cn, translationsStr, translationsMetaStr]
             );
           } else {
             await tx.run(
               "INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'), datetime('now'), 0)",
-              [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr, translationsMetaStr]
+              [newTermId, versionId, term.kw, term.context ?? null, term.owner ?? null, term.zh_cn, translationsStr, translationsMetaStr]
             );
           }
           inheritedCount++;
