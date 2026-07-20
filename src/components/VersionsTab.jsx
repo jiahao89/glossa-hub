@@ -51,8 +51,10 @@ export default function VersionsTab({ onNavigate, projectRole }) {
     }
 
     setAdding(true);
-    setProgressPercent(5);
-    setProgressStatus('正在创建固件版本记录...');
+    if (baseVersionId) {
+      setProgressPercent(5);
+      setProgressStatus('正在创建固件版本记录...');
+    }
 
     try {
       const res = await apiFetch('/api/projects/proj-default/versions', {
@@ -106,7 +108,6 @@ export default function VersionsTab({ onNavigate, projectRole }) {
         setProgressStatus('继承完成！');
         toast.success(`成功创建数据表，并顺利继承 ${totalTerms} 条历史词条与翻译！`);
       } else {
-        setProgressPercent(100);
         toast.success('成功创建空白固件数据表！');
       }
 
@@ -366,7 +367,7 @@ export default function VersionsTab({ onNavigate, projectRole }) {
                 <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>* 选择一个大表，新表在创建后会秒级自动克隆其全部历史词条和翻译数据。</p>
               </div>
 
-              {adding && (
+              {adding && baseVersionId && (
                 <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.82rem' }}>
                     <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{progressStatus}</span>

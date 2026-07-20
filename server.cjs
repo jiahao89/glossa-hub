@@ -1105,7 +1105,7 @@ app.get('/api/tables/:tableId/records', authenticateToken, async (req, res) => {
         rejectReason: term.reject_reason || '',
         translationsMeta: transMeta,
         fields: {
-          KW: term.kw,
+          KW: term.kw && term.kw.startsWith('__EMPTY_KW_') ? '' : term.kw,
           'CN（中文）': term.zh_cn,
           所在页面: term.context || '',
           字号类别: term.owner || '',
@@ -1238,7 +1238,11 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
 
           for (const rec of records) {
             const fields = rec.fields || {};
-            const kw = fuzzyGetFieldValue(fields, ['KW', 'Key'], ['kw', 'key']);
+            let kw = fuzzyGetFieldValue(fields, ['KW', 'Key'], ['kw', 'key']);
+            if (typeof kw === 'string') kw = kw.trim();
+            if (!kw) {
+              kw = `__EMPTY_KW_${crypto.randomUUID()}__`;
+            }
             const zh_cn = fuzzyGetFieldValue(fields, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);
             const context = fuzzyGetFieldValue(fields, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
             const owner = fuzzyGetFieldValue(fields, ['字号类别', '负责人'], ['字号', '负责人', 'owner']);
@@ -1289,7 +1293,8 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
             const sql = `
               INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
               VALUES ${valuePlaceholders.join(',\n')}
-              ON CONFLICT (version_id, kw) DO UPDATE SET
+              ON CONFLICT (id) DO UPDATE SET
+                kw = EXCLUDED.kw,
                 context = EXCLUDED.context,
                 owner = EXCLUDED.owner,
                 zh_cn = EXCLUDED.zh_cn,
@@ -1307,7 +1312,11 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
         // and local SQLite has 0 network latency so loop is fast.
         for (const rec of records) {
           const fields = rec.fields || {};
-          const kw = fuzzyGetFieldValue(fields, ['KW', 'Key'], ['kw', 'key']);
+          let kw = fuzzyGetFieldValue(fields, ['KW', 'Key'], ['kw', 'key']);
+          if (typeof kw === 'string') kw = kw.trim();
+          if (!kw) {
+            kw = `__EMPTY_KW_${crypto.randomUUID()}__`;
+          }
           const zh_cn = fuzzyGetFieldValue(fields, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);
           const context = fuzzyGetFieldValue(fields, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
           const owner = fuzzyGetFieldValue(fields, ['字号类别', '负责人'], ['字号', '负责人', 'owner']);
@@ -1368,8 +1377,8 @@ app.post('/api/sync-table', authenticateToken, heavyOperationLimiter, async (req
           await tx.run(
             `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at, is_locked, locked_by, locked_at, status, reject_reason)
              VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),0,NULL,NULL,'DRAFT',NULL)
-             ON CONFLICT(version_id, kw) DO UPDATE SET
-               context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
+             ON CONFLICT(id) DO UPDATE SET
+               kw=excluded.kw, context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
                translations=excluded.translations, translations_meta=excluded.translations_meta,
                updated_by=excluded.updated_by, updated_at=datetime('now')
              WHERE is_locked = 0 OR is_locked IS NULL`,
@@ -1756,17 +1765,11 @@ app.put('/api/terms/:termId', authenticateToken, async (req, res) => {
 
     let finalKw = (kw !== undefined ? kw : term.kw).trim();
     if (!finalKw) {
-      const targetText = (zh_cn || term.zh_cn || '').trim();
-      if (!targetText) {
-        return res.status(400).json({ error: '中文源词和 KW 标识不能同时为空。' });
-      }
-      const versionInfo = await db.queryOne('SELECT project_id FROM versions WHERE id = $1', [term.version_id]);
-      const projectId = versionInfo?.project_id || 'proj-default';
-      finalKw = await generateKwHelper(projectId, targetText);
+      finalKw = `__EMPTY_KW_${crypto.randomUUID()}__`;
     }
 
-    // Check duplicate KW (case-insensitive) in the same version
-    if (finalKw !== term.kw) {
+    // Check duplicate KW (case-insensitive) in the same version (skip if __EMPTY_KW_)
+    if (finalKw && !finalKw.startsWith('__EMPTY_KW_') && finalKw !== term.kw) {
       const duplicate = await db.queryOne(
         'SELECT id, zh_cn FROM terms WHERE version_id = $1 AND LOWER(kw) = LOWER($2) AND id <> $3',
         [term.version_id, finalKw, termId]

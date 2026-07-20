@@ -602,11 +602,18 @@ export default function TranslationTab({
     const cell = record.fields[fId];
     if (!cell) return '';
     // Handle rich text array or string
+    let val = '';
     if (Array.isArray(cell)) {
-      return cell.map(seg => seg.text || '').join('');
+      val = cell.map(seg => seg.text || '').join('');
+    } else if (typeof cell === 'object' && cell.text) {
+      val = cell.text;
+    } else {
+      val = String(cell);
     }
-    if (typeof cell === 'object' && cell.text) return cell.text;
-    return String(cell);
+    if (fieldName === 'KW' && val.startsWith('__EMPTY_KW_')) {
+      return '';
+    }
+    return val;
   }, [getFieldIdByName]);
 
   // Get index maps for fast lookup
@@ -1131,12 +1138,14 @@ export default function TranslationTab({
       // Perform duplicate and synonym checks
       const existingList = await fetchTargetTableKWAndChinese(addTargetTableId);
       
-      // 1. Check exact KW duplicate
-      const duplicateKWItem = existingList.find(item => item.kw.toLowerCase() === finalKW.toLowerCase());
-      if (duplicateKWItem) {
-        toast.error(`无法保存！已维护相同KW词条：\n- KW: ${finalKW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
-        setLoading(false);
-        return;
+      // 1. Check exact KW duplicate (only if KW is not empty)
+      if (finalKW) {
+        const duplicateKWItem = existingList.find(item => item.kw && item.kw.toLowerCase() === finalKW.toLowerCase());
+        if (duplicateKWItem) {
+          toast.error(`无法保存！已维护相同KW词条：\n- KW: ${finalKW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
+          setLoading(false);
+          return;
+        }
       }
       
       // 2. Check semantic similarity
@@ -1577,10 +1586,9 @@ export default function TranslationTab({
           let trimmedKW = (row.KW || '').trim();
           if (!trimmedKW) {
             const generated = await generateKWForText(row.中文);
-            if (!generated) {
-              throw new Error(`自动为中文 “${row.中文}” 生成 KW 失败。`);
+            if (generated) {
+              trimmedKW = generated;
             }
-            trimmedKW = generated;
           }
           return { ...row, KW: trimmedKW };
         })
@@ -1592,7 +1600,8 @@ export default function TranslationTab({
       // 2. Check duplicate KWs
       const batchKWSet = new Set();
       for (const row of resolvedRows) {
-        const duplicateKWItem = existingList.find(item => item.kw.toLowerCase() === row.KW.toLowerCase());
+        if (!row.KW.trim()) continue;
+        const duplicateKWItem = existingList.find(item => item.kw && item.kw.toLowerCase() === row.KW.toLowerCase());
         if (duplicateKWItem) {
           toast.error(`无法保存！批处理中发现已维护相同KW词条：\n- KW: ${row.KW}\n- 已存在词条中文: ${duplicateKWItem.chinese}`);
           setLoading(false);
@@ -1865,8 +1874,8 @@ export default function TranslationTab({
         const pageIdx = fuzzyFindIndex(headers, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
         const typeIdx = fuzzyFindIndex(headers, ['字号类别', '负责人'], ['字号', '类别', '负责人']);
 
-        if (kwIdx === -1) {
-          showStatus('danger', 'CSV 结构非法：必须包含 "KW" 列！');
+        if (kwIdx === -1 && zhIdx === -1) {
+          showStatus('danger', 'CSV 结构非法：必须包含 "KW" 或 "CN（中文）" 列！');
           return;
         }
 
@@ -1929,10 +1938,10 @@ export default function TranslationTab({
             fields,
             kw: (fields['KW'] || '').trim(),
           };
-        }).filter(r => r.kw);
+        }).filter(r => r.kw || (r.fields['CN（中文）'] && r.fields['CN（中文）'].trim() !== ''));
 
         if (csvRecords.length === 0) {
-          showStatus('danger', 'CSV 文件中没有有效的 KW 词条！');
+          showStatus('danger', 'CSV 文件中没有有效的数据（至少需要包含 KW 或中文）！');
           return;
         }
 
