@@ -467,7 +467,7 @@ function initSqliteTables() {
         )
       `);
 
-      // 6b. ai_usage_logs (P1-2: AI 用量追踪)
+      // 6b. ai_usage_logs
       sqliteDb.run(`
         CREATE TABLE IF NOT EXISTS ai_usage_logs (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -483,7 +483,7 @@ function initSqliteTables() {
         )
       `);
 
-      // 6. logs_v2 (Change log)
+      // 6. logs_v2
       sqliteDb.run(`
         CREATE TABLE IF NOT EXISTS logs_v2 (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -495,195 +495,149 @@ function initSqliteTables() {
           version_name TEXT,
           user_id TEXT REFERENCES users(id) ON DELETE SET NULL
         )
-      `, (err) => {
-        if (err) return reject(err);
+      `);
 
-        // Pre-populate Magene internal users (王赵云 & 史东升等 8 位管理员)
-        const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'magene123';
-        if (!process.env.INITIAL_ADMIN_PASSWORD) {
-          console.warn('⚠️ INITIAL_ADMIN_PASSWORD 未设置，使用默认密码。请在环境变量中配置 INITIAL_ADMIN_PASSWORD 以提高安全性。');
-        }
-        const passHash = hashPassword(adminPassword);
-        const userHash = hashPassword('user123');
-        const viewerHash = hashPassword('viewer123');
-        sqliteDb.run(`
-          INSERT OR IGNORE INTO users (id, username, password_hash, name, role, created_at)
-          VALUES 
-          ('user-wangzhaoyun', 'wangzhaoyun', ?, 'wangzhaoyun', 'admin', datetime('now')),
-          ('user-shidongsheng', 'shidongsheng', ?, 'shidongsheng', 'admin', datetime('now')),
-          ('user-liuchenlu', 'liuchenlu', ?, 'liuchenlu', 'admin', datetime('now')),
-          ('user-liuyuanyuan', 'liuyuanyuan', ?, 'liuyuanyuan', 'admin', datetime('now')),
-          ('user-bizihao', 'bizihao', ?, 'bizihao', 'admin', datetime('now')),
-          ('user-shengyongbang', 'shengyongbang', ?, 'shengyongbang', 'admin', datetime('now')),
-          ('user-lanyiwei', 'lanyiwei', ?, 'lanyiwei', 'admin', datetime('now')),
-          ('user-jiahao', 'jiahao', ?, 'jiahao', 'admin', datetime('now')),
-          ('user-user1', 'user1', ?, 'User One', 'user', datetime('now')),
-          ('user-user2', 'user2', ?, 'User Two', 'user', datetime('now')),
-          ('user-viewer1', 'viewer1', ?, 'Viewer One', 'user', datetime('now')),
-          ('user-viewer2', 'viewer2', ?, 'Viewer Two', 'user', datetime('now'))
-        `, [
-          passHash, passHash, passHash, passHash, passHash, passHash, passHash, passHash,
-          userHash, userHash, viewerHash, viewerHash
-        ], (insErr) => {
-          if (insErr) console.error('⚠️ 预置 SQLite 用户失败:', insErr.message);
+      // Pre-populate users
+      const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'magene123';
+      const passHash = hashPassword(adminPassword);
+      const userHash = hashPassword('user123');
+      const viewerHash = hashPassword('viewer123');
+      sqliteDb.run(`
+        INSERT OR IGNORE INTO users (id, username, password_hash, name, role, created_at)
+        VALUES 
+        ('user-wangzhaoyun', 'wangzhaoyun', ?, 'wangzhaoyun', 'admin', datetime('now')),
+        ('user-shidongsheng', 'shidongsheng', ?, 'shidongsheng', 'admin', datetime('now')),
+        ('user-liuchenlu', 'liuchenlu', ?, 'liuchenlu', 'admin', datetime('now')),
+        ('user-liuyuanyuan', 'liuyuanyuan', ?, 'liuyuanyuan', 'admin', datetime('now')),
+        ('user-bizihao', 'bizihao', ?, 'bizihao', 'admin', datetime('now')),
+        ('user-shengyongbang', 'shengyongbang', ?, 'shengyongbang', 'admin', datetime('now')),
+        ('user-lanyiwei', 'lanyiwei', ?, 'lanyiwei', 'admin', datetime('now')),
+        ('user-jiahao', 'jiahao', ?, 'jiahao', 'admin', datetime('now')),
+        ('user-user1', 'user1', ?, 'User One', 'user', datetime('now')),
+        ('user-user2', 'user2', ?, 'User Two', 'user', datetime('now')),
+        ('user-viewer1', 'viewer1', ?, 'Viewer One', 'user', datetime('now')),
+        ('user-viewer2', 'viewer2', ?, 'Viewer Two', 'user', datetime('now'))
+      `, [
+        passHash, passHash, passHash, passHash, passHash, passHash, passHash, passHash,
+        userHash, userHash, viewerHash, viewerHash
+      ]);
 
-          // Pre-populate default project
-          sqliteDb.run(`
-            INSERT OR IGNORE INTO projects (id, name, description, created_at)
-            VALUES ('proj-default', '迈金智能骑行码表', 'Magene 码表固件词条多人协同翻译项目', datetime('now'))
-          `, (insProjErr) => {
-            if (insProjErr) console.error('⚠️ 预置 SQLite 项目失败:', insProjErr.message);
+      // Pre-populate default project
+      sqliteDb.run(`
+        INSERT OR IGNORE INTO projects (id, name, description, created_at)
+        VALUES ('proj-default', '迈金智能骑行码表', 'Magene 码表固件词条多人协同翻译项目', datetime('now'))
+      `);
 
-            // Pre-populate project member relationships
-            sqliteDb.run(`
-              INSERT OR IGNORE INTO project_members (id, project_id, user_id, role, created_at)
-              VALUES 
-              ('mem-1', 'proj-default', 'user-wangzhaoyun', 'owner', datetime('now')),
-              ('mem-2', 'proj-default', 'user-shidongsheng', 'owner', datetime('now')),
-              ('mem-liuchenlu', 'proj-default', 'user-liuchenlu', 'owner', datetime('now')),
-              ('mem-liuyuanyuan', 'proj-default', 'user-liuyuanyuan', 'owner', datetime('now')),
-              ('mem-bizihao', 'proj-default', 'user-bizihao', 'owner', datetime('now')),
-              ('mem-shengyongbang', 'proj-default', 'user-shengyongbang', 'owner', datetime('now')),
-              ('mem-lanyiwei', 'proj-default', 'user-lanyiwei', 'owner', datetime('now')),
-              ('mem-jiahao', 'proj-default', 'user-jiahao', 'owner', datetime('now')),
-              ('mem-user1', 'proj-default', 'user-user1', 'editor', datetime('now')),
-              ('mem-user2', 'proj-default', 'user-user2', 'editor', datetime('now')),
-              ('mem-viewer1', 'proj-default', 'user-viewer1', 'viewer', datetime('now')),
-              ('mem-viewer2', 'proj-default', 'user-viewer2', 'viewer', datetime('now'))
-            `, (insMemErr) => {
-              if (insMemErr) console.error('⚠️ 预置 SQLite 成员关联失败:', insMemErr.message);
+      // Pre-populate project member relationships
+      sqliteDb.run(`
+        INSERT OR IGNORE INTO project_members (id, project_id, user_id, role, created_at)
+        VALUES 
+        ('mem-1', 'proj-default', 'user-wangzhaoyun', 'owner', datetime('now')),
+        ('mem-2', 'proj-default', 'user-shidongsheng', 'owner', datetime('now')),
+        ('mem-liuchenlu', 'proj-default', 'user-liuchenlu', 'owner', datetime('now')),
+        ('mem-liuyuanyuan', 'proj-default', 'user-liuyuanyuan', 'owner', datetime('now')),
+        ('mem-bizihao', 'proj-default', 'user-bizihao', 'owner', datetime('now')),
+        ('mem-shengyongbang', 'proj-default', 'user-shengyongbang', 'owner', datetime('now')),
+        ('mem-lanyiwei', 'proj-default', 'user-lanyiwei', 'owner', datetime('now')),
+        ('mem-jiahao', 'proj-default', 'user-jiahao', 'owner', datetime('now')),
+        ('mem-user1', 'proj-default', 'user-user1', 'editor', datetime('now')),
+        ('mem-user2', 'proj-default', 'user-user2', 'editor', datetime('now')),
+        ('mem-viewer1', 'proj-default', 'user-viewer1', 'viewer', datetime('now')),
+        ('mem-viewer2', 'proj-default', 'user-viewer2', 'viewer', datetime('now'))
+      `);
 
-              // 7. languages
-              sqliteDb.run(`
-                CREATE TABLE IF NOT EXISTS languages (
-                  id TEXT PRIMARY KEY,
-                  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                  lang_code TEXT NOT NULL,
-                  lang_name TEXT NOT NULL,
-                  display_order INTEGER DEFAULT 0,
-                  created_at TEXT,
-                  UNIQUE(project_id, lang_code)
-                )
-              `, (langTableErr) => {
-                if (langTableErr) {
-                  console.error('❌ 创建 languages 表失败:', langTableErr.message);
-                  return reject(langTableErr);
-                }
+      // 7. languages
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS languages (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          lang_code TEXT NOT NULL,
+          lang_name TEXT NOT NULL,
+          display_order INTEGER DEFAULT 0,
+          created_at TEXT,
+          UNIQUE(project_id, lang_code)
+        )
+      `);
 
-                sqliteDb.get("SELECT COUNT(*) as count FROM languages WHERE project_id = 'proj-default'", (countErr, row) => {
-                  if (countErr) {
-                    console.error('⚠️ 查询 languages 失败:', countErr.message);
-                    return resolve();
-                  }
-                  const initGlossaryTables = () => {
-                    sqliteDb.run(`
-                      CREATE TABLE IF NOT EXISTS glossary_tables (
-                        id TEXT PRIMARY KEY,
-                        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                        table_name TEXT NOT NULL,
-                        created_at TEXT,
-                        headers TEXT DEFAULT '["中文专业术语","英文翻译对应","说明 / 定义"]'
-                      )
-                    `, (gtTableErr) => {
-                      if (gtTableErr) {
-                        console.error('❌ 创建 glossary_tables 表失败:', gtTableErr.message);
-                        return reject(gtTableErr);
-                      }
-                      sqliteDb.run(`
-                        CREATE TABLE IF NOT EXISTS glossary_terms (
-                          id TEXT PRIMARY KEY,
-                          table_id TEXT NOT NULL REFERENCES glossary_tables(id) ON DELETE CASCADE,
-                          cn_term TEXT,
-                          en_term TEXT,
-                          description TEXT,
-                          created_at TEXT,
-                          fields TEXT DEFAULT '{}'
-                        )
-                      `, (gTermErr) => {
-                        if (gTermErr) {
-                          console.error('❌ 创建 glossary_terms 表失败:', gTermErr.message);
-                          return reject(gTermErr);
-                        }
+      // 8. glossary_tables & terms
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS glossary_tables (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          table_name TEXT NOT NULL,
+          created_at TEXT,
+          headers TEXT DEFAULT '["中文专业术语","英文翻译对应","说明 / 定义"]'
+        )
+      `);
 
-                        // Safely alter existing tables to upgrade columns for old DB files
-                        sqliteDb.run("ALTER TABLE glossary_tables ADD COLUMN headers TEXT", () => {
-                          sqliteDb.run("ALTER TABLE glossary_terms ADD COLUMN fields TEXT", () => {
-                            // Safely alter terms table for v1.2 (ignore error if column already exists)
-                            sqliteDb.run("ALTER TABLE terms ADD COLUMN is_locked INTEGER DEFAULT 0", () => {
-                              sqliteDb.run("ALTER TABLE terms ADD COLUMN locked_by TEXT", () => {
-                                sqliteDb.run("ALTER TABLE terms ADD COLUMN locked_at TEXT", () => {
-                                  // Safely alter terms table for v1.3 workflow
-                                  sqliteDb.run("ALTER TABLE terms ADD COLUMN status TEXT DEFAULT 'DRAFT'", () => {
-                                    sqliteDb.run("ALTER TABLE terms ADD COLUMN reject_reason TEXT", () => {
-                                      // P1-1: 翻译来源标记列
-                                      sqliteDb.run("ALTER TABLE terms ADD COLUMN translations_meta TEXT DEFAULT '{}'", () => {
-                                        sqliteDb.run(`
-                                          CREATE TABLE IF NOT EXISTS recycle_bin (
-                                            id TEXT PRIMARY KEY,
-                                            entity_type TEXT NOT NULL,
-                                            entity_name TEXT NOT NULL,
-                                            payload TEXT NOT NULL,
-                                            deleted_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-                                            deleted_at TEXT NOT NULL,
-                                            expires_at TEXT NOT NULL
-                                          )
-                                        `, (rbErr) => {
-                                          if (rbErr) console.error('⚠️ 创建 SQLite recycle_bin 表失败:', rbErr.message);
-                                          // 尝试对 SQLite 进行增量 schema 升级（添加 translations_meta）
-                                          sqliteDb.run(`ALTER TABLE terms ADD COLUMN translations_meta TEXT NOT NULL DEFAULT '{}'`, (err) => {
-                                            // 如果已存在会报错 "duplicate column name"，这里忽略报错即可
-                                            if (!err) console.log('✅ 数据库同步完成: translations_meta 列成功添加到 SQLite');
-                                            resolve();
-                                          });
-                                        });
-                                      });
-                                    });
-                                  });
-                                });
-                              });
-                            });
-                          });
-                        });
-                      });
-                    };
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS glossary_terms (
+          id TEXT PRIMARY KEY,
+          table_id TEXT NOT NULL REFERENCES glossary_tables(id) ON DELETE CASCADE,
+          cn_term TEXT,
+          en_term TEXT,
+          description TEXT,
+          created_at TEXT,
+          fields TEXT DEFAULT '{}'
+        )
+      `);
 
-                    if (row && row.count === 0) {
-                      const defaultLangs = [
-                        { code: 'EN', name: 'EN（英文）' },
-                        { code: 'FR', name: 'FR（法）' },
-                        { code: 'DE', name: 'DE（德）' },
-                        { code: 'ES', name: 'ES（西班牙）' },
-                        { code: 'IT', name: 'IT（意大利）' },
-                        { code: 'PT', name: 'PT（葡萄牙）' },
-                        { code: 'KO', name: 'KO（韩）' },
-                        { code: 'JP', name: 'JP（日）' },
-                        { code: 'RU', name: 'RU（俄罗斯）' },
-                        { code: 'PL', name: 'PL（波兰）' },
-                        { code: 'TC', name: 'TC（繁）' },
-                        { code: 'DA', name: 'DA（丹麦）' },
-                        { code: 'CZ', name: 'CZ(捷克)' },
-                        { code: 'SE', name: '瑞典' },
-                        { code: 'NO', name: '挪威' },
-                        { code: 'NL', name: '荷兰' }
-                      ];
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS recycle_bin (
+          id TEXT PRIMARY KEY,
+          entity_type TEXT NOT NULL,
+          entity_name TEXT NOT NULL,
+          payload TEXT NOT NULL,
+          deleted_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+          deleted_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL
+        )
+      `);
 
-                      const stmt = sqliteDb.prepare("INSERT OR IGNORE INTO languages (id, project_id, lang_code, lang_name, display_order, created_at) VALUES (?, 'proj-default', ?, ?, ?, datetime('now'))");
-                      defaultLangs.forEach((lang, idx) => {
-                        stmt.run([`lang-${lang.code.toLowerCase()}`, lang.code, lang.name, idx]);
-                      });
-                      stmt.finalize((finErr) => {
-                        if (finErr) console.error('⚠️ 预置 SQLite 默认语言失败:', finErr.message);
-                        else console.log('⚡ 成功预置迈金默认 16 个语种词典表');
-                        initGlossaryTables();
-                      });
-                    } else {
-                      initGlossaryTables();
-                    }
-                  });
-              });
-            });
+      // Schema migrations (ignore column already exists errors)
+      sqliteDb.run("ALTER TABLE glossary_tables ADD COLUMN headers TEXT", () => {});
+      sqliteDb.run("ALTER TABLE glossary_terms ADD COLUMN fields TEXT", () => {});
+      sqliteDb.run("ALTER TABLE terms ADD COLUMN is_locked INTEGER DEFAULT 0", () => {});
+      sqliteDb.run("ALTER TABLE terms ADD COLUMN locked_by TEXT", () => {});
+      sqliteDb.run("ALTER TABLE terms ADD COLUMN locked_at TEXT", () => {});
+      sqliteDb.run("ALTER TABLE terms ADD COLUMN status TEXT DEFAULT 'DRAFT'", () => {});
+      sqliteDb.run("ALTER TABLE terms ADD COLUMN reject_reason TEXT", () => {});
+      sqliteDb.run("ALTER TABLE terms ADD COLUMN translations_meta TEXT DEFAULT '{}'", () => {});
+
+      // Languages seeding
+      sqliteDb.get("SELECT COUNT(*) as count FROM languages WHERE project_id = 'proj-default'", (countErr, row) => {
+        if (row && row.count === 0) {
+          const defaultLangs = [
+            { code: 'EN', name: 'EN（英文）' },
+            { code: 'FR', name: 'FR（法）' },
+            { code: 'DE', name: 'DE（德）' },
+            { code: 'ES', name: 'ES（西班牙）' },
+            { code: 'IT', name: 'IT（意大利）' },
+            { code: 'PT', name: 'PT（葡萄牙）' },
+            { code: 'KO', name: 'KO（韩）' },
+            { code: 'JP', name: 'JP（日）' },
+            { code: 'RU', name: 'RU（俄罗斯）' },
+            { code: 'PL', name: 'PL（波兰）' },
+            { code: 'TC', name: 'TC（繁）' },
+            { code: 'DA', name: 'DA（丹麦）' },
+            { code: 'CZ', name: 'CZ(捷克)' },
+            { code: 'SE', name: '瑞典' },
+            { code: 'NO', name: '挪威' },
+            { code: 'NL', name: '荷兰' }
+          ];
+
+          const stmt = sqliteDb.prepare("INSERT OR IGNORE INTO languages (id, project_id, lang_code, lang_name, display_order, created_at) VALUES (?, 'proj-default', ?, ?, ?, datetime('now'))");
+          defaultLangs.forEach((lang, idx) => {
+            stmt.run([`lang-${lang.code.toLowerCase()}`, lang.code, lang.name, idx]);
           });
-        });
+          stmt.finalize((finErr) => {
+            if (finErr) console.error('⚠️ 预置 SQLite 默认语言失败:', finErr.message);
+            else console.log('⚡ 成功预置迈金默认 16 个语种词典表');
+            resolve();
+          });
+        } else {
+          resolve();
+        }
       });
     });
   });
