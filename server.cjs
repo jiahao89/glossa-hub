@@ -156,6 +156,26 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+let dbInitPromise = null;
+function ensureDbInit() {
+  if (!dbInitPromise) {
+    dbInitPromise = initDatabase().then(() => {
+      try { ensureIndexes(); } catch {}
+    });
+  }
+  return dbInitPromise;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureDbInit();
+    next();
+  } catch (err) {
+    console.error('❌ DB 初始化异常:', err);
+    res.status(500).json({ error: `数据库无法建立连接: ${err.message}` });
+  }
+});
+
 
 
 const DB_PATH = path.join(__dirname, 'glossahub.db');
@@ -3724,17 +3744,18 @@ app.get('/api/debug-status', authenticateToken, async (req, res) => {
   });
 });
 
-// Start Server
+// Start Server (only when NOT running in Vercel Serverless Environment)
 let server = null;
-initDatabase().then(() => {
-  ensureIndexes();
-  server = app.listen(PORT, () => {
-    console.log(`🌐 GlossaHub 协同数据日志服务已启动，监听端口: ${PORT}`);
-    console.log(`📡 数据库引擎: [${dbType.toUpperCase()}]`);
+if (!process.env.VERCEL) {
+  ensureDbInit().then(() => {
+    server = app.listen(PORT, () => {
+      console.log(`🌐 GlossaHub 协同数据日志服务已启动，监听端口: ${PORT}`);
+      console.log(`📡 数据库引擎: [${dbType.toUpperCase()}]`);
+    });
+  }).catch(err => {
+    console.error('❌ 服务器启动时初始化数据库失败:', err.message);
   });
-}).catch(err => {
-  console.error('❌ 服务器启动时初始化数据库失败:', err.message);
-});
+}
 
 // 优雅关机 (Graceful Shutdown)
 const shutdown = async () => {
@@ -3761,4 +3782,6 @@ const shutdown = async () => {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+module.exports = app;
 
