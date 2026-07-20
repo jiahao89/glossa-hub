@@ -141,17 +141,10 @@ async function generateKwHelper(projectId, text) {
 }
 
 
-// CORS 白名单限制
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
+// CORS 配置：允许所有来源（包含 Vercel 部署域名与本地开发环境）
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      // 仅返回 false 拒绝跨域头，防止抛出 Error 导致 Express 渲染 500 HTML 报错页
-      callback(null, false);
-    }
-  }
+  origin: true,
+  credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -160,7 +153,7 @@ let dbInitPromise = null;
 function ensureDbInit() {
   if (!dbInitPromise) {
     dbInitPromise = initDatabase().then(() => {
-      try { ensureIndexes(); } catch {}
+      try { ensureIndexes(); } catch { }
     });
   }
   return dbInitPromise;
@@ -1722,7 +1715,7 @@ app.post('/api/projects/:projectId/versions/:versionId/inherit-chunk', authentic
           : JSON.stringify(term.translations_meta || {});
 
         valuePlaceholders.push(
-          `($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6}::jsonb, $${paramIdx+7}::jsonb, NOW(), NOW(), FALSE)`
+          `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}::jsonb, $${paramIdx + 7}::jsonb, NOW(), NOW(), FALSE)`
         );
         values.push(
           newTermId,
