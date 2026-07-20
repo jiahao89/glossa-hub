@@ -272,6 +272,14 @@ async function initDatabase() {
       await pgPool.query('SELECT 1');
       dbType = 'postgres';
       console.log('⚡ 成功连接到云端 PostgreSQL 数据库 (DATABASE_URL)');
+
+      // Auto-migrate: ensure translations_meta exists on existing tables
+      try {
+        await pgPool.query(`ALTER TABLE terms ADD COLUMN IF NOT EXISTS translations_meta JSONB NOT NULL DEFAULT '{}'::jsonb`);
+        console.log('✅ 数据库同步完成: translations_meta 列已就绪 (Postgres)');
+      } catch (err) {
+        console.warn('⚠️ 数据库同步警告 (translations_meta):', err.message);
+      }
     } catch (err) {
       pgError = err.message;
       console.warn('⚠️ 连接 PostgreSQL 失败，自动切换为本地 SQLite 数据库:', err.message);
@@ -553,9 +561,13 @@ function initSqliteTables() {
                                           )
                                         `, (rbErr) => {
                                           if (rbErr) console.error('⚠️ 创建 SQLite recycle_bin 表失败:', rbErr.message);
-                                          resolve();
+                                          // 尝试对 SQLite 进行增量 schema 升级（添加 translations_meta）
+                                          sqliteDb.run(`ALTER TABLE terms ADD COLUMN translations_meta TEXT NOT NULL DEFAULT '{}'`, (err) => {
+                                            // 如果已存在会报错 "duplicate column name"，这里忽略报错即可
+                                            if (!err) console.log('✅ 数据库同步完成: translations_meta 列成功添加到 SQLite');
+                                            resolve();
+                                          });
                                         });
-                                      });
                                     });
                                   });
                                 });
