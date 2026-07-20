@@ -1609,7 +1609,7 @@ app.post('/api/projects/:projectId/versions', authenticateToken, requireProjectM
 
           if (dbType === 'postgres') {
             await tx.run(
-              'INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW(), 0)',
+              'INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW(), FALSE)',
               [newTermId, versionId, term.kw, term.context, term.owner, term.zh_cn, translationsStr, translationsMetaStr]
             );
           } else {
@@ -2133,7 +2133,7 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
             if (dbType === 'postgres') {
               await tx.run(
                 `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), 0)`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), FALSE)`,
                 [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr]
               );
             } else {
@@ -2149,7 +2149,7 @@ app.post('/api/terms/batch-copy', authenticateToken, async (req, res) => {
           if (dbType === 'postgres') {
             await tx.run(
               `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
-               VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), 0)`,
+               VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), FALSE)`,
               [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr]
             );
           } else {
