@@ -1619,15 +1619,9 @@ export default function TranslationTab({
   };
 
   const handleStartBatchAddTranslate = async () => {
-    const activeRows = batchAddRows.filter(r => r.KW || r.中文 || r.所在页面);
+    const activeRows = batchAddRows.filter(r => r.中文 && r.中文.trim() !== '');
     if (activeRows.length === 0) {
-      toast.error('请至少填写一行词条信息！');
-      return;
-    }
-
-    const invalidRow = activeRows.find(r => !r.KW || !r.中文 || !r.所在页面);
-    if (invalidRow) {
-      toast.error('KW、中文、所在页面为必填项，请补全内容！');
+      toast.error('请至少填写一行的“中文源词”！');
       return;
     }
 
@@ -1641,19 +1635,19 @@ export default function TranslationTab({
     
     for (let i = 0; i < updatedRows.length; i++) {
       const row = updatedRows[i];
-      if (!row.KW || !row.中文 || !row.所在页面) continue;
+      if (!row.中文 || row.中文.trim() === '') continue;
 
       setBatchAddProgress({
         total: activeRows.length,
         current: i + 1,
-        status: `正在翻译 (${i + 1}/${activeRows.length}): ${row.KW} - ${row.中文}`
+        status: `正在翻译 (${i + 1}/${activeRows.length}): ${row.KW || '自动生成KW'} - ${row.中文}`
       });
 
       try {
         const inputs = {
-          KW: row.KW,
+          KW: row.KW || '',
           text: row.中文,
-          context: row.所在页面,
+          context: row.所在页面 || '',
           target_languages: TARGET_LANGUAGES.join(',')
         };
 
