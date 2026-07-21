@@ -1631,16 +1631,26 @@ export default function TranslationTab({
     }
 
     setIsTranslatingBatchAdd(true);
+    setBatchAddProgress({
+      total: activeRows.length,
+      current: 0,
+      status: `正在准备通过 Dify 逐条翻译 (共 ${activeRows.length} 条)...`
+    });
+
     const updatedRows = [...batchAddRows];
-    
+    let processedCount = 0;
+    let successCount = 0;
+    let failCount = 0;
+
     for (let i = 0; i < updatedRows.length; i++) {
       const row = updatedRows[i];
       if (!row.中文 || row.中文.trim() === '') continue;
 
+      processedCount++;
       setBatchAddProgress({
         total: activeRows.length,
-        current: i + 1,
-        status: `正在翻译 (${i + 1}/${activeRows.length}): ${row.KW || '自动生成KW'} - ${row.中文}`
+        current: processedCount,
+        status: `正在通过 Dify 逐条翻译 (${processedCount}/${activeRows.length}): ${row.KW || '自动生成KW'} - ${row.中文}`
       });
 
       try {
@@ -1662,24 +1672,54 @@ export default function TranslationTab({
         const result = await resp.json();
         
         const trans = {};
+        let hasAnyTrans = false;
         TARGET_LANGUAGES.forEach(lang => {
           const val = findValueInDifyResult(lang, result);
-          if (val !== undefined) {
+          if (val !== undefined && val !== null && val !== '') {
             trans[lang] = val;
+            hasAnyTrans = true;
           }
         });
         
-        updatedRows[i] = { ...row, translations: trans };
-        setBatchAddRows([...updatedRows]);
+        if (hasAnyTrans) {
+          successCount++;
+          updatedRows[i] = { ...row, translations: trans };
+          setBatchAddRows([...updatedRows]);
+        } else {
+          failCount++;
+        }
       } catch (err) {
-        console.error(`翻译行 ${i + 1} 失败:`, err);
+        failCount++;
+        console.error(`翻译第 ${processedCount} 条词条 (${row.中文}) 失败:`, err);
       }
 
       await new Promise(resolve => setTimeout(resolve, 300));
     }
 
     setIsTranslatingBatchAdd(false);
-    setBatchAddProgress({ total: activeRows.length, current: activeRows.length, status: '批量翻译完成！仅录入翻译后数据完成的词条。' });
+
+    if (successCount === activeRows.length) {
+      setBatchAddProgress({
+        total: activeRows.length,
+        current: activeRows.length,
+        status: `Dify 批量翻译完成！已成功生成全部 ${successCount} 条词条的多语种翻译。`
+      });
+      toast.success(`Dify 批量翻译完成，共 ${successCount} 条！`);
+    } else if (successCount > 0) {
+      setBatchAddProgress({
+        total: activeRows.length,
+        current: activeRows.length,
+        status: `Dify 批量翻译结束：成功 ${successCount} 条，失败 ${failCount} 条。`
+      });
+      toast.warning(`批量翻译结束：${successCount} 条成功，${failCount} 条失败。`);
+    } else {
+      setBatchAddProgress({
+        total: activeRows.length,
+        current: activeRows.length,
+        status: `Dify 批量翻译失败：0 条词条完成翻译，请检查 Dify API 配置或网络连接。`
+      });
+      toast.error('批量翻译失败，请检查 Dify 引擎配置与网络！');
+    }
   };
 
   const handleConfirmBatchAddWrite = async () => {
