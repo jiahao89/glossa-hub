@@ -6,7 +6,7 @@ import EmptyState from './EmptyState';
 import { SkeletonTable } from './Skeleton';
 import Pagination from './Pagination';
 import GlossaModal from './GlossaModal';
-import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock, CheckCircle, Settings, Copy, Bot } from 'lucide-react';
+import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock, CheckCircle, Settings, Copy, Bot, Clipboard } from 'lucide-react';
 
 const DEFAULT_TARGET_LANGUAGES = [
   'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
@@ -140,6 +140,8 @@ export default function TranslationTab({
   const [batchAddRows, setBatchAddRows] = useState([{ KW: '', 中文: '', 所在页面: '', translations: {} }]);
   const [isTranslatingBatchAdd, setIsTranslatingBatchAdd] = useState(false);
   const [batchAddProgress, setBatchAddProgress] = useState({ total: 0, current: 0, status: '' });
+  const [clipboardText, setClipboardText] = useState('');
+  const [showClipboardPanel, setShowClipboardPanel] = useState(false);
 
   // Add Term State
   const [newTerm, setNewTerm] = useState({
@@ -1485,8 +1487,8 @@ export default function TranslationTab({
   };
 
   const handleAddBatchAddRow = () => {
-    if (batchAddRows.length >= 15) {
-      toast.error('一次最多批量新增 15 条词条！');
+    if (batchAddRows.length >= 50) {
+      toast.error('一次最多批量新增 50 条词条！');
       return;
     }
     setBatchAddRows([...batchAddRows, { KW: '', 中文: '', 所在页面: '', translations: {} }]);
@@ -1495,6 +1497,125 @@ export default function TranslationTab({
   const handleRemoveBatchAddRow = (index) => {
     const updated = batchAddRows.filter((_, idx) => idx !== index);
     setBatchAddRows(updated.length > 0 ? updated : [{ KW: '', 中文: '', 所在页面: '', translations: {} }]);
+  };
+
+  const handleImportClipboard = () => {
+    if (!clipboardText.trim()) {
+      toast.error('请输入或粘贴文本内容！');
+      return;
+    }
+
+    try {
+      const rawLines = clipboardText.split(/\r?\n/).map(line => line.trim());
+      const lines = rawLines.filter(line => line !== '');
+      if (lines.length === 0) {
+        toast.error('未检测到有效数据行！');
+        return;
+      }
+
+      const isMarkdownTable = lines[0].includes('|') && lines.length > 1 && lines[1].includes('|') && lines[1].includes('-');
+      
+      let headers = [];
+      let dataRows = [];
+
+      if (isMarkdownTable) {
+        headers = lines[0].split('|').map(h => h.trim()).filter(h => h !== '');
+        const rawDataLines = lines.slice(2);
+        dataRows = rawDataLines.map(line => {
+          return line.split('|').map(cell => cell.trim()).filter((_, idx) => idx > 0 && idx <= headers.length);
+        });
+      } else {
+        const isTsv = lines[0].includes('\t');
+        if (isTsv) {
+          headers = lines[0].split('\t').map(h => h.trim());
+          dataRows = lines.slice(1).map(line => line.split('\t').map(cell => cell.trim()));
+        } else {
+          headers = lines[0].split(',').map(h => h.trim());
+          dataRows = lines.slice(1).map(line => line.split(',').map(cell => cell.trim()));
+        }
+      }
+
+      if (headers.length === 0 || dataRows.length === 0) {
+        toast.error('解析失败：未能正确识别列头或数据行。');
+        return;
+      }
+
+      const fuzzyFindIndexLocal = (exactList, fuzzyKeywords) => {
+        for (let i = 0; i < headers.length; i++) {
+          const h = headers[i].toLowerCase();
+          if (exactList.some(ex => h === ex.toLowerCase())) return i;
+        }
+        for (let i = 0; i < headers.length; i++) {
+          const h = headers[i].toLowerCase();
+          if (fuzzyKeywords.some(kw => h.includes(kw.toLowerCase()))) return i;
+        }
+        return -1;
+      };
+
+      const kwIdx = fuzzyFindIndexLocal(['KW', 'Key'], ['kw', 'key', '标识', '词条id']);
+      const zhIdx = fuzzyFindIndexLocal(['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source', 'zh', '源词']);
+      const pageIdx = fuzzyFindIndexLocal(['所在页面', 'Page'], ['页面', '界面', 'page', 'context']);
+      const ownerIdx = fuzzyFindIndexLocal(['字号类别', '负责人', 'Owner'], ['字号', '负责人', 'owner', '类别']);
+
+      if (zhIdx === -1) {
+        toast.error('导入失败：未在表头中发现“中文”或“Source”列！');
+        return;
+      }
+
+      const langColumns = {};
+      TARGET_LANGUAGES.forEach(lang => {
+        let fuzzyKeywords = [lang.toLowerCase()];
+        const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
+        if (match) {
+          fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
+        } else {
+          const letters = lang.match(/[a-zA-Z]+/);
+          const chars = lang.match(/[\u4e00-\u9fa5]+/);
+          if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
+          if (chars) fuzzyKeywords.push(chars[0]);
+        }
+        const csvLangIdx = fuzzyFindIndexLocal([lang], fuzzyKeywords);
+        if (csvLangIdx !== -1) {
+          langColumns[lang] = csvLangIdx;
+        }
+      });
+
+      const parsedRows = dataRows.map(row => {
+        const translations = {};
+        Object.entries(langColumns).forEach(([lang, idx]) => {
+          if (row[idx] !== undefined) {
+            translations[lang] = row[idx];
+          }
+        });
+
+        return {
+          KW: kwIdx !== -1 && row[kwIdx] !== undefined ? row[kwIdx] : '',
+          中文: row[zhIdx] !== undefined ? row[zhIdx] : '',
+          所在页面: pageIdx !== -1 && row[pageIdx] !== undefined ? row[pageIdx] : '',
+          字号类别: ownerIdx !== -1 && row[ownerIdx] !== undefined ? row[ownerIdx] : '',
+          translations
+        };
+      }).filter(r => r.中文 !== '');
+
+      if (parsedRows.length === 0) {
+        toast.error('未解析到有效的词条行（中文列不能为空）！');
+        return;
+      }
+
+      let finalRows = parsedRows;
+      if (parsedRows.length > 50) {
+        toast.warning(`剪贴板中共有 ${parsedRows.length} 条词条，每次最多支持导入 50 条，已自动截取前 50 条。`);
+        finalRows = parsedRows.slice(0, 50);
+      } else {
+        toast.success(`成功从剪贴板导入了 ${parsedRows.length} 条词条！`);
+      }
+
+      setBatchAddRows(finalRows);
+      setClipboardText('');
+      setShowClipboardPanel(false);
+    } catch (err) {
+      toast.error(`智能解析失败: ${err.message}`);
+    }
   };
 
   const handleStartBatchAddTranslate = async () => {
@@ -3283,7 +3404,7 @@ export default function TranslationTab({
         <GlossaModal
           isOpen={true}
           onClose={() => setBatchAddModalOpen(false)}
-          title="手动批量新增词条 (最多15条)"
+          title="手动批量新增词条 (最多50条)"
           maxWidth="1000px"
           width="95vw"
           closeDisabled={isTranslatingBatchAdd}
@@ -3331,6 +3452,47 @@ export default function TranslationTab({
                   ))}
                 </select>
               </div>
+
+              {showClipboardPanel && (
+                <div style={{ padding: '1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>请在下方粘贴复制的表格数据（支持 Markdown 表格、从 Excel/数表复制的多行多列数据）：</span>
+                  </div>
+                  <textarea
+                    value={clipboardText}
+                    onChange={(e) => setClipboardText(e.target.value)}
+                    placeholder="| KW | 中文 | 所在页面 |&#10;| --- | --- | --- |&#10;| KW_PLAY | 播放 | 播放页面 |"
+                    rows={4}
+                    style={{ 
+                      width: '100%', 
+                      padding: '0.6rem', 
+                      borderRadius: '4px', 
+                      border: '1px solid var(--border-color)', 
+                      backgroundColor: 'var(--bg-primary)', 
+                      color: 'var(--text-primary)',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                      resize: 'vertical'
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '0.8rem' }}>
+                    <button 
+                      onClick={handleImportClipboard}
+                      className="btn btn-primary"
+                      style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                    >
+                      解析并导入
+                    </button>
+                    <button 
+                      onClick={() => { setClipboardText(''); setShowClipboardPanel(false); }}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Progress and status alert */}
               {batchAddProgress.status && (
@@ -3452,14 +3614,22 @@ export default function TranslationTab({
               </div>
 
               {/* Add row trigger */}
-              <div>
+              <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
                 <button 
                   onClick={handleAddBatchAddRow} 
                   className="btn btn-secondary" 
                   style={{ gap: '0.3rem' }}
-                  disabled={isTranslatingBatchAdd || batchAddRows.length >= 15}
+                  disabled={isTranslatingBatchAdd || batchAddRows.length >= 50}
                 >
-                  <Plus size={14} /> 添加一行 ({batchAddRows.length}/15)
+                  <Plus size={14} /> 添加一行 ({batchAddRows.length}/50)
+                </button>
+                <button
+                  onClick={() => setShowClipboardPanel(!showClipboardPanel)}
+                  className="btn btn-secondary"
+                  style={{ gap: '0.3rem' }}
+                  disabled={isTranslatingBatchAdd}
+                >
+                  <Clipboard size={14} /> 剪贴板智能导入
                 </button>
               </div>
             </div>
