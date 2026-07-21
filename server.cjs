@@ -902,6 +902,13 @@ const heavyOperationLimiter = rateLimit({
   message: { error: '检测到高耗能操作过于频繁，请稍候再试。' }
 });
 
+// AI 翻译接口专用的限流器（支持 50 条批处理，并预留重试与日常单条操作的额度）
+const aiTranslateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 分钟
+  max: 150,                // 限制 150 次
+  message: { error: '翻译请求过于频繁，请稍候再试。' }
+});
+
 
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
@@ -2837,7 +2844,7 @@ app.get('/api/projects/:projectId/dify', authenticateToken, requireProjectMember
 });
 
 // 13. POST /api/projects/:projectId/ai-translate - 后端中转 Dify AI 翻译代理
-app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProjectMember, requireRole(['owner', 'editor']), heavyOperationLimiter, async (req, res) => {
+app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProjectMember, requireRole(['owner', 'editor']), aiTranslateLimiter, async (req, res) => {
   const { projectId } = req.params;
   const { inputs } = req.body;
   const userId = req.user?.id || null;

@@ -1641,6 +1641,7 @@ export default function TranslationTab({
     let processedCount = 0;
     let successCount = 0;
     let failCount = 0;
+    let lastError = null;
 
     for (let i = 0; i < updatedRows.length; i++) {
       const row = updatedRows[i];
@@ -1687,9 +1688,11 @@ export default function TranslationTab({
           setBatchAddRows([...updatedRows]);
         } else {
           failCount++;
+          lastError = new Error('Dify 返回的翻译数据为空');
         }
       } catch (err) {
         failCount++;
+        lastError = err;
         console.error(`翻译第 ${processedCount} 条词条 (${row.中文}) 失败:`, err);
       }
 
@@ -1709,16 +1712,17 @@ export default function TranslationTab({
       setBatchAddProgress({
         total: activeRows.length,
         current: activeRows.length,
-        status: `Dify 批量翻译结束：成功 ${successCount} 条，失败 ${failCount} 条。`
+        status: `Dify 批量翻译结束：成功 ${successCount} 条，部分失败 ${failCount} 条。`
       });
       toast.warning(`批量翻译结束：${successCount} 条成功，${failCount} 条失败。`);
     } else {
+      const errorMsg = lastError ? ` (原因: ${lastError.message})` : '请检查 Dify API 配置或网络连接。';
       setBatchAddProgress({
         total: activeRows.length,
         current: activeRows.length,
-        status: `Dify 批量翻译失败：0 条词条完成翻译，请检查 Dify API 配置或网络连接。`
+        status: `Dify 批量翻译失败：0 条词条完成翻译。${errorMsg}`
       });
-      toast.error('批量翻译失败，请检查 Dify 引擎配置与网络！');
+      toast.error(`批量翻译失败：${errorMsg}`);
     }
   };
 
