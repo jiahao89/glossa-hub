@@ -2264,8 +2264,13 @@ export default function TranslationTab({
       const activeTableMeta = tables.find(t => t.id === selectedTableId);
       const tableName = activeTableMeta ? activeTableMeta.name : 'export';
 
+      const now = new Date();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const dateStr = `${mm}${dd}`;
+
       link.setAttribute('href', url);
-      link.setAttribute('download', `GlossaHub_export_${tableName}.xls`);
+      link.setAttribute('download', `${tableName}_${dateStr}.xls`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();

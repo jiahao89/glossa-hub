@@ -209,9 +209,14 @@ export default function GlossaryTab({ projectRole }) {
     const csvContent = arrayToCSV(displayHeaders, rows);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${mm}${dd}`;
+    const tableName = activeTable?.table_name || '专业词汇表';
+
     link.setAttribute('href', url);
-    link.setAttribute('download', `${activeTable?.table_name || '专业词汇表'}_export.csv`);
+    link.setAttribute('download', `${tableName}_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
