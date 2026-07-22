@@ -43,27 +43,43 @@ export async function runDifyWorkflow(baseUrl, apiKey, inputs) {
   }
   
   const outputs = data.data?.outputs;
-  if (!outputs) {
+  if (!outputs || typeof outputs !== 'object') {
     throw new Error('Dify 工作流未返回任何数据 (outputs为空)');
   }
-  
-  // Dify code node output returns the 'result' or 'translations' parameter as stringified JSON
-  const resultStr = outputs.result || outputs.translations;
-  if (!resultStr) {
-    throw new Error('Dify 工作流未包含 result 或 translations 输出值，请检查 Dify 结束（End）节点的输出变量命名。');
+
+  // 1. Direct object matching (if Dify outputs dictionary directly)
+  const outputKeys = Object.keys(outputs);
+  if (outputKeys.some(k => k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || k.includes('EN') || k.includes('FR'))) {
+    return outputs;
   }
-  
+
+  // 2. Try common variable names or single key fallback
+  let rawVal = outputs.result || outputs.translations || outputs.output || outputs.text || outputs.response || outputs.res || outputs.data || outputs.json;
+  if (rawVal === undefined && outputKeys.length === 1) {
+    rawVal = outputs[outputKeys[0]];
+  }
+
+  if (rawVal === undefined || rawVal === null) {
+    throw new Error(`Dify 工作流未包含有效输出变量 (当前输出字段为: ${outputKeys.join(', ') || '无'})。请检查 Dify 结束（End）节点的输出变量命名，建议命名为 result 或 translations。`);
+  }
+
+  // If already an object
+  if (typeof rawVal === 'object') {
+    if (rawVal.error) {
+      throw new Error(`Dify 代码节点抛出错误: ${rawVal.error}`);
+    }
+    return rawVal;
+  }
+
+  // Parse stringified JSON
   try {
-    const parsed = JSON.parse(resultStr);
-    
-    // Check if the Python node outputted an error
-    if (parsed.error) {
+    const parsed = JSON.parse(String(rawVal));
+    if (parsed && typeof parsed === 'object' && parsed.error) {
       throw new Error(`Dify 清洗代码解析失败: ${parsed.error}. 原始生成为: ${parsed.raw_output || ''}`);
     }
-    
-    return parsed; // Example: { "英文": "Ride Paused", "法语": "Sortie en pause" }
+    return parsed;
   } catch (err) {
-    throw new Error(`解析 Dify 输出 JSON 失败: ${err.message}. 原始输出为: ${resultStr}`);
+    throw new Error(`解析 Dify 输出 JSON 失败: ${err.message}. 原始输出为: ${rawVal}`);
   }
 }
 

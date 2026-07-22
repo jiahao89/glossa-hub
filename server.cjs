@@ -3049,18 +3049,34 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
     ).catch(err => console.error('AI用量日志写入失败:', err.message));
 
     const outputs = data.data?.outputs;
-    if (!outputs) {
+    if (!outputs || typeof outputs !== 'object') {
       return res.status(500).json({ error: 'Dify 工作流未返回任何数据 (outputs 为空)' });
     }
 
-    const resultStr = outputs.result || outputs.translations;
-    if (!resultStr) {
-      return res.status(500).json({ error: 'Dify 工作流未包含 result 或 translations 输出值' });
+    const outputKeys = Object.keys(outputs);
+    if (outputKeys.some(k => k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || k.includes('EN') || k.includes('FR'))) {
+      return res.json(outputs);
+    }
+
+    let rawVal = outputs.result || outputs.translations || outputs.output || outputs.text || outputs.response || outputs.res || outputs.data || outputs.json;
+    if (rawVal === undefined && outputKeys.length === 1) {
+      rawVal = outputs[outputKeys[0]];
+    }
+
+    if (rawVal === undefined || rawVal === null) {
+      return res.status(500).json({ error: `Dify 工作流未包含有效输出变量 (当前 Dify 输出字段为: ${outputKeys.join(', ') || '无'})。请在 Dify 工作流“结束”节点添加名为 result 或 translations 的输出变量。` });
+    }
+
+    if (typeof rawVal === 'object') {
+      if (rawVal.error) {
+        return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${rawVal.error}` });
+      }
+      return res.json(rawVal);
     }
 
     try {
-      const parsed = JSON.parse(resultStr);
-      if (parsed.error) {
+      const parsed = JSON.parse(String(rawVal));
+      if (parsed && typeof parsed === 'object' && parsed.error) {
         return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${parsed.error}` });
       }
       res.json(parsed);
