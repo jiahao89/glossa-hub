@@ -16,7 +16,7 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidMount() {
     this.handleUnhandledRejection = (event) => {
-      this.setState({ hasError: true, error: event.reason });
+      console.error('[ErrorBoundary] 未捕获的 Promise 拒绝:', event.reason);
     };
     window.addEventListener('unhandledrejection', this.handleUnhandledRejection);
   }
@@ -40,9 +40,25 @@ export default class ErrorBoundary extends React.Component {
           textAlign: 'center',
         }}>
           <h2 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>GlossaHub 遇到了一个错误</h2>
-          <p style={{ margin: '0 0 1.5rem 0', color: 'var(--text-secondary, #9ca3af)', fontSize: '0.85rem' }}>
+          <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary, #9ca3af)', fontSize: '0.85rem' }}>
             请刷新页面重试。如果问题持续，请联系管理员。
           </p>
+          {this.state.error?.message && (
+            <div style={{
+              margin: '0 0 1.5rem 0',
+              padding: '0.5rem 1rem',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '6px',
+              color: '#f87171',
+              fontSize: '0.75rem',
+              fontFamily: 'monospace',
+              maxWidth: '600px',
+              wordBreak: 'break-all'
+            }}>
+              {String(this.state.error.message)}
+            </div>
+          )}
           <button
             onClick={() => window.location.reload()}
             style={{

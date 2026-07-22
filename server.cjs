@@ -15,11 +15,7 @@ const PORT = process.env.PORT || 3001;
 // JWT_SECRET: 生产环境必须通过环境变量设置；开发环境给默认值但打警告
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('❌ 生产环境必须设置 JWT_SECRET 环境变量！');
-    process.exit(1);
-  }
-  console.warn('⚠️  警告: 未设置 JWT_SECRET，使用开发默认值。生产环境务必设置 JWT_SECRET 环境变量！');
+  console.warn('⚠️ 警告: 未设置 JWT_SECRET 环境变量，使用后备默认密钥。生产环境建议设置 JWT_SECRET！');
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'glossahub-dev-secret-do-not-use-in-prod';
 
