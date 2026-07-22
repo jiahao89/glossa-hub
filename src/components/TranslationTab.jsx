@@ -6,7 +6,7 @@ import EmptyState from './EmptyState';
 import { SkeletonTable } from './Skeleton';
 import Pagination from './Pagination';
 import GlossaModal from './GlossaModal';
-import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock, CheckCircle, Settings, Copy, Bot, Clipboard } from 'lucide-react';
+import { Search, Loader2, Plus, RefreshCw, FileInput, FileOutput, Edit2, Check, AlertCircle, Layers, Trash2, Lock, Unlock, CheckCircle, Settings, Copy, Bot, Clipboard, Eraser } from 'lucide-react';
 
 const DEFAULT_TARGET_LANGUAGES = [
   'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
@@ -2328,6 +2328,47 @@ export default function TranslationTab({
     }
   };
 
+  // Calculate if current table has any modified or added highlight cells
+  const hasAnyHighlightsInCurrentTable = useMemo(() => {
+    if (!records || records.length === 0 || !modifiedCells) return false;
+    const recordIdsInTable = new Set(records.map(r => r.recordId));
+    return Object.keys(modifiedCells).some(id => recordIdsInTable.has(id));
+  }, [records, modifiedCells]);
+
+  // Mark all highlights in the current table as read / cleared
+  const handleMarkAllAsRead = () => {
+    if (!records || records.length === 0) return;
+    if (window.confirm('是否确认将当前表中所有新增/修改词条标记为已读？\n（将清除所有黄色与绿色高亮，日常阅读和后续导出 xls 时将不再显示高亮）')) {
+      const recordIdsInTable = new Set(records.map(r => r.recordId));
+      setModifiedCells(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(id => {
+          if (recordIdsInTable.has(id)) {
+            delete next[id];
+          }
+        });
+        return next;
+      });
+      showStatus('success', '当前数据表的高亮标记已全部清除！');
+    }
+  };
+
+  // Clear highlights of selected rows
+  const handleClearSelectedHighlights = () => {
+    if (selectedRecordIds.size === 0) return;
+    if (window.confirm(`是否确认清除选中的 ${selectedRecordIds.size} 条记录的高亮标记？`)) {
+      setModifiedCells(prev => {
+        const next = { ...prev };
+        selectedRecordIds.forEach(id => {
+          delete next[id];
+        });
+        return next;
+      });
+      setSelectedRecordIds(new Set());
+      showStatus('success', `已清除选中记录的高亮标记！`);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       {/* Search and Toolbar */}
@@ -2492,6 +2533,11 @@ export default function TranslationTab({
                 <button onClick={handleTriggerImport} className="btn btn-secondary" title="导入 CSV">
                   <FileInput size={14} /> 导入
                 </button>
+                {hasAnyHighlightsInCurrentTable && (
+                  <button onClick={handleMarkAllAsRead} className="btn btn-secondary" style={{ color: 'var(--green)', borderColor: 'var(--green)' }} title="一键已读：清除当前表中所有高亮状态">
+                    <Check size={14} /> 一键已读
+                  </button>
+                )}
               </>
             )}
             <button onClick={handleExportXLS} className="btn btn-secondary" title="导出 XLS">
@@ -2538,6 +2584,14 @@ export default function TranslationTab({
                   className="toolbar-action-btn is-accent"
                 >
                   <Copy size={14} /> 复制到版本 ({selectedRecordIds.size})
+                </button>
+                <button
+                  onClick={handleClearSelectedHighlights}
+                  className="toolbar-action-btn"
+                  style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                  title="清除所选行的新增或编辑高亮"
+                >
+                  <Eraser size={14} /> 清除高亮 ({selectedRecordIds.size})
                 </button>
                 <button
                   onClick={handleDeleteSelected}
