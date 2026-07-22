@@ -2335,21 +2335,16 @@ export default function TranslationTab({
     return Object.keys(modifiedCells).some(id => recordIdsInTable.has(id));
   }, [records, modifiedCells]);
 
-  // Mark all highlights in the current table as read / cleared
+  // Mark all highlights as read / cleared
   const handleMarkAllAsRead = () => {
-    if (!records || records.length === 0) return;
-    if (window.confirm('是否确认将当前表中所有新增/修改词条标记为已读？\n（将清除所有黄色与绿色高亮，日常阅读和后续导出 xls 时将不再显示高亮）')) {
-      const recordIdsInTable = new Set(records.map(r => r.recordId));
-      setModifiedCells(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach(id => {
-          if (recordIdsInTable.has(id)) {
-            delete next[id];
-          }
-        });
-        return next;
-      });
-      showStatus('success', '当前数据表的高亮标记已全部清除！');
+    const hasAny = modifiedCells && Object.keys(modifiedCells).length > 0;
+    if (!hasAny) {
+      showStatus('info', '当前没有未读的高亮标记。');
+      return;
+    }
+    if (window.confirm('是否确认将所有新增/修改词条标记为已读？\n（将清除所有高亮背景，恢复正常阅读模式，后续导出 xls 时不再显示高亮）')) {
+      setModifiedCells({});
+      showStatus('success', '所有词条已成功标记为已读，高亮已全部清除！');
     }
   };
 
@@ -2533,11 +2528,9 @@ export default function TranslationTab({
                 <button onClick={handleTriggerImport} className="btn btn-secondary" title="导入 CSV">
                   <FileInput size={14} /> 导入
                 </button>
-                {hasAnyHighlightsInCurrentTable && (
-                  <button onClick={handleMarkAllAsRead} className="btn btn-secondary" style={{ color: 'var(--green)', borderColor: 'var(--green)' }} title="一键已读：清除当前表中所有高亮状态">
-                    <Check size={14} /> 一键已读
-                  </button>
-                )}
+                <button onClick={handleMarkAllAsRead} className="btn btn-secondary" style={{ color: 'var(--green)', borderColor: 'var(--green)' }} title="一键已读：清除所有高亮状态，恢复正常阅读模式">
+                  <Check size={14} /> 一键已读
+                </button>
               </>
             )}
             <button onClick={handleExportXLS} className="btn btn-secondary" title="导出 XLS">
