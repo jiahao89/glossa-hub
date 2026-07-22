@@ -2874,62 +2874,71 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
     if (allMatches.length === 1) {
       fullMatch = allMatches[0];
     } else if (allMatches.length > 1) {
-      // Multiple matches exist - handle potential ambiguity/different translations
-      const parsedTargetLangs = (typeof targetLangs === 'string' ? targetLangs.split(',') : targetLangs)
-        .map(l => l.trim())
-        .filter(Boolean);
+      const inputContext = (inputs.context || inputs.所在页面 || '').trim();
+      const inputKw = (inputs.kw || inputs.keyword || inputs.KW || '').trim().toLowerCase();
 
-      const getTermTranslations = (term) => {
+      // Find potential sub-terms inside zhCn from all glossaryTerms
+      // E.g., if zhCn = "平均踏频", find sub-terms like "踏频" (en_term = "Cadence" / "Cad")
+      const subTerms = glossaryTerms.filter(t => 
+        t.cn_term !== zhCn && t.cn_term.length >= 2 && zhCn.includes(t.cn_term)
+      );
+
+      // Score each match in allMatches
+      const scoredMatches = allMatches.map(term => {
+        let score = 0;
         let termFields = {};
         try {
           termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
-        } catch (e) { }
-        const fieldsKeys = Object.keys(termFields);
-        let trans = {};
-        parsedTargetLangs.forEach(lang => {
-          if (lang === '英文' || lang.includes('EN') || lang.toLowerCase() === 'english') {
-            trans[lang] = term.en_term || '';
-          } else {
-            const normLang = lang.replace(/语|文/g, '');
-            const matchedKey = fieldsKeys.find(k => k === lang || k.includes(normLang));
-            trans[lang] = matchedKey ? termFields[matchedKey] : '';
-          }
-        });
-        return trans;
-      };
+        } catch (e) {}
 
-      // Extract target language translations for all matches
-      const matchesWithTrans = allMatches.map(term => ({
-        term,
-        trans: getTermTranslations(term)
-      }));
+        const pageContext = (termFields.所在页面 || termFields['所在页面'] || '').trim();
+        const termKw = (termFields.KW || term.kw || '').trim().toLowerCase();
+        const enTerm = (term.en_term || '').trim();
+        const enLower = enTerm.toLowerCase();
 
-      // Check if all matches have identical translations for target languages
-      const firstTransStr = JSON.stringify(matchesWithTrans[0].trans);
-      const allIdentical = matchesWithTrans.every(m => JSON.stringify(m.trans) === firstTransStr);
-
-      if (allIdentical) {
-        // Safe to use first match if no actual translation conflict exists
-        fullMatch = allMatches[0];
-      } else {
-        // Conflicting translations exist. Resolve using page context (所在页面)
-        const inputContext = (inputs.context || inputs.所在页面 || '').trim();
-        if (inputContext && inputContext !== '无') {
-          const exactContextMatch = allMatches.find(term => {
-            let termFields = {};
-            try {
-              termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
-            } catch (e) {}
-            const termContext = (termFields.所在页面 || termFields['所在页面'] || '').trim();
-            return termContext && (termContext.includes(inputContext) || inputContext.includes(termContext));
-          });
-          if (exactContextMatch) {
-            fullMatch = exactContextMatch;
+        // 1. Page Context Match (+100)
+        if (inputContext && inputContext !== '无' && pageContext) {
+          if (pageContext.includes(inputContext) || inputContext.includes(pageContext)) {
+            score += 100;
           }
         }
-        // If still ambiguous (no context matched or context is empty), keep fullMatch as null
-        // so it falls through to Dify (AI) workflow instead of bypassing.
-      }
+
+        // 2. KW Match (+50)
+        if (inputKw && termKw) {
+          if (inputKw === termKw || inputKw.includes(termKw) || termKw.includes(inputKw)) {
+            score += 50;
+          }
+        }
+
+        // 3. Sub-term Semantic Match (+30 per matching sub-term)
+        subTerms.forEach(sub => {
+          const subEn = (sub.en_term || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (subEn.length >= 3) {
+            const shortSub = subEn.substring(0, 3); // e.g. "cad" for "cadence"
+            if (enLower.includes(shortSub)) {
+              score += 30;
+            }
+          }
+        });
+
+        // 4. Translation Richness / Length (+1 ~ 10)
+        // Rewards fuller translations over single incomplete 2-3 letter words (like "AVG")
+        if (enTerm.length > 0) {
+          score += Math.min(10, enTerm.length);
+        }
+
+        // 5. Multi-language Completeness (+5)
+        const hasOtherLangs = Object.keys(termFields).some(k => k !== '所在页面' && k !== 'KW' && k !== '字号类别' && termFields[k]);
+        if (hasOtherLangs) {
+          score += 5;
+        }
+
+        return { term, score };
+      });
+
+      // Sort by score descending
+      scoredMatches.sort((a, b) => b.score - a.score);
+      fullMatch = scoredMatches[0].term;
     }
 
     if (fullMatch) {
