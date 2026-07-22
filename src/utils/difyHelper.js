@@ -38,8 +38,10 @@ export async function runDifyWorkflow(baseUrl, apiKey, inputs) {
   
   const data = await response.json();
   
-  if (data.status === 'failed') {
-    throw new Error(`Dify 工作流内部执行失败: ${data.error || '未知错误'}`);
+  const workflowStatus = data.data?.status || data.status;
+  const workflowError = data.data?.error || data.error;
+  if (workflowStatus === 'failed' || workflowStatus === 'stopped') {
+    throw new Error(`Dify 工作流执行失败 (status: ${workflowStatus}): ${workflowError || '未知错误，请检查 Dify 工作流日志'}`);
   }
   
   let outputs = data.data?.outputs || data.outputs;

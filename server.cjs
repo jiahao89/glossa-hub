@@ -3035,8 +3035,13 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
     }
 
     const data = await response.json();
-    if (data.status === 'failed') {
-      return res.status(500).json({ error: `Dify 工作流执行失败: ${data.error || '未知错误'}` });
+
+    // Check workflow execution status at BOTH possible locations
+    const workflowStatus = data.data?.status || data.status;
+    const workflowError = data.data?.error || data.error;
+    if (workflowStatus === 'failed' || workflowStatus === 'stopped') {
+      console.error('⚠️ Dify workflow failed:', JSON.stringify({ status: workflowStatus, error: workflowError }));
+      return res.status(500).json({ error: `Dify 工作流执行失败 (status: ${workflowStatus}): ${workflowError || '未知错误，请检查 Dify 工作流日志'}` });
     }
 
     // P1-2: 记录 AI 用量（非阻塞，不影响翻译流程）
