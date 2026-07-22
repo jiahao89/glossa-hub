@@ -1356,6 +1356,8 @@ export default function TranslationTab({
   const handleStartBatchTranslate = async () => {
     setIsTranslatingBatch(true);
     const updatedList = [...batchPreviewList];
+    const BASE_DELAY = 2000; // 2s base delay between requests
+    const MAX_RETRIES = 3;
 
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
@@ -1365,46 +1367,73 @@ export default function TranslationTab({
         status: `正在翻译 (${i + 1}/${updatedList.length}): ${item.KW} - ${item.中文}`
       });
 
-      try {
-        const missingLangs = Array.isArray(item.missingLangs) ? item.missingLangs : [];
-        const inputs = {
-          KW: item.KW,
-          text: item.中文,
-          context: item.所在页面 || '无',
-          target_languages: missingLangs.join(',')
-        };
+      let success = false;
+      for (let attempt = 0; attempt < MAX_RETRIES && !success; attempt++) {
+        try {
+          const missingLangs = Array.isArray(item.missingLangs) ? item.missingLangs : [];
+          const inputs = {
+            KW: item.KW,
+            text: item.中文,
+            context: item.所在页面 || '无',
+            target_languages: missingLangs.join(',')
+          };
 
-        const res = await apiFetch('/api/projects/proj-default/ai-translate', {
-          method: 'POST',
-          body: JSON.stringify({ inputs })
-        });
-        if (!res.ok) {
-          const errJson = await res.json();
-          throw new Error(errJson.error || 'AI 翻译失败');
-        }
-        const result = await res.json();
-        
-        // Merge translations
-        const trans = {};
-        const meta = {};
-        const source = result._source === 'tm' ? 'tm' : 'ai';
-        missingLangs.forEach(lang => {
-          const val = findValueInDifyResult(lang, result);
-          if (val !== undefined && typeof val === 'string') {
-            trans[lang] = val;
-            meta[lang] = source;
+          const res = await apiFetch('/api/projects/proj-default/ai-translate', {
+            method: 'POST',
+            body: JSON.stringify({ inputs })
+          });
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            const errMsg = errJson.error || `HTTP ${res.status}`;
+            // Detect rate limit errors and retry with backoff
+            if (res.status === 429 || errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('rate') || errMsg.includes('quota')) {
+              const backoff = BASE_DELAY * Math.pow(2, attempt + 1); // 4s, 8s, 16s
+              setBatchProgress(prev => ({
+                ...prev,
+                status: `⏳ API 限流中，等待 ${Math.round(backoff / 1000)}s 后重试 (${i + 1}/${updatedList.length}): ${item.KW}`
+              }));
+              await new Promise(resolve => setTimeout(resolve, backoff));
+              continue; // retry
+            }
+            throw new Error(errMsg);
           }
-        });
-        
-        updatedList[i] = { ...updatedList[i], translations: trans, translationsMeta: meta };
-        setBatchPreviewList([...updatedList]);
-      } catch (err) {
-        console.error(`翻译词条 ${item.KW} 失败:`, err);
-        // Continue to next item even if this fails
+          const result = await res.json();
+          
+          // Merge translations
+          const trans = {};
+          const meta = {};
+          const source = result._source === 'tm' ? 'tm' : 'ai';
+          missingLangs.forEach(lang => {
+            const val = findValueInDifyResult(lang, result);
+            if (val !== undefined && typeof val === 'string') {
+              trans[lang] = val;
+              meta[lang] = source;
+            }
+          });
+          
+          updatedList[i] = { ...updatedList[i], translations: trans, translationsMeta: meta };
+          setBatchPreviewList([...updatedList]);
+          success = true;
+        } catch (err) {
+          const errMsg = err.message || '';
+          if ((errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('rate') || errMsg.includes('quota')) && attempt < MAX_RETRIES - 1) {
+            const backoff = BASE_DELAY * Math.pow(2, attempt + 1);
+            setBatchProgress(prev => ({
+              ...prev,
+              status: `⏳ API 限流中，等待 ${Math.round(backoff / 1000)}s 后重试 (${i + 1}/${updatedList.length}): ${item.KW}`
+            }));
+            await new Promise(resolve => setTimeout(resolve, backoff));
+            continue;
+          }
+          console.error(`翻译词条 ${item.KW} 失败:`, err);
+          // Continue to next item
+        }
       }
 
-      // 300ms delay to prevent rate limit blocks
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Delay between items to avoid rate limiting
+      if (i < updatedList.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, BASE_DELAY));
+      }
     }
 
     setIsTranslatingBatch(false);

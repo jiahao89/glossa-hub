@@ -3041,7 +3041,11 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
     const workflowError = data.data?.error || data.error;
     if (workflowStatus === 'failed' || workflowStatus === 'stopped') {
       console.error('⚠️ Dify workflow failed:', JSON.stringify({ status: workflowStatus, error: workflowError }));
-      return res.status(500).json({ error: `Dify 工作流执行失败 (status: ${workflowStatus}): ${workflowError || '未知错误，请检查 Dify 工作流日志'}` });
+      const errorStr = String(workflowError || '');
+      // Return 429 for rate limit errors so frontend can retry with backoff
+      const isRateLimit = errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED') || errorStr.includes('rate_limit') || errorStr.includes('quota');
+      const httpStatus = isRateLimit ? 429 : 500;
+      return res.status(httpStatus).json({ error: `Dify 工作流执行失败 (status: ${workflowStatus}): ${workflowError || '未知错误，请检查 Dify 工作流日志'}` });
     }
 
     // P1-2: 记录 AI 用量（非阻塞，不影响翻译流程）
