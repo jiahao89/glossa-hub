@@ -165,6 +165,10 @@ app.use(async (req, res, next) => {
   }
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', dbType, timestamp: new Date().toISOString() });
+});
+
 
 
 const DB_PATH = (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
