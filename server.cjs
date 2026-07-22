@@ -3048,23 +3048,59 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
       [userId, projectId, termKw, zhCn.slice(0, 200), targetLangs, usageTokens, usageElapsed, usageStatus]
     ).catch(err => console.error('AI用量日志写入失败:', err.message));
 
-    const outputs = data.data?.outputs;
+    // Extract outputs from all possible Dify response structures
+    let outputs = data.data?.outputs || data.outputs;
+    if (!outputs || typeof outputs !== 'object' || Object.keys(outputs).length === 0) {
+      if (data.data?.result || data.result) {
+        outputs = { result: data.data?.result || data.result };
+      } else if (data.data?.text || data.text) {
+        outputs = { text: data.data?.text || data.text };
+      } else if (data.data?.answer || data.answer) {
+        outputs = { answer: data.data?.answer || data.answer };
+      } else if (data.data?.response || data.response) {
+        outputs = { response: data.data?.response || data.response };
+      } else if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+        outputs = data.data;
+      } else {
+        outputs = data;
+      }
+    }
+
     if (!outputs || typeof outputs !== 'object') {
-      return res.status(500).json({ error: 'Dify 工作流未返回任何数据 (outputs 为空)' });
+      console.error('⚠️ Dify raw data:', JSON.stringify(data));
+      return res.status(500).json({ error: `Dify 工作流未返回任何有效数据。原始响应: ${JSON.stringify(data).slice(0, 300)}` });
     }
 
     const outputKeys = Object.keys(outputs);
-    if (outputKeys.some(k => k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || k.includes('EN') || k.includes('FR'))) {
+    // 1. Direct language dictionary check
+    if (outputKeys.some(k => k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || k.includes('EN') || k.includes('FR') || k.includes('CN') || k.includes('中文'))) {
       return res.json(outputs);
     }
 
-    let rawVal = outputs.result || outputs.translations || outputs.output || outputs.text || outputs.response || outputs.res || outputs.data || outputs.json;
+    // 2. Known variable names check
+    let rawVal = outputs.result || outputs.translations || outputs.output || outputs.text || outputs.answer || outputs.response || outputs.res || outputs.data || outputs.json;
+
+    // 3. Fallback: Single key output
     if (rawVal === undefined && outputKeys.length === 1) {
       rawVal = outputs[outputKeys[0]];
     }
 
+    // 4. Fallback: Scan keys for stringified JSON starting with '{'
+    if (rawVal === undefined) {
+      for (const key of outputKeys) {
+        const val = outputs[key];
+        if (typeof val === 'string' && val.trim().startsWith('{')) {
+          rawVal = val;
+          break;
+        }
+      }
+    }
+
     if (rawVal === undefined || rawVal === null) {
-      return res.status(500).json({ error: `Dify 工作流未包含有效输出变量 (当前 Dify 输出字段为: ${outputKeys.join(', ') || '无'})。请在 Dify 工作流“结束”节点添加名为 result 或 translations 的输出变量。` });
+      console.error('⚠️ Dify raw response data structure:', JSON.stringify(data));
+      return res.status(500).json({ 
+        error: `Dify 工作流未包含有效输出变量 (当前 Dify 输出字段为: ${outputKeys.join(', ') || '无'})。原始响应片段: ${JSON.stringify(data).slice(0, 200)}` 
+      });
     }
 
     if (typeof rawVal === 'object') {
@@ -3081,7 +3117,7 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
       }
       res.json(parsed);
     } catch (parseErr) {
-      res.status(500).json({ error: `解析 Dify 输出 JSON 失败: ${parseErr.message}` });
+      res.status(500).json({ error: `解析 Dify 输出 JSON 失败: ${parseErr.message}。原始输出为: ${String(rawVal).slice(0, 200)}` });
     }
   } catch (err) {
     console.error('中转 AI 翻译失败:', err); res.status(500).json({ error: '服务器内部错误，请稍后重试。' });

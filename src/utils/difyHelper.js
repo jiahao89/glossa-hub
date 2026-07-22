@@ -42,25 +42,49 @@ export async function runDifyWorkflow(baseUrl, apiKey, inputs) {
     throw new Error(`Dify 工作流内部执行失败: ${data.error || '未知错误'}`);
   }
   
-  const outputs = data.data?.outputs;
-  if (!outputs || typeof outputs !== 'object') {
-    throw new Error('Dify 工作流未返回任何数据 (outputs为空)');
+  let outputs = data.data?.outputs || data.outputs;
+  if (!outputs || typeof outputs !== 'object' || Object.keys(outputs).length === 0) {
+    if (data.data?.result || data.result) {
+      outputs = { result: data.data?.result || data.result };
+    } else if (data.data?.text || data.text) {
+      outputs = { text: data.data?.text || data.text };
+    } else if (data.data?.answer || data.answer) {
+      outputs = { answer: data.data?.answer || data.answer };
+    } else if (data.data?.response || data.response) {
+      outputs = { response: data.data?.response || data.response };
+    } else if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+      outputs = data.data;
+    } else {
+      outputs = data;
+    }
   }
 
-  // 1. Direct object matching (if Dify outputs dictionary directly)
+  if (!outputs || typeof outputs !== 'object') {
+    throw new Error(`Dify 工作流未返回任何有效数据。原始响应: ${JSON.stringify(data).slice(0, 200)}`);
+  }
+
   const outputKeys = Object.keys(outputs);
-  if (outputKeys.some(k => k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || k.includes('EN') || k.includes('FR'))) {
+  if (outputKeys.some(k => k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || k.includes('EN') || k.includes('FR') || k.includes('CN') || k.includes('中文'))) {
     return outputs;
   }
 
-  // 2. Try common variable names or single key fallback
-  let rawVal = outputs.result || outputs.translations || outputs.output || outputs.text || outputs.response || outputs.res || outputs.data || outputs.json;
+  let rawVal = outputs.result || outputs.translations || outputs.output || outputs.text || outputs.answer || outputs.response || outputs.res || outputs.data || outputs.json;
   if (rawVal === undefined && outputKeys.length === 1) {
     rawVal = outputs[outputKeys[0]];
   }
 
+  if (rawVal === undefined) {
+    for (const key of outputKeys) {
+      const val = outputs[key];
+      if (typeof val === 'string' && val.trim().startsWith('{')) {
+        rawVal = val;
+        break;
+      }
+    }
+  }
+
   if (rawVal === undefined || rawVal === null) {
-    throw new Error(`Dify 工作流未包含有效输出变量 (当前输出字段为: ${outputKeys.join(', ') || '无'})。请检查 Dify 结束（End）节点的输出变量命名，建议命名为 result 或 translations。`);
+    throw new Error(`Dify 工作流未包含有效输出变量 (当前输出字段为: ${outputKeys.join(', ') || '无'}). 原始响应片段: ${JSON.stringify(data).slice(0, 200)}`);
   }
 
   // If already an object
