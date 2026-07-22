@@ -985,48 +985,79 @@ export default function TranslationTab({
   // Helper to extract a value from Dify response using fuzzy matching
   const findValueInDifyResult = (lang, result) => {
     if (!result || typeof result !== 'object') return undefined;
+
+    const sanitizeString = (val) => {
+      if (val === undefined || val === null) return undefined;
+      if (typeof val === 'string') return val;
+      if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+      if (Array.isArray(val)) {
+        return val.map(item => (typeof item === 'object' ? item?.text || '' : String(item))).join('');
+      }
+      if (typeof val === 'object') {
+        if (val.text !== undefined) return String(val.text);
+        if (val.value !== undefined) return String(val.value);
+        if (val.translation !== undefined) return String(val.translation);
+        return JSON.stringify(val);
+      }
+      return String(val);
+    };
+
+    let rawVal;
     
     // 1. Exact match
-    if (result[lang] !== undefined) return result[lang];
+    if (result[lang] !== undefined) rawVal = result[lang];
     
-    // 2. Case-insensitive exact match
-    const lowerLang = lang.toLowerCase();
-    const exactKey = Object.keys(result).find(k => k.toLowerCase() === lowerLang);
-    if (exactKey) return result[exactKey];
-    
-    // 3. Clean string and compare (fuzzy matching)
-    const getCoreChars = (str) => {
-      // Remove symbols, brackets, and spaces
-      return str.replace(/[^\u4e00-\u9fa5a-zA-Z]/g, '');
-    };
-    
-    const coreLang = getCoreChars(lang);
-    if (!coreLang) return undefined;
-    
-    // Find key where one contains the other
-    for (const key of Object.keys(result)) {
-      const coreKey = getCoreChars(key);
-      if (!coreKey) continue;
-      if (coreLang.includes(coreKey) || coreKey.includes(coreLang)) {
-        return result[key];
-      }
+    if (rawVal === undefined) {
+      // 2. Case-insensitive exact match
+      const lowerLang = lang.toLowerCase();
+      const exactKey = Object.keys(result).find(k => k.toLowerCase() === lowerLang);
+      if (exactKey) rawVal = result[exactKey];
     }
     
-    // Find key that shares characters
-    for (const key of Object.keys(result)) {
-      const coreKey = getCoreChars(key);
-      if (!coreKey) continue;
-      const shared = [...new Set(coreKey.split(''))].filter(char => new Set(coreLang.split('')).has(char));
-      if (shared.length > 0) {
-        // Exclude generic suffixes
-        const meaningfulShared = shared.filter(char => char !== '语' && char !== '文' && char !== '体');
-        if (meaningfulShared.length > 0) {
-          return result[key];
+    if (rawVal === undefined) {
+      // 3. Clean string and compare (fuzzy matching)
+      const getCoreChars = (str) => {
+        return str.replace(/[^\u4e00-\u9fa5a-zA-Z]/g, '');
+      };
+      
+      const coreLang = getCoreChars(lang);
+      if (coreLang) {
+        for (const key of Object.keys(result)) {
+          if (key === '_source') continue;
+          const coreKey = getCoreChars(key);
+          if (!coreKey) continue;
+          if (coreLang.includes(coreKey) || coreKey.includes(coreLang)) {
+            rawVal = result[key];
+            break;
+          }
         }
       }
     }
     
-    return undefined;
+    if (rawVal === undefined) {
+      const getCoreChars = (str) => {
+        return str.replace(/[^\u4e00-\u9fa5a-zA-Z]/g, '');
+      };
+      
+      const coreLang = getCoreChars(lang);
+      if (coreLang) {
+        for (const key of Object.keys(result)) {
+          if (key === '_source') continue;
+          const coreKey = getCoreChars(key);
+          if (!coreKey) continue;
+          const shared = [...new Set(coreKey.split(''))].filter(char => new Set(coreLang.split('')).has(char));
+          if (shared.length > 0) {
+            const meaningfulShared = shared.filter(char => char !== '语' && char !== '文' && char !== '体');
+            if (meaningfulShared.length > 0) {
+              rawVal = result[key];
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    return sanitizeString(rawVal);
   };
 
   // Helper to call backend API and generate KW from Chinese
@@ -1335,11 +1366,12 @@ export default function TranslationTab({
       });
 
       try {
+        const missingLangs = Array.isArray(item.missingLangs) ? item.missingLangs : [];
         const inputs = {
           KW: item.KW,
           text: item.中文,
           context: item.所在页面 || '无',
-          target_languages: item.missingLangs.join(',')
+          target_languages: missingLangs.join(',')
         };
 
         const res = await apiFetch('/api/projects/proj-default/ai-translate', {
@@ -1356,9 +1388,9 @@ export default function TranslationTab({
         const trans = {};
         const meta = {};
         const source = result._source === 'tm' ? 'tm' : 'ai';
-        item.missingLangs.forEach(lang => {
+        missingLangs.forEach(lang => {
           const val = findValueInDifyResult(lang, result);
-          if (val !== undefined) {
+          if (val !== undefined && typeof val === 'string') {
             trans[lang] = val;
             meta[lang] = source;
           }
@@ -3455,10 +3487,10 @@ export default function TranslationTab({
                         <td className="mono">{item.KW}</td>
                         <td>{item.中文}</td>
                         <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                          {item.missingLangs.join(', ')}
+                          {(Array.isArray(item.missingLangs) ? item.missingLangs : []).join(', ')}
                         </td>
                         <td>
-                          {Object.keys(item.translations).length === 0 ? (
+                          {(!item.translations || Object.keys(item.translations).length === 0) ? (
                             <span className="cell-empty">等待运行...</span>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
@@ -3467,7 +3499,7 @@ export default function TranslationTab({
                                   <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', width: '60px' }}>{lang}:</span>
                                   <input 
                                     type="text" 
-                                    value={item.translations[lang]}
+                                    value={String(item.translations[lang] ?? '')}
                                     onChange={(e) => {
                                       const updatedList = [...batchPreviewList];
                                       updatedList[idx].translations[lang] = e.target.value;

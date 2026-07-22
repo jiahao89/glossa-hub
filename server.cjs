@@ -2952,11 +2952,23 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
       const fieldsKeys = Object.keys(termFields);
       parsedTargetLangs.forEach(lang => {
         if (lang === '英文' || lang.includes('EN') || lang.toLowerCase() === 'english') {
-          tmTranslations[lang] = fullMatch.en_term || '';
+          tmTranslations[lang] = typeof fullMatch.en_term === 'object' 
+            ? (fullMatch.en_term?.text || JSON.stringify(fullMatch.en_term)) 
+            : String(fullMatch.en_term || '');
         } else {
           const normLang = lang.replace(/语|文/g, '');
           const matchedKey = fieldsKeys.find(k => k === lang || k.includes(normLang));
-          tmTranslations[lang] = matchedKey ? termFields[matchedKey] : '';
+          let rawVal = matchedKey ? termFields[matchedKey] : '';
+          if (typeof rawVal === 'object' && rawVal !== null) {
+            if (Array.isArray(rawVal)) {
+              rawVal = rawVal.map(x => (typeof x === 'object' ? x?.text || '' : String(x))).join('');
+            } else if (rawVal.text !== undefined) {
+              rawVal = String(rawVal.text);
+            } else {
+              rawVal = JSON.stringify(rawVal);
+            }
+          }
+          tmTranslations[lang] = String(rawVal || '');
         }
       });
       // Bypass Dify, return immediately
