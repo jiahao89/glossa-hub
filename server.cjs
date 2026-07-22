@@ -167,7 +167,9 @@ app.use(async (req, res, next) => {
 
 
 
-const DB_PATH = path.join(__dirname, 'glossahub.db');
+const DB_PATH = (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+  ? path.join('/tmp', 'glossahub.db')
+  : path.join(__dirname, 'glossahub.db');
 const pgUrl = process.env.DATABASE_URL;
 let dbType = 'sqlite';
 let sqliteDb = null;
