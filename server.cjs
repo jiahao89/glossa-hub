@@ -146,11 +146,30 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 let dbInitPromise = null;
+let dbInitError = null;
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: dbInitError ? 'db_error' : 'ok',
+    dbType,
+    dbInitError: dbInitError ? dbInitError.message : null,
+    pgError,
+    timestamp: new Date().toISOString()
+  });
+});
+
 function ensureDbInit() {
   if (!dbInitPromise) {
-    dbInitPromise = initDatabase().then(() => {
-      try { ensureIndexes(); } catch { }
-    });
+    dbInitPromise = initDatabase()
+      .then(() => {
+        dbInitError = null;
+        try { ensureIndexes(); } catch (e) { console.warn('Index error:', e.message); }
+      })
+      .catch((err) => {
+        dbInitError = err;
+        dbInitPromise = null; // Don't cache rejection forever
+        throw err;
+      });
   }
   return dbInitPromise;
 }
@@ -163,10 +182,6 @@ app.use(async (req, res, next) => {
     console.error('❌ DB 初始化异常:', err);
     res.status(500).json({ error: `数据库无法建立连接: ${err.message}` });
   }
-});
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', dbType, timestamp: new Date().toISOString() });
 });
 
 
