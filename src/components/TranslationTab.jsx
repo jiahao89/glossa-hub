@@ -1429,7 +1429,7 @@ export default function TranslationTab({
         const rowModifiedDict = updatedCellsDict[item.recordId] || {};
         let hasNewTrans = false;
 
-        Object.keys(item.translations).forEach(lang => {
+        Object.keys(item.translations || {}).forEach(lang => {
           const fieldId = targetFieldMap[lang];
           if (fieldId && item.translations[lang]) {
             fields[fieldId] = item.translations[lang];
@@ -1493,7 +1493,7 @@ export default function TranslationTab({
       await saveOfflineRecords(batchTargetTableId, updatedRecordsList);
 
       batchPreviewList.forEach(item => {
-        const transCount = Object.keys(item.translations).length;
+        const transCount = Object.keys(item.translations || {}).length;
         if (transCount > 0) {
           onAddLog('批量翻译', item.KW, item.中文, `自动回写了 ${transCount} 个语种的翻译`);
         }
@@ -3426,7 +3426,7 @@ export default function TranslationTab({
             <button
               onClick={handleConfirmBatchWrite}
               className="btn btn-primary"
-              disabled={isTranslatingBatch || isSavingBatch || batchPreviewList.every(i => Object.keys(i.translations).length === 0)}
+              disabled={isTranslatingBatch || isSavingBatch || batchPreviewList.every(i => Object.keys(i.translations || {}).length === 0)}
             >
               {isSavingBatch ? (
                 <><Loader2 size={14} className="animate-spin" /> 正在保存更新...</>
