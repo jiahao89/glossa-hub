@@ -1800,19 +1800,11 @@ export default function TranslationTab({
 
     setLoading(true);
     try {
-      // 1. Auto-generate KW for rows with empty KW
-      const resolvedRows = await Promise.all(
-        completedRows.map(async row => {
-          let trimmedKW = (row.KW || '').trim();
-          if (!trimmedKW) {
-            const generated = await generateKWForText(row.中文);
-            if (generated) {
-              trimmedKW = generated;
-            }
-          }
-          return { ...row, KW: trimmedKW };
-        })
-      );
+      // KW is optional — use as-is (trimmed)
+      const resolvedRows = completedRows.map(row => ({
+        ...row,
+        KW: (row.KW || '').trim()
+      }));
 
       // Perform duplicate and similarity checks
       const existingList = await fetchTargetTableKWAndChinese(batchAddTargetTableId);
@@ -3691,7 +3683,7 @@ export default function TranslationTab({
                               setBatchAddRows(updated);
                             }}
                             className="text-input"
-                            placeholder="选填，留空将自动生成"
+                            placeholder="选填"
                             disabled={isTranslatingBatchAdd}
                           />
                         </td>
