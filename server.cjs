@@ -2868,7 +2868,70 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
     `;
     const glossaryTerms = await db.query(glossaryQuery, [projectId]);
 
-    const fullMatch = glossaryTerms.find(term => term.cn_term === zhCn);
+    const allMatches = glossaryTerms.filter(term => term.cn_term === zhCn);
+    let fullMatch = null;
+
+    if (allMatches.length === 1) {
+      fullMatch = allMatches[0];
+    } else if (allMatches.length > 1) {
+      // Multiple matches exist - handle potential ambiguity/different translations
+      const parsedTargetLangs = (typeof targetLangs === 'string' ? targetLangs.split(',') : targetLangs)
+        .map(l => l.trim())
+        .filter(Boolean);
+
+      const getTermTranslations = (term) => {
+        let termFields = {};
+        try {
+          termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
+        } catch (e) { }
+        const fieldsKeys = Object.keys(termFields);
+        let trans = {};
+        parsedTargetLangs.forEach(lang => {
+          if (lang === '英文' || lang.includes('EN') || lang.toLowerCase() === 'english') {
+            trans[lang] = term.en_term || '';
+          } else {
+            const normLang = lang.replace(/语|文/g, '');
+            const matchedKey = fieldsKeys.find(k => k === lang || k.includes(normLang));
+            trans[lang] = matchedKey ? termFields[matchedKey] : '';
+          }
+        });
+        return trans;
+      };
+
+      // Extract target language translations for all matches
+      const matchesWithTrans = allMatches.map(term => ({
+        term,
+        trans: getTermTranslations(term)
+      }));
+
+      // Check if all matches have identical translations for target languages
+      const firstTransStr = JSON.stringify(matchesWithTrans[0].trans);
+      const allIdentical = matchesWithTrans.every(m => JSON.stringify(m.trans) === firstTransStr);
+
+      if (allIdentical) {
+        // Safe to use first match if no actual translation conflict exists
+        fullMatch = allMatches[0];
+      } else {
+        // Conflicting translations exist. Resolve using page context (所在页面)
+        const inputContext = (inputs.context || inputs.所在页面 || '').trim();
+        if (inputContext && inputContext !== '无') {
+          const exactContextMatch = allMatches.find(term => {
+            let termFields = {};
+            try {
+              termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
+            } catch (e) {}
+            const termContext = (termFields.所在页面 || termFields['所在页面'] || '').trim();
+            return termContext && (termContext.includes(inputContext) || inputContext.includes(termContext));
+          });
+          if (exactContextMatch) {
+            fullMatch = exactContextMatch;
+          }
+        }
+        // If still ambiguous (no context matched or context is empty), keep fullMatch as null
+        // so it falls through to Dify (AI) workflow instead of bypassing.
+      }
+    }
+
     if (fullMatch) {
       const parsedTargetLangs = (typeof targetLangs === 'string' ? targetLangs.split(',') : targetLangs).map(l => l.trim()).filter(Boolean);
       let tmTranslations = {};
