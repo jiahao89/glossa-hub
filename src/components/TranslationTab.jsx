@@ -348,6 +348,7 @@ export default function TranslationTab({
   // Batch Translate State
   const [batchProgress, setBatchProgress] = useState({ total: 0, current: 0, status: '' });
   const [batchPreviewList, setBatchPreviewList] = useState([]); // [{ recordId, KW, 中文, 所在页面, translations: { langName: value } }]
+  const [selectedBatchItemIds, setSelectedBatchItemIds] = useState(new Set()); // Selected item IDs inside batch modal
   const [isTranslatingBatch, setIsTranslatingBatch] = useState(false);
   const [isSavingBatch, setIsSavingBatch] = useState(false);
 
@@ -1268,8 +1269,8 @@ export default function TranslationTab({
     }
   };
 
-  // Helper to fetch untranslated records for a specific table
-  const getUntranslatedRecordsForTable = async (tableId) => {
+  // Helper to fetch untranslated records for a specific table (optionally filtered by targetRecordIds)
+  const getUntranslatedRecordsForTable = async (tableId, targetRecordIdsSet = null) => {
     let targetRecordsList = [];
     let targetFieldMap = {};
 
@@ -1282,6 +1283,10 @@ export default function TranslationTab({
       }
     } catch (err) {
       console.error('⚠️ 无法读取词条数据:', err.message);
+    }
+
+    if (targetRecordIdsSet && targetRecordIdsSet.size > 0) {
+      targetRecordsList = targetRecordsList.filter(rec => targetRecordIdsSet.has(rec.recordId));
     }
     
     const getValue = (rec, fieldName) => {
@@ -1327,11 +1332,27 @@ export default function TranslationTab({
     
     setLoading(true);
     try {
-      const items = await getUntranslatedRecordsForTable(selectedTableId);
+      // Check if user selected specific rows in main grid table
+      const targetIdsSet = selectedRecordIds.size > 0 ? selectedRecordIds : null;
+      const items = await getUntranslatedRecordsForTable(selectedTableId, targetIdsSet);
+      
+      if (selectedRecordIds.size > 0 && items.length === 0) {
+        toast.info('选中的词条已全部完成翻译，无需重复翻译');
+        setLoading(false);
+        return;
+      }
+
       setBatchTargetTableId(selectedTableId);
       setBatchPreviewList(items);
+      setSelectedBatchItemIds(new Set(items.map(i => i.recordId)));
       setBatchTranslateOpen(true);
-      setBatchProgress({ total: items.length, current: 0, status: items.length > 0 ? '等待开始批量翻译' : '该版本下没有未翻译词条' });
+      setBatchProgress({ 
+        total: items.length, 
+        current: 0, 
+        status: items.length > 0 
+          ? (selectedRecordIds.size > 0 ? `已筛选勾选的 ${items.length} 条待翻译词条` : '等待开始批量翻译') 
+          : '该版本下没有未翻译词条' 
+      });
     } catch (err) {
       showStatus('danger', `初始化批量翻译失败: ${getFriendlyAiErrorMessage(err.message)}`);
     } finally {
@@ -1342,9 +1363,10 @@ export default function TranslationTab({
   const handleBatchTargetTableChange = async (newTableId) => {
     setLoading(true);
     try {
-      const items = await getUntranslatedRecordsForTable(newTableId);
+      const items = await getUntranslatedRecordsForTable(newTableId, null);
       setBatchTargetTableId(newTableId);
       setBatchPreviewList(items);
+      setSelectedBatchItemIds(new Set(items.map(i => i.recordId)));
       setBatchProgress({ total: items.length, current: 0, status: items.length > 0 ? '等待开始批量翻译' : '该版本下没有未翻译词条' });
     } catch (err) {
       showStatus('danger', `载入目标版本词条失败: ${getFriendlyAiErrorMessage(err.message)}`);
@@ -1354,17 +1376,31 @@ export default function TranslationTab({
   };
 
   const handleStartBatchTranslate = async () => {
+    const itemsToTranslateIndices = [];
+    batchPreviewList.forEach((item, idx) => {
+      if (selectedBatchItemIds.has(item.recordId)) {
+        itemsToTranslateIndices.push(idx);
+      }
+    });
+
+    if (itemsToTranslateIndices.length === 0) {
+      toast.warning('请至少勾选一条需要翻译的词条！');
+      return;
+    }
+
     setIsTranslatingBatch(true);
     const updatedList = [...batchPreviewList];
     const BASE_DELAY = 2000; // 2s base delay between requests
     const MAX_RETRIES = 3;
+    const totalCount = itemsToTranslateIndices.length;
 
-    for (let i = 0; i < updatedList.length; i++) {
+    for (let countIdx = 0; countIdx < totalCount; countIdx++) {
+      const i = itemsToTranslateIndices[countIdx];
       const item = updatedList[i];
       setBatchProgress({
-        total: updatedList.length,
-        current: i + 1,
-        status: `正在翻译 (${i + 1}/${updatedList.length}): ${item.KW} - ${item.中文}`
+        total: totalCount,
+        current: countIdx + 1,
+        status: `正在翻译 (${countIdx + 1}/${totalCount}): ${item.KW} - ${item.中文}`
       });
 
       let success = false;
@@ -1390,7 +1426,7 @@ export default function TranslationTab({
               const backoff = BASE_DELAY * Math.pow(2, attempt + 1); // 4s, 8s, 16s
               setBatchProgress(prev => ({
                 ...prev,
-                status: `⏳ API 限流中，等待 ${Math.round(backoff / 1000)}s 后重试 (${i + 1}/${updatedList.length}): ${item.KW}`
+                status: `⏳ API 限流中，等待 ${Math.round(backoff / 1000)}s 后重试 (${countIdx + 1}/${totalCount}): ${item.KW}`
               }));
               await new Promise(resolve => setTimeout(resolve, backoff));
               continue; // retry
@@ -1420,7 +1456,7 @@ export default function TranslationTab({
             const backoff = BASE_DELAY * Math.pow(2, attempt + 1);
             setBatchProgress(prev => ({
               ...prev,
-              status: `⏳ API 限流中，等待 ${Math.round(backoff / 1000)}s 后重试 (${i + 1}/${updatedList.length}): ${item.KW}`
+              status: `⏳ API 限流中，等待 ${Math.round(backoff / 1000)}s 后重试 (${countIdx + 1}/${totalCount}): ${item.KW}`
             }));
             await new Promise(resolve => setTimeout(resolve, backoff));
             continue;
@@ -1431,7 +1467,7 @@ export default function TranslationTab({
       }
 
       // Delay between items to avoid rate limiting
-      if (i < updatedList.length - 1) {
+      if (countIdx < totalCount - 1) {
         await new Promise(resolve => setTimeout(resolve, BASE_DELAY));
       }
     }
@@ -1453,6 +1489,9 @@ export default function TranslationTab({
       });
 
       batchPreviewList.forEach(item => {
+        // Only write back if the item is selected in batch modal
+        if (!selectedBatchItemIds.has(item.recordId)) return;
+
         const fields = {};
         const batchMeta = {}; // P1-1: 批量翻译来源标记
         const rowModifiedDict = updatedCellsDict[item.recordId] || {};
@@ -3422,7 +3461,7 @@ export default function TranslationTab({
         <GlossaModal
           isOpen={true}
           onClose={() => setBatchTranslateOpen(false)}
-          title={`Dify 批量智能翻译工作流 (${batchPreviewList.length} 条待翻译)`}
+          title={`Dify 批量智能翻译工作流 (已选 ${selectedBatchItemIds.size} / 共 ${batchPreviewList.length} 条待翻译)`}
           maxWidth="900px"
           closeDisabled={isTranslatingBatch}
           footer={<>
@@ -3436,18 +3475,22 @@ export default function TranslationTab({
             <button
               onClick={handleStartBatchTranslate}
               className="btn btn-secondary"
-              disabled={isTranslatingBatch || isSavingBatch}
+              disabled={isTranslatingBatch || isSavingBatch || selectedBatchItemIds.size === 0}
             >
               {isTranslatingBatch ? (
                 <><Loader2 size={14} className="animate-spin" /> 正在调用 Dify 翻译...</>
               ) : (
-                '开始 Dify 翻译'
+                `开始 Dify 翻译 (${selectedBatchItemIds.size})`
               )}
             </button>
             <button
               onClick={handleConfirmBatchWrite}
               className="btn btn-primary"
-              disabled={isTranslatingBatch || isSavingBatch || batchPreviewList.every(i => Object.keys(i.translations || {}).length === 0)}
+              disabled={
+                isTranslatingBatch || 
+                isSavingBatch || 
+                batchPreviewList.every(i => !selectedBatchItemIds.has(i.recordId) || Object.keys(i.translations || {}).length === 0)
+              }
             >
               {isSavingBatch ? (
                 <><Loader2 size={14} className="animate-spin" /> 正在保存更新...</>
@@ -3458,20 +3501,25 @@ export default function TranslationTab({
           </>}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Target Table Selector */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>目标版本 (数据表):</span>
-                <select 
-                  value={batchTargetTableId} 
-                  onChange={(e) => handleBatchTargetTableChange(e.target.value)}
-                  className="select-input"
-                  style={{ width: '200px' }}
-                  disabled={isTranslatingBatch}
-                >
-                  {tables.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
+              {/* Target Table Selector & Selection Controls */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.8rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>目标版本 (数据表):</span>
+                  <select 
+                    value={batchTargetTableId} 
+                    onChange={(e) => handleBatchTargetTableChange(e.target.value)}
+                    className="select-input"
+                    style={{ width: '200px' }}
+                    disabled={isTranslatingBatch}
+                  >
+                    {tables.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  已勾选 <strong style={{ color: 'var(--accent)' }}>{selectedBatchItemIds.size}</strong> / {batchPreviewList.length} 项
+                </div>
               </div>
 
               {/* Progress and status alert */}
@@ -3496,6 +3544,20 @@ export default function TranslationTab({
                 <table className="data-table" style={{ fontSize: '0.8rem' }}>
                   <thead>
                     <tr>
+                      <th style={{ width: '38px', textAlign: 'center' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedBatchItemIds.size === batchPreviewList.length && batchPreviewList.length > 0}
+                          onChange={() => {
+                            if (selectedBatchItemIds.size === batchPreviewList.length) {
+                              setSelectedBatchItemIds(new Set());
+                            } else {
+                              setSelectedBatchItemIds(new Set(batchPreviewList.map(i => i.recordId)));
+                            }
+                          }}
+                          disabled={isTranslatingBatch}
+                        />
+                      </th>
                       <th>KW</th>
                       <th>中文</th>
                       <th>待翻译语种</th>
@@ -3503,39 +3565,58 @@ export default function TranslationTab({
                     </tr>
                   </thead>
                   <tbody>
-                    {batchPreviewList.map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="mono">{item.KW}</td>
-                        <td>{item.中文}</td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                          {(Array.isArray(item.missingLangs) ? item.missingLangs : []).join(', ')}
-                        </td>
-                        <td>
-                          {(!item.translations || Object.keys(item.translations).length === 0) ? (
-                            <span className="cell-empty">等待运行...</span>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                              {Object.keys(item.translations).map(lang => (
-                                <div key={lang} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', width: '60px' }}>{lang}:</span>
-                                  <input 
-                                    type="text" 
-                                    value={String(item.translations[lang] ?? '')}
-                                    onChange={(e) => {
-                                      const updatedList = [...batchPreviewList];
-                                      updatedList[idx].translations[lang] = e.target.value;
-                                      setBatchPreviewList(updatedList);
-                                    }}
-                                    className="text-input"
-                                    style={{ height: '22px', fontSize: '0.75rem', padding: '0 0.4rem', flex: 1 }}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {batchPreviewList.map((item, idx) => {
+                      const isChecked = selectedBatchItemIds.has(item.recordId);
+                      return (
+                        <tr key={idx} style={{ opacity: isChecked ? 1 : 0.45, transition: 'opacity 0.15s' }}>
+                          <td style={{ textAlign: 'center' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isChecked}
+                              onChange={() => {
+                                const nextSet = new Set(selectedBatchItemIds);
+                                if (nextSet.has(item.recordId)) {
+                                  nextSet.delete(item.recordId);
+                                } else {
+                                  nextSet.add(item.recordId);
+                                }
+                                setSelectedBatchItemIds(nextSet);
+                              }}
+                              disabled={isTranslatingBatch}
+                            />
+                          </td>
+                          <td className="mono">{item.KW}</td>
+                          <td>{item.中文}</td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                            {(Array.isArray(item.missingLangs) ? item.missingLangs : []).join(', ')}
+                          </td>
+                          <td>
+                            {(!item.translations || Object.keys(item.translations).length === 0) ? (
+                              <span className="cell-empty">等待运行...</span>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                {Object.keys(item.translations).map(lang => (
+                                  <div key={lang} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', width: '60px' }}>{lang}:</span>
+                                    <input 
+                                      type="text" 
+                                      value={String(item.translations[lang] ?? '')}
+                                      onChange={(e) => {
+                                        const updatedList = [...batchPreviewList];
+                                        updatedList[idx].translations[lang] = e.target.value;
+                                        setBatchPreviewList(updatedList);
+                                      }}
+                                      className="text-input"
+                                      style={{ height: '22px', fontSize: '0.75rem', padding: '0 0.4rem', flex: 1 }}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
