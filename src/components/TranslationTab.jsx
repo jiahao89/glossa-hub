@@ -1274,15 +1274,22 @@ export default function TranslationTab({
     let targetRecordsList = [];
     let targetFieldMap = {};
 
-    try {
-      const res = await apiFetch(`/api/tables/${tableId}/records`);
-      if (res.ok) {
-        targetRecordsList = await res.json();
-        targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
-        TARGET_LANGUAGES.forEach(lang => { targetFieldMap[lang] = lang; });
+    // Memory cache optimization: if target is current table, use local memory records directly
+    if (tableId === selectedTableId && Array.isArray(recordsRef.current) && recordsRef.current.length > 0) {
+      targetRecordsList = recordsRef.current;
+      targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
+      TARGET_LANGUAGES.forEach(lang => { targetFieldMap[lang] = lang; });
+    } else {
+      try {
+        const res = await apiFetch(`/api/tables/${tableId}/records`);
+        if (res.ok) {
+          targetRecordsList = await res.json();
+          targetFieldMap = { 'KW': 'KW', 'CN（中文）': 'CN（中文）', '所在页面': '所在页面', '字号类别': '字号类别' };
+          TARGET_LANGUAGES.forEach(lang => { targetFieldMap[lang] = lang; });
+        }
+      } catch (err) {
+        console.error('⚠️ 无法读取词条数据:', err.message);
       }
-    } catch (err) {
-      console.error('⚠️ 无法读取词条数据:', err.message);
     }
 
     if (targetRecordIdsSet && targetRecordIdsSet.size > 0) {
@@ -1292,7 +1299,7 @@ export default function TranslationTab({
     const getValue = (rec, fieldName) => {
       const fId = targetFieldMap[fieldName];
       if (!fId) return '';
-      const cell = rec.fields[fId];
+      const cell = rec.fields?.[fId];
       if (!cell) return '';
       if (Array.isArray(cell)) {
         return cell.map(s => s.text || '').join('');
@@ -1330,7 +1337,6 @@ export default function TranslationTab({
       return;
     }
     
-    setLoading(true);
     try {
       // Check if user selected specific rows in main grid table
       const targetIdsSet = selectedRecordIds.size > 0 ? selectedRecordIds : null;
@@ -1338,7 +1344,6 @@ export default function TranslationTab({
       
       if (selectedRecordIds.size > 0 && items.length === 0) {
         toast.info('选中的词条已全部完成翻译，无需重复翻译');
-        setLoading(false);
         return;
       }
 
@@ -1355,8 +1360,6 @@ export default function TranslationTab({
       });
     } catch (err) {
       showStatus('danger', `初始化批量翻译失败: ${getFriendlyAiErrorMessage(err.message)}`);
-    } finally {
-      setLoading(false);
     }
   };
 
