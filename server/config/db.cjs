@@ -323,6 +323,11 @@ async function initSqlite() {
         reject(err);
       } else {
         console.log('⚡ 成功连接到本地 SQLite 数据库 (glossahub.db)');
+        sqliteDb.run('PRAGMA journal_mode = WAL;', (walErr) => {
+          if (!walErr) console.log('⚡ SQLite 已成功开启 WAL (Write-Ahead Logging) 模式');
+        });
+        sqliteDb.run('PRAGMA synchronous = NORMAL;');
+        sqliteDb.run('PRAGMA busy_timeout = 5000;');
         try {
           await initSqliteTables();
           resolve();

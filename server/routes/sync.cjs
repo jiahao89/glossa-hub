@@ -113,9 +113,102 @@ router.post('/sync-table', authenticateToken, heavyOperationLimiter, async (req,
 
       if (dbType === 'postgres') {
         if (records.length > 0) {
-          const values = [];
-          const valuePlaceholders = [];
-          let paramIdx = 1;
+          const CHUNK_SIZE = 500;
+          for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+            const chunkRecords = records.slice(i, i + CHUNK_SIZE);
+            const values = [];
+            const valuePlaceholders = [];
+            let paramIdx = 1;
+
+            for (const rec of chunkRecords) {
+              const fields = rec.fields || {};
+              let kw = fuzzyGetFieldValue(fields, ['KW', 'Key'], ['kw', 'key']);
+              if (typeof kw === 'string') kw = kw.trim();
+              if (!kw) {
+                kw = `__EMPTY_KW_${crypto.randomUUID()}__`;
+              }
+              const zh_cn = fuzzyGetFieldValue(fields, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);
+              const context = fuzzyGetFieldValue(fields, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
+              const owner = fuzzyGetFieldValue(fields, ['字号类别', '负责人'], ['字号', '负责人', 'owner']);
+
+              const rawTranslations = {};
+              TARGET_LANGUAGES.forEach(lang => {
+                let fuzzyKeywords = [lang.toLowerCase()];
+                const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
+                if (match) {
+                  fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
+                } else {
+                  const letters = lang.match(/[a-zA-Z]+/);
+                  const chars = lang.match(/[\u4e00-\u9fa5]+/);
+                  if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
+                  if (chars) fuzzyKeywords.push(chars[0]);
+                }
+                const val = fuzzyGetFieldValue(fields, [lang], fuzzyKeywords);
+                if (val !== '') {
+                  rawTranslations[lang] = val;
+                }
+              });
+              Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
+                if (fields[legacyKey] !== undefined) rawTranslations[legacyKey] = fields[legacyKey];
+              });
+
+              const normalizedTrans = {};
+              for (const [key, val] of Object.entries(rawTranslations)) {
+                if (TARGET_LANGUAGES.includes(key)) {
+                  normalizedTrans[key] = val;
+                } else if (LEGACY_TO_NEW_LANG_MAP[key]) {
+                  normalizedTrans[LEGACY_TO_NEW_LANG_MAP[key]] = val;
+                } else {
+                  normalizedTrans[key] = val;
+                }
+              }
+
+              const translationsStr = JSON.stringify(normalizedTrans);
+              const termId = rec.recordId || crypto.randomUUID();
+              const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
+
+              valuePlaceholders.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}::jsonb, $${paramIdx + 7}::jsonb, $${paramIdx + 8}, NOW())`);
+              values.push(termId, tableId, kw, context, owner, zh_cn, translationsStr, transMetaStr, req.user.id);
+              paramIdx += 9;
+            }
+
+            if (values.length > 0) {
+              const sql = `
+                INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
+                VALUES ${valuePlaceholders.join(',\n')}
+                ON CONFLICT (id) DO UPDATE SET
+                  kw = EXCLUDED.kw,
+                  context = EXCLUDED.context,
+                  owner = EXCLUDED.owner,
+                  zh_cn = EXCLUDED.zh_cn,
+                  translations = EXCLUDED.translations,
+                  translations_meta = COALESCE(NULLIF(EXCLUDED.translations_meta, '{}'::jsonb), terms.translations_meta),
+                  updated_at = NOW(),
+                  updated_by = EXCLUDED.updated_by
+                WHERE terms.is_locked = FALSE OR terms.is_locked IS NULL
+              `;
+              await tx.run(sql, values);
+            }
+          }
+        }
+      } else {
+        if (records.length > 0) {
+          const termIds = records.map(r => r.recordId).filter(Boolean);
+          const lockedTermIds = new Set();
+          const existingMetaMap = new Map();
+
+          if (termIds.length > 0) {
+            const CHUNK_SIZE = 500;
+            for (let i = 0; i < termIds.length; i += CHUNK_SIZE) {
+              const chunk = termIds.slice(i, i + CHUNK_SIZE);
+              const placeholders = chunk.map((_, idx) => `$${idx + 1}`).join(',');
+              const rows = await tx.query(`SELECT id, is_locked, translations_meta FROM terms WHERE id IN (${placeholders})`, chunk);
+              rows.forEach(r => {
+                if (r.is_locked === 1 || r.is_locked === true) lockedTermIds.add(r.id);
+                if (r.translations_meta && r.translations_meta !== '{}') existingMetaMap.set(r.id, r.translations_meta);
+              });
+            }
+          }
 
           for (const rec of records) {
             const fields = rec.fields || {};
@@ -162,101 +255,26 @@ router.post('/sync-table', authenticateToken, heavyOperationLimiter, async (req,
 
             const translationsStr = JSON.stringify(normalizedTrans);
             const termId = rec.recordId || crypto.randomUUID();
+
+            if (lockedTermIds.has(termId)) continue;
+
             const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
-
-            valuePlaceholders.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}::jsonb, $${paramIdx + 7}::jsonb, $${paramIdx + 8}, NOW())`);
-            values.push(termId, tableId, kw, context, owner, zh_cn, translationsStr, transMetaStr, req.user.id);
-            paramIdx += 9;
-          }
-
-          if (values.length > 0) {
-            const sql = `
-              INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at)
-              VALUES ${valuePlaceholders.join(',\n')}
-              ON CONFLICT (id) DO UPDATE SET
-                kw = EXCLUDED.kw,
-                context = EXCLUDED.context,
-                owner = EXCLUDED.owner,
-                zh_cn = EXCLUDED.zh_cn,
-                translations = EXCLUDED.translations,
-                translations_meta = COALESCE(NULLIF(EXCLUDED.translations_meta, '{}'::jsonb), terms.translations_meta),
-                updated_at = NOW(),
-                updated_by = EXCLUDED.updated_by
-              WHERE terms.is_locked = FALSE OR terms.is_locked IS NULL
-            `;
-            await tx.run(sql, values);
-          }
-        }
-      } else {
-        for (const rec of records) {
-          const fields = rec.fields || {};
-          let kw = fuzzyGetFieldValue(fields, ['KW', 'Key'], ['kw', 'key']);
-          if (typeof kw === 'string') kw = kw.trim();
-          if (!kw) {
-            kw = `__EMPTY_KW_${crypto.randomUUID()}__`;
-          }
-          const zh_cn = fuzzyGetFieldValue(fields, ['CN（中文）', '中文', 'Source'], ['中文', 'cn', 'source']);
-          const context = fuzzyGetFieldValue(fields, ['所在页面', '词条所在界面（注意是界面不是模块！！）'], ['页面', '界面', 'page', 'context']);
-          const owner = fuzzyGetFieldValue(fields, ['字号类别', '负责人'], ['字号', '负责人', 'owner']);
-
-          const rawTranslations = {};
-          TARGET_LANGUAGES.forEach(lang => {
-            let fuzzyKeywords = [lang.toLowerCase()];
-            const match = lang.match(/([a-zA-Z]+)[（(](.+)[)）]/);
-            if (match) {
-              fuzzyKeywords = [match[1].toLowerCase(), match[2].toLowerCase()];
-            } else {
-              const letters = lang.match(/[a-zA-Z]+/);
-              const chars = lang.match(/[\u4e00-\u9fa5]+/);
-              if (letters) fuzzyKeywords.push(letters[0].toLowerCase());
-              if (chars) fuzzyKeywords.push(chars[0]);
+            let finalMetaStr = transMetaStr;
+            if (transMetaStr === '{}' && existingMetaMap.has(termId)) {
+              finalMetaStr = existingMetaMap.get(termId);
             }
-            const val = fuzzyGetFieldValue(fields, [lang], fuzzyKeywords);
-            if (val !== '') {
-              rawTranslations[lang] = val;
-            }
-          });
-          Object.keys(LEGACY_TO_NEW_LANG_MAP).forEach(legacyKey => {
-            if (fields[legacyKey] !== undefined) rawTranslations[legacyKey] = fields[legacyKey];
-          });
 
-          const normalizedTrans = {};
-          for (const [key, val] of Object.entries(rawTranslations)) {
-            if (TARGET_LANGUAGES.includes(key)) {
-              normalizedTrans[key] = val;
-            } else if (LEGACY_TO_NEW_LANG_MAP[key]) {
-              normalizedTrans[LEGACY_TO_NEW_LANG_MAP[key]] = val;
-            } else {
-              normalizedTrans[key] = val;
-            }
+            await tx.run(
+              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at, is_locked, locked_by, locked_at, status, reject_reason)
+               VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),0,NULL,NULL,'DRAFT',NULL)
+               ON CONFLICT(id) DO UPDATE SET
+                 kw=excluded.kw, context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
+                 translations=excluded.translations, translations_meta=excluded.translations_meta,
+                 updated_by=excluded.updated_by, updated_at=datetime('now')
+               WHERE is_locked = 0 OR is_locked IS NULL`,
+              [termId, tableId, kw, context, owner, zh_cn, translationsStr, finalMetaStr, req.user.id]
+            );
           }
-
-          const translationsStr = JSON.stringify(normalizedTrans);
-          const termId = rec.recordId || crypto.randomUUID();
-          const transMetaStr = rec.translationsMeta ? JSON.stringify(rec.translationsMeta) : '{}';
-
-          const existingTerm = await tx.queryOne('SELECT is_locked FROM terms WHERE id = $1', [termId]);
-          if (existingTerm && (existingTerm.is_locked === 1 || existingTerm.is_locked === true)) {
-            continue;
-          }
-
-          let finalMetaStr = transMetaStr;
-          if (transMetaStr === '{}') {
-            const existingMeta = await tx.queryOne('SELECT translations_meta FROM terms WHERE id = $1', [termId]);
-            if (existingMeta && existingMeta.translations_meta && existingMeta.translations_meta !== '{}') {
-              finalMetaStr = existingMeta.translations_meta;
-            }
-          }
-          await tx.run(
-            `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_by, updated_at, is_locked, locked_by, locked_at, status, reject_reason)
-             VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),0,NULL,NULL,'DRAFT',NULL)
-             ON CONFLICT(id) DO UPDATE SET
-               kw=excluded.kw, context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
-               translations=excluded.translations, translations_meta=excluded.translations_meta,
-               updated_by=excluded.updated_by, updated_at=datetime('now')
-             WHERE is_locked = 0 OR is_locked IS NULL`,
-            [termId, tableId, kw, context, owner, zh_cn, translationsStr, finalMetaStr, req.user.id]
-          );
         }
       }
     });
