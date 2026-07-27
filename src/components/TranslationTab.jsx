@@ -2424,7 +2424,7 @@ export default function TranslationTab({
   };
 
   // Calculate if current table has any modified or added highlight cells
-  const hasAnyHighlightsInCurrentTable = useMemo(() => {
+  const _hasAnyHighlightsInCurrentTable = useMemo(() => {
     if (!records || records.length === 0 || !modifiedCells) return false;
     const recordIdsInTable = new Set(records.map(r => r.recordId));
     return Object.keys(modifiedCells).some(id => recordIdsInTable.has(id));

@@ -91,7 +91,7 @@ async function generateKwHelper(projectId, text) {
               if (enKey && parsed[enKey]) {
                 englishText = parsed[enKey];
               }
-            } catch (e) {
+            } catch {
               // ignore parse error
             }
           }
@@ -137,9 +137,21 @@ async function generateKwHelper(projectId, text) {
 }
 
 
-// CORS 配置：允许所有来源（包含 Vercel 部署域名与本地开发环境）
+// CORS 配置：支持跨域白名单（从环境变量读取，默认开发与 vercel.app 动态匹配）
+const defaultOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+const envOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
+  : [];
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+
 app.use(cors({
-  origin: true,
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS 策略已拦截未授权的来源: ' + origin));
+  },
   credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -233,6 +245,10 @@ function ensureIndexes() {
 // Database Initialization & Dual Driver
 // ----------------------------------------------------
 async function initDatabase() {
+  if (process.env.VERCEL && !pgUrl) {
+    console.warn('⚠️ 警告: 运行在 Vercel Serverless 环境下未配置 DATABASE_URL！/tmp 目录在冷启动时将被重置，数据无法持久存储！');
+  }
+
   if (pgUrl) {
     try {
       const { Pool } = require('pg');
@@ -243,7 +259,7 @@ async function initDatabase() {
 
       // 强力正则兜底解析：当密码含 @ 特殊字符且未完全 URL 编码时，内置 parse 会发生截断
       // 我们通过贪婪匹配最后一个 @ 符号来精准提取出完整的密码与连接信息
-      const regexMatch = pgUrl.match(/postgres(?:ql)?:\/\/([^:]+):(.*)@([^:\/]+):([0-9]+)\/([^?]+)/);
+      const regexMatch = pgUrl.match(/postgres(?:ql)?:\/\/([^:]+):(.*)@([^:/]+):([0-9]+)\/([^?]+)/);
       if (regexMatch) {
         pgConfig.user = regexMatch[1];
         pgConfig.password = regexMatch[2];
@@ -257,7 +273,7 @@ async function initDatabase() {
       if (pgConfig.password) {
         try {
           pgConfig.password = decodeURIComponent(pgConfig.password);
-        } catch (decErr) {
+        } catch {
           // 忽略
         }
       }
@@ -398,7 +414,7 @@ async function initSqlite() {
 }
 
 function initSqliteTables() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     sqliteDb.serialize(() => {
       // 1. users
       sqliteDb.run(`
@@ -2906,9 +2922,9 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
         let termFields = {};
         try {
           termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
-        } catch (e) {}
+        } catch {}
 
-        const pageContext = (termFields.所在页面 || termFields['所在页面'] || '').trim();
+        const pageContext = (termFields['所在页面'] || '').trim();
         const termKw = (termFields.KW || term.kw || '').trim().toLowerCase();
         const enTerm = (term.en_term || '').trim();
         const enLower = enTerm.toLowerCase();
@@ -2964,7 +2980,7 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
       let termFields = {};
       try {
         termFields = typeof fullMatch.fields === 'string' ? JSON.parse(fullMatch.fields || '{}') : (fullMatch.fields || {});
-      } catch (e) { }
+      } catch {}
 
       const fieldsKeys = Object.keys(termFields);
       parsedTargetLangs.forEach(lang => {
@@ -2999,7 +3015,7 @@ app.post('/api/projects/:projectId/ai-translate', authenticateToken, requireProj
         let termFields = {};
         try {
           termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
-        } catch (e) { }
+        } catch {}
 
         let targetConstraints = { "英文": term.en_term };
         Object.keys(termFields).forEach(k => {

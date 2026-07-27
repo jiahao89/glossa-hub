@@ -191,7 +191,7 @@ export default function SettingsTab({
     try {
       const d = new Date(dateStr);
       return d.toLocaleString('zh-CN', { hour12: false });
-    } catch (e) {
+    } catch {
       return dateStr;
     }
   };

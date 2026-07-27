@@ -4,7 +4,7 @@ import { Plus, Trash2, User, AlertOctagon, Edit2, Shield } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
 
-export default function UsersTab({ projectRole }) {
+export default function UsersTab({ _projectRole }) {
   const toast = useToast();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);

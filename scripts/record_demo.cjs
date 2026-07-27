@@ -55,7 +55,7 @@ const path = require('path');
     // Check if demo is finished
     try {
       finished = await page.evaluate(() => window.demoFinished);
-    } catch (e) {
+    } catch {
       // Ignore evaluation errors during page reloads
     }
     
@@ -105,7 +105,7 @@ const path = require('path');
             fs.closeSync(fd);
             break;
           }
-        } catch (err) {
+        } catch {
           // ignore lock check errors
         }
       }
@@ -140,7 +140,7 @@ const path = require('path');
     for (const rf of remainingFiles) {
       try {
         fs.unlinkSync(rf);
-      } catch (e) {}
+      } catch {}
     }
   } else {
     console.log('\n❌ 录制结束，但未能找到任何录像文件。');

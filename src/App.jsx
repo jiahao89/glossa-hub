@@ -200,7 +200,7 @@ export default function App() {
       } else {
         setLoginError(data.error || '登录验证失败，请核对凭证！');
       }
-    } catch (err) {
+    } catch {
       setLoginError('登录失败，请检查用户名和密码。');
     } finally {
       setLoggingIn(false);
