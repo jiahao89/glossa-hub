@@ -15,26 +15,29 @@ router.post('/sync-table', authenticateToken, heavyOperationLimiter, async (req,
   }
 
   try {
-    const existingVer = await db.queryOne(
-      'SELECT pm.role FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
-      [tableId, req.user.id]
+    const version = await db.queryOne('SELECT project_id FROM versions WHERE id = $1', [tableId]);
+    const projectId = version ? version.project_id : 'proj-default';
+    const member = await db.queryOne(
+      'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+      [projectId, req.user.id]
     );
-    if (existingVer && existingVer.role === 'viewer' && req.user.role !== 'admin') {
+
+    if (member && member.role === 'viewer' && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权导入或修改词条。' });
     }
-    if (existingVer && !(await requireVersionOwnership(req.user.id, tableId))) {
+    if (!member && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权操作此数据表。' });
     }
-    const version = await db.queryOne('SELECT id FROM versions WHERE id = $1', [tableId]);
-    if (!version) {
+    const existingVersion = await db.queryOne('SELECT id FROM versions WHERE id = $1', [tableId]);
+    if (!existingVersion) {
       if (dbType === 'postgres') {
         await db.run(
-          'INSERT INTO versions (id, project_id, version_name, created_at) VALUES ($1, $2, $3, NOW())',
+          'INSERT INTO versions (id, project_id, version_name, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (project_id, version_name) DO NOTHING',
           [tableId, 'proj-default', tableName]
         );
       } else {
         await db.run(
-          "INSERT INTO versions (id, project_id, version_name, created_at) VALUES ($1, $2, $3, datetime('now'))",
+          "INSERT OR IGNORE INTO versions (id, project_id, version_name, created_at) VALUES ($1, $2, $3, datetime('now'))",
           [tableId, 'proj-default', tableName]
         );
       }

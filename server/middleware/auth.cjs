@@ -69,6 +69,8 @@ function requireRole(allowedRoles) {
 }
 
 async function requireVersionOwnership(userId, versionId) {
+  const user = await db.queryOne('SELECT role FROM users WHERE id = $1', [userId]);
+  if (user && user.role === 'admin') return true;
   const ver = await db.queryOne(
     'SELECT v.project_id FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
     [versionId, userId]
@@ -77,6 +79,8 @@ async function requireVersionOwnership(userId, versionId) {
 }
 
 async function requireTermOwnership(userId, termId) {
+  const user = await db.queryOne('SELECT role FROM users WHERE id = $1', [userId]);
+  if (user && user.role === 'admin') return true;
   const term = await db.queryOne(
     `SELECT t.version_id FROM terms t
      JOIN versions v ON t.version_id = v.id

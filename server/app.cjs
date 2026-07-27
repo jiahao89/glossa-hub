@@ -71,7 +71,7 @@ app.use('/api/logs', logRoutes);
 
 // Start Server (only when NOT running in Vercel Serverless Environment)
 let server = null;
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   ensureDbInit().then(() => {
     server = app.listen(PORT, () => {
       console.log(`🌐 GlossaHub 协同数据日志服务已启动，监听端口: ${PORT}`);
