@@ -1,0 +1,72 @@
+const crypto = require('crypto');
+const { db, getDbType } = require('../config/db.cjs');
+
+async function backupToRecycleBin(entityType, entityId, entityName, userId) {
+  let payload = {};
+  const dbType = getDbType();
+
+  if (entityType === 'version') {
+    const version = await db.queryOne('SELECT * FROM versions WHERE id = $1', [entityId]);
+    if (!version) return;
+    const terms = await db.query('SELECT * FROM terms WHERE version_id = $1', [entityId]);
+    const snapshots = await db.query('SELECT * FROM term_snapshots WHERE version_id = $1', [entityId]);
+    payload = { version, terms, snapshots };
+  } else if (entityType === 'glossary_table') {
+    const glossaryTable = await db.queryOne('SELECT * FROM glossary_tables WHERE id = $1', [entityId]);
+    if (!glossaryTable) return;
+    const glossaryTerms = await db.query('SELECT * FROM glossary_terms WHERE table_id = $1', [entityId]);
+    payload = { glossary_table: glossaryTable, glossary_terms: glossaryTerms };
+  } else if (entityType === 'language') {
+    const language = await db.queryOne('SELECT * FROM languages WHERE id = $1', [entityId]);
+    if (!language) return;
+
+    const langName = language.lang_name;
+    const terms = await db.query(
+      `SELECT t.id, t.translations, t.translations_meta FROM terms t
+       JOIN versions v ON t.version_id = v.id
+       WHERE v.project_id = $1`,
+      [language.project_id]
+    );
+
+    const termTranslations = {};
+    for (const t of terms) {
+      const trans = typeof t.translations === 'string' ? JSON.parse(t.translations || '{}') : (t.translations || {});
+      const meta = typeof t.translations_meta === 'string' ? JSON.parse(t.translations_meta || '{}') : (t.translations_meta || {});
+      if (trans[langName] !== undefined || meta[langName] !== undefined) {
+        termTranslations[t.id] = {
+          translation: trans[langName],
+          meta: meta[langName]
+        };
+      }
+    }
+    payload = { language, term_translations: termTranslations };
+  } else {
+    throw new Error('Unsupported entity type: ' + entityType);
+  }
+
+  const id = crypto.randomUUID();
+  const deletedAt = dbType === 'postgres' ? new Date() : new Date().toISOString();
+
+  const expiresAtDate = new Date();
+  expiresAtDate.setDate(expiresAtDate.getDate() + 30);
+  const expiresAt = dbType === 'postgres' ? expiresAtDate : expiresAtDate.toISOString();
+
+  const payloadStr = JSON.stringify(payload);
+  if (dbType === 'postgres') {
+    await db.run(
+      `INSERT INTO recycle_bin (id, entity_type, entity_name, payload, deleted_by, deleted_at, expires_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)`,
+      [id, entityType, entityName, payloadStr, userId, deletedAt, expiresAt]
+    );
+  } else {
+    await db.run(
+      `INSERT INTO recycle_bin (id, entity_type, entity_name, payload, deleted_by, deleted_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, entityType, entityName, payloadStr, userId, deletedAt, expiresAt]
+    );
+  }
+}
+
+module.exports = {
+  backupToRecycleBin
+};

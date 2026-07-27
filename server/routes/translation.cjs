@@ -1,0 +1,420 @@
+const express = require('express');
+const router = express.Router();
+const { db, getDbType } = require('../config/db.cjs');
+const { authenticateToken, requireProjectMember, requireRole } = require('../middleware/auth.cjs');
+const { aiTranslateLimiter } = require('../middleware/rateLimiters.cjs');
+const { getEffectiveDifyConfig, generateKwHelper } = require('../services/difyService.cjs');
+
+// POST /api/projects/:projectId/dify - 保存项目的 Dify 配置
+router.post('/projects/:projectId/dify', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
+  const { projectId } = req.params;
+  const { baseUrl, apiKey } = req.body;
+  const dbType = getDbType();
+
+  if (!baseUrl) {
+    return res.status(400).json({ error: 'baseUrl 不能为空' });
+  }
+
+  try {
+    const project = await db.queryOne('SELECT * FROM projects WHERE id = $1', [projectId]);
+    if (!project) {
+      return res.status(404).json({ error: '项目不存在' });
+    }
+
+    let existingConfig = {};
+    if (project.dify_config && typeof project.dify_config === 'object') {
+      existingConfig = project.dify_config;
+    } else {
+      try {
+        existingConfig = JSON.parse(project.dify_config || '{}');
+      } catch {
+        existingConfig = {};
+      }
+    }
+    const finalApiKey = apiKey || existingConfig.apiKey || '';
+    if (!finalApiKey) {
+      return res.status(400).json({ error: 'apiKey 不能为空（尚未配置过密钥）' });
+    }
+
+    const newConfig = JSON.stringify({ baseUrl, apiKey: finalApiKey });
+    if (dbType === 'postgres') {
+      await db.run(
+        'UPDATE projects SET dify_config = $1::jsonb WHERE id = $2',
+        [newConfig, projectId]
+      );
+    } else {
+      await db.run(
+        'UPDATE projects SET dify_config = $1 WHERE id = $2',
+        [newConfig, projectId]
+      );
+    }
+
+    res.json({ message: 'Dify 配置已安全存入数据库！' });
+  } catch (err) {
+    console.error('保存 Dify 配置失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// GET /api/projects/:projectId/role - 获取当前用户在该项目中的角色
+router.get('/projects/:projectId/role', authenticateToken, requireProjectMember, async (req, res) => {
+  if (req.user.role === 'admin') {
+    return res.json({ role: 'owner' });
+  }
+  res.json({ role: req.projectRole });
+});
+
+// GET /api/projects/:projectId/dify - 获取项目的 Dify 配置状态 (不返回明文 Key)
+router.get('/projects/:projectId/dify', authenticateToken, requireProjectMember, async (req, res) => {
+  const { projectId } = req.params;
+  try {
+    const config = await getEffectiveDifyConfig(projectId);
+
+    res.json({
+      baseUrl: config.baseUrl,
+      apiKeyConfigured: !!config.apiKey,
+      isCustom: config.isCustom
+    });
+  } catch (err) {
+    console.error('读取 Dify 配置失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// POST /api/projects/:projectId/ai-translate - 后端中转 Dify AI 翻译代理
+router.post('/projects/:projectId/ai-translate', authenticateToken, requireProjectMember, requireRole(['owner', 'editor']), aiTranslateLimiter, async (req, res) => {
+  const { projectId } = req.params;
+  const { inputs } = req.body;
+  const userId = req.user?.id || null;
+
+  if (!inputs) {
+    return res.status(400).json({ error: '缺少 inputs 输入参数' });
+  }
+
+  const termKw = inputs.kw || inputs.keyword || '';
+  const zhCn = inputs.zh_cn || inputs.chinese || inputs.text || '';
+  const targetLangs = inputs.target_languages || inputs.languages || '';
+
+  try {
+    // === START GLOSSARY INTERCEPTION ===
+    const glossaryQuery = `
+      SELECT t.cn_term, t.en_term, t.fields 
+      FROM glossary_terms t
+      JOIN glossary_tables tb ON t.table_id = tb.id
+      WHERE tb.project_id = $1
+    `;
+    const glossaryTerms = await db.query(glossaryQuery, [projectId]);
+
+    const allMatches = glossaryTerms.filter(term => term.cn_term === zhCn);
+    let fullMatch = null;
+
+    if (allMatches.length === 1) {
+      fullMatch = allMatches[0];
+    } else if (allMatches.length > 1) {
+      const inputContext = (inputs.context || inputs.所在页面 || '').trim();
+      const inputKw = (inputs.kw || inputs.keyword || inputs.KW || '').trim().toLowerCase();
+
+      const subTerms = glossaryTerms.filter(t => 
+        t.cn_term !== zhCn && t.cn_term.length >= 2 && zhCn.includes(t.cn_term)
+      );
+
+      const scoredMatches = allMatches.map(term => {
+        let score = 0;
+        let termFields = {};
+        try {
+          termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
+        } catch {}
+
+        const pageContext = (termFields['所在页面'] || '').trim();
+        const termKwVal = (termFields.KW || term.kw || '').trim().toLowerCase();
+        const enTerm = (term.en_term || '').trim();
+        const enLower = enTerm.toLowerCase();
+
+        if (inputContext && inputContext !== '无' && pageContext) {
+          if (pageContext.includes(inputContext) || inputContext.includes(pageContext)) {
+            score += 100;
+          }
+        }
+
+        if (inputKw && termKwVal) {
+          if (inputKw === termKwVal || inputKw.includes(termKwVal) || termKwVal.includes(inputKw)) {
+            score += 50;
+          }
+        }
+
+        subTerms.forEach(sub => {
+          const subEn = (sub.en_term || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (subEn.length >= 3) {
+            const shortSub = subEn.substring(0, 3);
+            if (enLower.includes(shortSub)) {
+              score += 30;
+            }
+          }
+        });
+
+        if (enTerm.length > 0) {
+          score += Math.min(10, enTerm.length);
+        }
+
+        const hasOtherLangs = Object.keys(termFields).some(k => k !== '所在页面' && k !== 'KW' && k !== '字号类别' && termFields[k]);
+        if (hasOtherLangs) {
+          score += 5;
+        }
+
+        return { term, score };
+      });
+
+      scoredMatches.sort((a, b) => b.score - a.score);
+      fullMatch = scoredMatches[0].term;
+    }
+
+    if (fullMatch) {
+      const parsedTargetLangs = (typeof targetLangs === 'string' ? targetLangs.split(',') : targetLangs).map(l => l.trim()).filter(Boolean);
+      let tmTranslations = {};
+      let termFields = {};
+      try {
+        termFields = typeof fullMatch.fields === 'string' ? JSON.parse(fullMatch.fields || '{}') : (fullMatch.fields || {});
+      } catch {}
+
+      const fieldsKeys = Object.keys(termFields);
+      parsedTargetLangs.forEach(lang => {
+        if (lang === '英文' || lang.includes('EN') || lang.toLowerCase() === 'english') {
+          tmTranslations[lang] = typeof fullMatch.en_term === 'object' 
+            ? (fullMatch.en_term?.text || JSON.stringify(fullMatch.en_term)) 
+            : String(fullMatch.en_term || '');
+        } else {
+          const normLang = lang.replace(/语|文/g, '');
+          const matchedKey = fieldsKeys.find(k => k === lang || k.includes(normLang));
+          let rawVal = matchedKey ? termFields[matchedKey] : '';
+          if (typeof rawVal === 'object' && rawVal !== null) {
+            if (Array.isArray(rawVal)) {
+              rawVal = rawVal.map(x => (typeof x === 'object' ? x?.text || '' : String(x))).join('');
+            } else if (rawVal.text !== undefined) {
+              rawVal = String(rawVal.text);
+            } else {
+              rawVal = JSON.stringify(rawVal);
+            }
+          }
+          tmTranslations[lang] = String(rawVal || '');
+        }
+      });
+      return res.json({ ...tmTranslations, _source: 'tm' });
+    }
+
+    let matchedTerms = [];
+    glossaryTerms.forEach(term => {
+      if (zhCn.includes(term.cn_term)) {
+        let termFields = {};
+        try {
+          termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
+        } catch {}
+
+        let targetConstraints = { "英文": term.en_term };
+        Object.keys(termFields).forEach(k => {
+          targetConstraints[k] = termFields[k];
+        });
+
+        matchedTerms.push({
+          "中文名词": term.cn_term,
+          "各语种强制翻译": targetConstraints
+        });
+      }
+    });
+
+    if (matchedTerms.length > 0) {
+      inputs.glossary_context = JSON.stringify(matchedTerms, null, 2);
+    } else {
+      inputs.glossary_context = "";
+    }
+    // === END GLOSSARY INTERCEPTION ===
+
+    const config = await getEffectiveDifyConfig(projectId);
+
+    const cleanBaseUrl = config.baseUrl.replace(/\/$/, '');
+    const url = `${cleanBaseUrl}/workflows/run`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        inputs,
+        response_mode: 'blocking',
+        user: 'glossahub_standalone_server'
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let parsedError;
+      try {
+        parsedError = JSON.parse(errorText);
+      } catch {
+        parsedError = null;
+      }
+      const message = parsedError?.message || parsedError?.error || errorText;
+      return res.status(response.status).json({ error: `Dify API 响应错误: ${message}` });
+    }
+
+    const data = await response.json();
+
+    const workflowStatus = data.data?.status || data.status;
+    const workflowError = data.data?.error || data.error;
+    if (workflowStatus === 'failed' || workflowStatus === 'stopped') {
+      console.error('⚠️ Dify workflow failed:', JSON.stringify({ status: workflowStatus, error: workflowError }));
+      const errorStr = String(workflowError || '');
+      const isRateLimit = errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED') || errorStr.includes('rate_limit') || errorStr.includes('quota');
+      const httpStatus = isRateLimit ? 429 : 500;
+      return res.status(httpStatus).json({ error: `Dify 工作流执行失败 (status: ${workflowStatus}): ${workflowError || '未知错误，请检查 Dify 工作流日志'}` });
+    }
+
+    const usageTokens = data.data?.total_tokens || 0;
+    const usageElapsed = data.data?.elapsed_time || 0;
+    const usageStatus = data.data?.status || 'success';
+    db.query(
+      'INSERT INTO ai_usage_logs (user_id, project_id, term_kw, zh_cn, target_languages, total_tokens, elapsed_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [userId, projectId, termKw, zhCn.slice(0, 200), targetLangs, usageTokens, usageElapsed, usageStatus]
+    ).catch(err => console.error('AI用量日志写入失败:', err.message));
+
+    let outputs = data.data?.outputs || data.outputs;
+    if (!outputs || typeof outputs !== 'object' || Object.keys(outputs).length === 0) {
+      if (data.data?.result || data.result) {
+        outputs = { result: data.data?.result || data.result };
+      } else if (data.data?.text || data.text) {
+        outputs = { text: data.data?.text || data.text };
+      } else if (data.data?.answer || data.answer) {
+        outputs = { answer: data.data?.answer || data.answer };
+      } else if (data.data?.response || data.response) {
+        outputs = { response: data.data?.response || data.response };
+      } else if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+        outputs = data.data;
+      } else {
+        outputs = data;
+      }
+    }
+
+    if (!outputs || typeof outputs !== 'object') {
+      console.error('⚠️ Dify raw data:', JSON.stringify(data));
+      return res.status(500).json({ error: `Dify 工作流未返回任何有效数据。原始响应: ${JSON.stringify(data).slice(0, 300)}` });
+    }
+
+    const outputKeys = Object.keys(outputs);
+    if (outputKeys.some(k => k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || k.includes('EN') || k.includes('FR') || k.includes('CN') || k.includes('中文'))) {
+      return res.json(outputs);
+    }
+
+    let rawVal = outputs.result || outputs.translations || outputs.output || outputs.text || outputs.answer || outputs.response || outputs.res || outputs.data || outputs.json;
+
+    if (rawVal === undefined && outputKeys.length === 1) {
+      rawVal = outputs[outputKeys[0]];
+    }
+
+    if (rawVal === undefined) {
+      for (const key of outputKeys) {
+        const val = outputs[key];
+        if (typeof val === 'string' && val.trim().startsWith('{')) {
+          rawVal = val;
+          break;
+        }
+      }
+    }
+
+    if (rawVal === undefined || rawVal === null) {
+      console.error('⚠️ Dify raw response data structure:', JSON.stringify(data));
+      return res.status(500).json({ 
+        error: `Dify 工作流未包含有效输出变量 (当前 Dify 输出字段为: ${outputKeys.join(', ') || '无'})。原始响应片段: ${JSON.stringify(data).slice(0, 200)}` 
+      });
+    }
+
+    if (typeof rawVal === 'object') {
+      if (rawVal.error) {
+        return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${rawVal.error}` });
+      }
+      return res.json(rawVal);
+    }
+
+    try {
+      const parsed = JSON.parse(String(rawVal));
+      if (parsed && typeof parsed === 'object' && parsed.error) {
+        return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${parsed.error}` });
+      }
+      res.json(parsed);
+    } catch (parseErr) {
+      res.status(500).json({ error: `解析 Dify 输出 JSON 失败: ${parseErr.message}。原始输出为: ${String(rawVal).slice(0, 200)}` });
+    }
+  } catch (err) {
+    console.error('中转 AI 翻译失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// POST /api/projects/:projectId/generate-kw - 根据中文源词生成 KW 标识
+router.post('/projects/:projectId/generate-kw', authenticateToken, requireProjectMember, async (req, res) => {
+  const { projectId } = req.params;
+  const { text } = req.body;
+
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: '中文源词 (text) 不能为空' });
+  }
+
+  try {
+    const generated = await generateKwHelper(projectId, text);
+    res.json({ kw: generated });
+  } catch (err) {
+    console.error('生成 KW 失败:', err);
+    res.status(500).json({ error: '生成 KW 失败，请重试。' });
+  }
+});
+
+// POST /api/projects/:projectId/dify-test - 测试 Dify 连接性
+router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectMember, async (req, res) => {
+  const { projectId } = req.params;
+  const { baseUrl, apiKey } = req.body;
+
+  const effective = await getEffectiveDifyConfig(projectId);
+  const targetUrl = baseUrl || effective.baseUrl;
+  const targetKey = apiKey || effective.apiKey;
+
+  if (!targetUrl || !targetKey) {
+    return res.status(400).json({ error: 'baseUrl 和 apiKey 不能为空' });
+  }
+
+  try {
+    const cleanBaseUrl = targetUrl.replace(/\/$/, '');
+    const url = `${cleanBaseUrl}/workflows/run`;
+
+    const testInputs = {
+      KW: 'KW_CONNECTION_TEST',
+      text: '测试',
+      context: '设置',
+      target_languages: 'EN（英文）'
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${targetKey}`
+      },
+      body: JSON.stringify({
+        inputs: testInputs,
+        response_mode: 'blocking',
+        user: 'glossahub_connection_test'
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: `连接测试失败: ${errorText}` });
+    }
+
+    res.json({ success: true, message: 'Dify 引擎连接测试成功！' });
+  } catch (err) {
+    console.error('连接测试失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+module.exports = router;
