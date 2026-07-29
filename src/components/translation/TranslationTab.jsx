@@ -157,35 +157,52 @@ export default function TranslationTab({
     }
   }, [selectedTableId, setSelectedTableId]);
 
+  const [totalRecords, setTotalRecords] = useState(0);
+
   const loadTableData = useCallback(async (tableId) => {
     if (!tableId) return;
     try {
       setLoading(true);
-      const [fRes, rRes] = await Promise.all([
-        apiFetch(`/api/tables/${tableId}/fields`),
-        apiFetch(`/api/tables/${tableId}/records`)
-      ]);
-      if (fRes.ok && rRes.ok) {
-        const fData = await fRes.json();
-        const rData = await rRes.json();
-        _setFields(fData);
-        setRecords(rData);
+      
+      const queryParams = new URLSearchParams({
+        page: currentPage,
+        pageSize,
+        search: debouncedSearchQuery,
+        status: filterStatus,
+        untranslated: filterUntranslated ? 'true' : 'false'
+      });
 
-        const fMap = {};
-        const rMap = {};
-        fData.forEach(f => {
-          fMap[f.name] = f.id;
-          rMap[f.id] = f.name;
+      const res = await apiFetch(`/api/tables/${tableId}/records?${queryParams.toString()}`);
+      
+      if (res.ok) {
+        const rData = await res.json();
+        setRecords(rData.records || []);
+        setTotalRecords(rData.total || 0);
+
+        const fMap = {
+          'KW': 'KW',
+          'CN（中文）': 'CN（中文）',
+          '所在页面': '所在页面',
+          '字号类别': '字号类别'
+        };
+        TARGET_LANGUAGES.forEach(lang => {
+          fMap[lang] = lang;
         });
+        
+        const revFMap = {};
+        Object.keys(fMap).forEach(key => {
+          revFMap[key] = key;
+        });
+
         setFieldMap(fMap);
-        setRevFieldMap(rMap);
+        setRevFieldMap(revFMap);
       }
     } catch (err) {
       console.error('加载表格数据失败:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated]);
 
   useEffect(() => {
     loadTables();
@@ -208,52 +225,9 @@ export default function TranslationTab({
     return rec.fields ? rec.fields[fieldName] || '' : '';
   }, [fieldMap, getRecordValue]);
 
-  // Record Filter & Search Memo
-  const filteredRecords = useMemo(() => {
-    let result = records;
-
-    if (debouncedSearchQuery.trim()) {
-      const q = debouncedSearchQuery.toLowerCase();
-      result = result.filter(rec => {
-        const kw = String(getRecordValueByName(rec, 'KW') || '').toLowerCase();
-        const zh = String(getRecordValueByName(rec, 'CN（中文）') || '').toLowerCase();
-        const page = String(getRecordValueByName(rec, '所在页面') || '').toLowerCase();
-        if (kw.includes(q) || zh.includes(q) || page.includes(q)) return true;
-
-        for (const lang of TARGET_LANGUAGES) {
-          const val = String(getRecordValueByName(rec, lang) || '').toLowerCase();
-          if (val.includes(q)) return true;
-        }
-        return false;
-      });
-    }
-
-    if (filterStatus) {
-      result = result.filter(rec => {
-        const st = rec.status || 'DRAFT';
-        if (filterStatus === 'DRAFT') {
-          return st === 'DRAFT' || st === 'PENDING_REVIEW' || st === 'TRANSLATING';
-        }
-        return st === filterStatus;
-      });
-    }
-
-    if (filterUntranslated) {
-      result = result.filter(rec => {
-        return TARGET_LANGUAGES.some(lang => {
-          const val = getRecordValueByName(rec, lang);
-          return !val || !String(val).trim();
-        });
-      });
-    }
-
-    return result;
-  }, [records, debouncedSearchQuery, filterStatus, filterUntranslated, getRecordValueByName, TARGET_LANGUAGES]);
-
-  const paginatedRecords = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredRecords.slice(start, start + pageSize);
-  }, [filteredRecords, currentPage, pageSize]);
+  // We removed client-side filtering because it's now handled by the server
+  const filteredRecords = records;
+  const paginatedRecords = records;
 
   // Handlers
   const handleToggleRowLock = async (recId, currentLockState) => {
@@ -435,6 +409,7 @@ export default function TranslationTab({
         loading={loading}
         records={filteredRecords}
         paginatedRecords={paginatedRecords}
+        totalRecords={totalRecords}
         safePage={currentPage}
         pageSize={pageSize}
         setCurrentPage={setCurrentPage}
