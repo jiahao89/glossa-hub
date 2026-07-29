@@ -3,7 +3,11 @@ const { db } = require('../config/db.cjs');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  console.warn('⚠️ 警告: 未设置 JWT_SECRET 环境变量，使用后备默认密钥。生产环境建议设置 JWT_SECRET！');
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ 致命错误: 生产环境必须设置 JWT_SECRET 环境变量！拒绝启动以防止 Token 伪造风险。');
+    process.exit(1);
+  }
+  console.warn('⚠️ 警告: 未设置 JWT_SECRET，当前使用开发专用后备密钥。切勿在生产环境中使用！');
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'glossahub-dev-secret-do-not-use-in-prod';
 

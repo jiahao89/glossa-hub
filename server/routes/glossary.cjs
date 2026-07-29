@@ -5,6 +5,29 @@ const { db } = require('../config/db.cjs');
 const { authenticateToken, requireProjectMember, requireRole } = require('../middleware/auth.cjs');
 const { backupToRecycleBin } = require('../services/recycleBin.cjs');
 
+/**
+ * Guard helper: verify the calling user is a member of the project
+ * that owns a given glossary_table row.
+ * Returns true and populates res with 403/404 on failure.
+ */
+async function requireGlossaryMember(req, res, tableId) {
+  if (req.user?.role === 'admin') return true;
+  const tbl = await db.queryOne('SELECT project_id FROM glossary_tables WHERE id = $1', [tableId]);
+  if (!tbl) {
+    res.status(404).json({ error: '词汇表未找到' });
+    return false;
+  }
+  const member = await db.queryOne(
+    'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+    [tbl.project_id, req.user.id]
+  );
+  if (!member) {
+    res.status(403).json({ error: 'FORBIDDEN', message: '您无权访问此词汇表。' });
+    return false;
+  }
+  return true;
+}
+
 // GET /api/projects/:projectId/glossary-tables - 获取专业词汇大表列表
 router.get('/projects/:projectId/glossary-tables', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
@@ -78,6 +101,8 @@ router.delete('/projects/:projectId/glossary-tables/:tableId', authenticateToken
 router.get('/glossary-tables/:tableId/terms', authenticateToken, async (req, res) => {
   const { tableId } = req.params;
   try {
+    if (!(await requireGlossaryMember(req, res, tableId))) return;
+
     const terms = await db.query('SELECT * FROM glossary_terms WHERE table_id = $1 ORDER BY cn_term ASC', [tableId]);
     const mapped = terms.map(t => {
       let fieldsParsed = {};
@@ -101,6 +126,7 @@ router.post('/glossary-tables/:tableId/terms', authenticateToken, async (req, re
   const { cnTerm, enTerm, description, termsList, headers } = req.body;
 
   try {
+    if (!(await requireGlossaryMember(req, res, tableId))) return;
     if (Array.isArray(termsList)) {
       const createdTime = new Date().toISOString();
       await db.transaction(async (tx) => {
@@ -165,6 +191,8 @@ router.post('/glossary-tables/:tableId/terms', authenticateToken, async (req, re
 router.delete('/glossary-tables/:tableId/terms/:termId', authenticateToken, async (req, res) => {
   const { tableId, termId } = req.params;
   try {
+    if (!(await requireGlossaryMember(req, res, tableId))) return;
+
     const existing = await db.queryOne('SELECT id FROM glossary_terms WHERE id = $1 AND table_id = $2', [termId, tableId]);
     if (!existing) {
       return res.status(404).json({ error: '术语未找到' });

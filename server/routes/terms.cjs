@@ -4,6 +4,7 @@ const router = express.Router();
 const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken, requireTermOwnership } = require('../middleware/auth.cjs');
 const { writeLimiter } = require('../middleware/rateLimiters.cjs');
+const { parseJsonField } = require('../utils/jsonFields.cjs');
 
 // GET /api/tables/:tableId/records - 读取特定版本下的所有词条数据
 router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
@@ -15,29 +16,8 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
     );
 
     const formatted = terms.map(term => {
-      let trans = {};
-      try {
-        let temp = term.translations;
-        while (typeof temp === 'string' && temp.trim() !== '') {
-          temp = JSON.parse(temp);
-        }
-        if (typeof temp === 'object' && temp !== null) {
-          trans = temp;
-        }
-      } catch {
-        trans = {};
-      }
-
-      let transMeta = {};
-      try {
-        let metaTemp = term.translations_meta;
-        while (typeof metaTemp === 'string' && metaTemp.trim() !== '') {
-          metaTemp = JSON.parse(metaTemp);
-        }
-        if (typeof metaTemp === 'object' && metaTemp !== null) {
-          transMeta = metaTemp;
-        }
-      } catch { transMeta = {}; }
+      const trans = parseJsonField(term.translations);
+      const transMeta = parseJsonField(term.translations_meta);
 
       return {
         recordId: term.id,
@@ -92,8 +72,7 @@ router.get('/terms/by-kw-version', authenticateToken, async (req, res) => {
       [term.id]
     );
     const formatted = snapshots.map(s => {
-      let trans = {};
-      try { trans = typeof s.translations === 'string' ? JSON.parse(s.translations) : s.translations; } catch { }
+      const trans = parseJsonField(s.translations);
       return {
         id: s.id, kw: s.kw, zh_cn: s.zh_cn,
         translations: trans, createdAt: s.created_at,
@@ -608,20 +587,7 @@ router.post('/terms/batch-copy', authenticateToken, async (req, res) => {
         const exist = existingMap[term.kw];
         const newId = crypto.randomUUID();
 
-        let transStr = '{}';
-        try {
-          let temp = term.translations;
-          while (typeof temp === 'string' && temp.trim() !== '') {
-            temp = JSON.parse(temp);
-          }
-          if (typeof temp === 'object' && temp !== null) {
-            transStr = JSON.stringify(temp);
-          } else if (typeof temp === 'string') {
-            transStr = temp;
-          }
-        } catch {
-          transStr = '{}';
-        }
+        let transStr = JSON.stringify(parseJsonField(term.translations));
 
         if (exist) {
           if (duplicateStrategy === 'skip') {
