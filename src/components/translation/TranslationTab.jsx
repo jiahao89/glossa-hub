@@ -373,6 +373,10 @@ export default function TranslationTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
       <TranslationToolbar
+        tables={tables}
+        selectedTableId={selectedTableId}
+        setSelectedTableId={setSelectedTableId}
+        totalRecords={pagination.total}
         searchInput={searchInput}
         setSearchInput={setSearchInput}
         filterUntranslated={filterUntranslated}
