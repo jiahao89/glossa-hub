@@ -3,7 +3,6 @@ import GlossaModal from '../GlossaModal';
 import { apiFetch } from '../../utils/api';
 import { useToast } from '../Toast';
 import { Plus, Trash2, Loader2, Sparkles } from 'lucide-react';
-import { runDifyWorkflow } from '../../utils/difyHelper';
 
 export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuccess, targetLanguages = [], difyConfig = {} }) {
   const toast = useToast();
@@ -93,12 +92,6 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
       return;
     }
 
-    const { difyUrl, difyKey } = difyConfig;
-    if (!difyUrl || !difyKey) {
-      toast.error('请先在“引擎设置”配置 Dify API 信息！');
-      return;
-    }
-
     const validRows = rows.filter(r => r.KW?.trim() || r['CN（中文）']?.trim());
     if (validRows.length === 0) {
       toast.error('没有有效的词条可以翻译');
@@ -127,19 +120,35 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
             target_languages: targetLanguages.join(',')
           };
 
-          const result = await runDifyWorkflow(difyUrl, difyKey, inputs);
+          const res = await apiFetch(`/api/projects/proj-default/ai-translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ inputs })
+          });
+          
+          if (!res.ok) {
+             const error = await res.json();
+             throw new Error(error.error || '翻译接口失败');
+          }
+          
+          const result = await res.json();
           
           targetLanguages.forEach(lang => {
             if (result[lang]) {
               row[lang] = result[lang];
             }
           });
+          
+          if (result._source === 'tm') {
+            row.tmMatch = true;
+          }
 
           // Update UI incrementally
           updatedRows = updatedRows.map(r => r.id === row.id ? { ...row } : r);
           setRows(updatedRows);
         } catch (err) {
           console.error(`翻译词条 ${row.KW} 失败:`, err);
+          toast.error(`翻译词条 ${row.KW || row['CN（中文）']} 失败: ${err.message}`);
         }
         await new Promise(resolve => setTimeout(resolve, 300));
       }

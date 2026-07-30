@@ -18,7 +18,6 @@ export default function SettingsTab({
   const [showOverride, setShowOverride] = useState(false);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null); // { type: 'success' | 'error', text: string }
 
   // Recycle Bin states
   const [recycleItems, setRecycleItems] = useState([]);
@@ -52,11 +51,10 @@ export default function SettingsTab({
 
   const handleSave = async () => {
     if (!difyUrl) {
-      setMessage({ type: 'error', text: '接口地址不能为空！' });
+      toast.error('接口地址不能为空！');
       return;
     }
     setSaving(true);
-    setMessage(null);
 
     try {
       const res = await apiFetch('/api/projects/proj-default/dify', {
@@ -68,17 +66,16 @@ export default function SettingsTab({
       });
       const data = await res.json();
       if (res.ok) {
-        setMessage({ type: 'success', text: '配置已成功加密存入数据库！' });
+        toast.success('配置已成功加密存入数据库！');
         setKeyConfigured(true);
         setIsCustom(true);
         setDifyKey(''); // Clear password field on success
         onConnectionStatusChange(true);
-        setTimeout(() => setMessage(null), 3000);
       } else {
-        setMessage({ type: 'error', text: `保存失败: ${data.error}` });
+        toast.error(`保存失败: ${data.error}`);
       }
     } catch (err) {
-      setMessage({ type: 'error', text: `保存异常: ${err.message}` });
+      toast.error(`保存异常: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -86,12 +83,11 @@ export default function SettingsTab({
 
   const handleTest = async () => {
     if (!difyUrl) {
-      setMessage({ type: 'error', text: '请填写接口地址！' });
+      toast.error('请填写接口地址！');
       return;
     }
 
     setTesting(true);
-    setMessage(null);
 
     try {
       const res = await apiFetch('/api/projects/proj-default/dify-test', {
@@ -105,15 +101,15 @@ export default function SettingsTab({
       setTesting(false);
 
       if (res.ok) {
-        setMessage({ type: 'success', text: '连接测试成功！Dify 工作流对接正常。' });
+        toast.success('连接测试成功！Dify 工作流对接正常。');
         onConnectionStatusChange(true);
       } else {
-        setMessage({ type: 'error', text: `连接测试失败: ${data.error}` });
+        toast.error(`连接测试失败: ${data.error}`);
         onConnectionStatusChange(false);
       }
     } catch (err) {
       setTesting(false);
-      setMessage({ type: 'error', text: `请求异常: ${err.message}` });
+      toast.error(`请求异常: ${err.message}`);
       onConnectionStatusChange(false);
     }
   };
@@ -230,12 +226,6 @@ export default function SettingsTab({
         <div className="settings-container" style={{ maxWidth: '650px' }}>
           <h3 className="settings-title">Dify 翻译工作流配置</h3>
           
-          {message && (
-            <div className={`alert-box alert-box-${message.type === 'success' ? 'success' : 'danger'}`} style={{ marginBottom: '1rem' }}>
-              {message.text}
-            </div>
-          )}
-
           {/* Connection Status Card */}
           <div style={{
             padding: '1rem 1.25rem',

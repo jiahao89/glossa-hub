@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { apiFetch, safeGetLocalStorage } from '../../utils/api';
-import { runDifyWorkflow } from '../../utils/difyHelper';
 import { useToast } from '../Toast';
 import HistoryModal from './HistoryModal';
 import { BatchCategoryModal, BatchCopyModal, BatchApproveModal } from './BatchActionsModal';
@@ -124,10 +123,7 @@ export default function TranslationTab({
   const [_addModalOpen, setAddModalOpen] = useState(false);
   const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
   const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
-  const getDifyConfig = () => {
-    const s = safeGetLocalStorage('glossa_settings');
-    return { difyUrl: s?.difyUrl, difyKey: s?.difyKey };
-  };
+
   const [batchTargetTableId, setBatchTargetTableId] = useState('');
   const [selectedBatchItemIds, setSelectedBatchItemIds] = useState(new Set());
   const [batchPreviewList, setBatchPreviewList] = useState([]);
@@ -187,11 +183,6 @@ export default function TranslationTab({
   };
 
   const handleStartBatchTranslate = async () => {
-    const { difyUrl, difyKey } = getDifyConfig();
-    if (!difyUrl || !difyKey) {
-      toast.error('请先在“引擎设置”配置 Dify');
-      return;
-    }
     setIsTranslatingBatch(true);
     const updatedList = [...batchPreviewList];
 
@@ -213,17 +204,33 @@ export default function TranslationTab({
           target_languages: TARGET_LANGUAGES.join(',')
         };
 
-        const result = await runDifyWorkflow(difyUrl, difyKey, inputs);
+        const res = await apiFetch(`/api/projects/proj-default/ai-translate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputs })
+        });
+        
+        if (!res.ok) {
+           const error = await res.json();
+           throw new Error(error.error || '翻译接口失败');
+        }
+        
+        const result = await res.json();
         
         const trans = {};
         item.missingLangs.forEach(lang => {
           if (result[lang]) trans[lang] = result[lang];
         });
         
+        if (result._source === 'tm') {
+          item.tmMatch = true;
+        }
+        
         item.translations = trans;
         setBatchPreviewList([...updatedList]);
       } catch (err) {
         console.error(`翻译词条 ${item.KW} 失败:`, err);
+        toast.error(`翻译词条 ${item.KW || item['中文']} 失败: ${err.message}`);
       }
       await new Promise(resolve => setTimeout(resolve, 300));
     }
