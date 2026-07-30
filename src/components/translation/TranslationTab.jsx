@@ -376,7 +376,7 @@ export default function TranslationTab({
         tables={tables}
         selectedTableId={selectedTableId}
         setSelectedTableId={setSelectedTableId}
-        totalRecords={pagination.total}
+        totalRecords={totalRecords}
         searchInput={searchInput}
         setSearchInput={setSearchInput}
         filterUntranslated={filterUntranslated}
