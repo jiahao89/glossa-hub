@@ -196,9 +196,12 @@ export default function TranslationTab({
 
         setFieldMap(fMap);
         setRevFieldMap(revFMap);
+      } else {
+        toast.error('获取词条数据失败');
       }
     } catch (err) {
       console.error('加载表格数据失败:', err);
+      toast.error(`获取词条数据失败: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -401,7 +404,10 @@ export default function TranslationTab({
           Array.from(selectedRecordIds).forEach(id => handleToggleRowLock(id, true));
         }}
         onExportXLS={handleExportXLS}
+        onImportCSV={handleTriggerImport}
         onAddTerm={() => setAddModalOpen(true)}
+        onBatchAdd={() => { setBatchAddModalOpen(true); initBatchAddRows(); }}
+        onDataClean={handleDataClean}
         onClearHighlights={() => setModifiedCells({})}
         modifiedCount={Object.keys(modifiedCells).length}
         loading={loading}

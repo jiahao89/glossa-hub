@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Plus, FileInput, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy } from 'lucide-react';
+import { Search, Plus, FileInput, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2 } from 'lucide-react';
 
 export default function TranslationToolbar({
   tables = [],
@@ -28,6 +28,8 @@ export default function TranslationToolbar({
   onExportXLS,
   onImportCSV,
   onAddTerm,
+  onBatchAdd,
+  onDataClean,
   onClearHighlights,
   modifiedCount = 0,
   projectRole = 'viewer',
@@ -187,9 +189,19 @@ export default function TranslationToolbar({
 
           {projectRole !== 'viewer' && (
             <>
+              <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onDataClean} title="清除无 KW 或无中文的空记录">
+                <Trash2 size={14} />
+                <span>数据清理</span>
+              </button>
+
               <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onImportCSV} title="导入增量 CSV 文件">
                 <FileInput size={14} />
                 <span>导入 CSV</span>
+              </button>
+
+              <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchAdd} title="手动批量新增词条">
+                <Layers size={14} />
+                <span>批量新增</span>
               </button>
 
               <button className="btn btn-primary btn-sm" style={{ height: '32px' }} onClick={onAddTerm}>
