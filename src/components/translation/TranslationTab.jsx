@@ -130,10 +130,10 @@ export default function TranslationTab({
   };
   const [batchTargetTableId, setBatchTargetTableId] = useState('');
   const [selectedBatchItemIds, setSelectedBatchItemIds] = useState(new Set());
-  const [batchPreviewList] = useState([]);
-  const [isTranslatingBatch] = useState(false);
-  const [isSavingBatch] = useState(false);
-  const [batchProgress] = useState({ total: 0, current: 0, status: '' });
+  const [batchPreviewList, setBatchPreviewList] = useState([]);
+  const [isTranslatingBatch, setIsTranslatingBatch] = useState(false);
+  const [isSavingBatch, setIsSavingBatch] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ total: 0, current: 0, status: '' });
 
   // Batch Update/Copy/Approve States
   const [batchUpdateOpen, setBatchUpdateOpen] = useState(false);
@@ -148,9 +148,9 @@ export default function TranslationTab({
 
   // History & Snapshots
   const [snapshotsModalOpen, setSnapshotsModalOpen] = useState(false);
-  const [snapshots] = useState([]);
-  const [loadingSnapshots] = useState(false);
-  const [rollingBackId] = useState('');
+  const [snapshots, setSnapshots] = useState([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  const [rollingBackId, setRollingBackId] = useState('');
 
   const currentUser = useMemo(() => safeGetLocalStorage('user', null), []);
 
@@ -262,7 +262,7 @@ export default function TranslationTab({
 
       const updatedForSync = recordsToUpdate.map(r => {
         const { id, ...newFields } = r;
-        const existingRec = records.find(rec => rec.id === id);
+        const existingRec = records.find(rec => (rec.recordId || rec.id) === id);
         return {
           recordId: id,
           fields: {
