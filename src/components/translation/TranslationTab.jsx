@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { apiFetch, safeGetLocalStorage } from '../../utils/api';
+import { runDifyWorkflow } from '../../utils/difyHelper';
 import { useToast } from '../Toast';
 import HistoryModal from './HistoryModal';
 import { BatchCategoryModal, BatchCopyModal, BatchApproveModal } from './BatchActionsModal';
@@ -123,6 +124,10 @@ export default function TranslationTab({
   const [_addModalOpen, setAddModalOpen] = useState(false);
   const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
   const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
+  const getDifyConfig = () => {
+    const s = safeGetLocalStorage('glossa_settings');
+    return { difyUrl: s?.difyUrl, difyKey: s?.difyKey };
+  };
   const [batchTargetTableId, setBatchTargetTableId] = useState('');
   const [selectedBatchItemIds, setSelectedBatchItemIds] = useState(new Set());
   const [batchPreviewList] = useState([]);
@@ -557,8 +562,8 @@ export default function TranslationTab({
         batchProgress={batchProgress}
         isTranslatingBatch={isTranslatingBatch}
         isSavingBatch={isSavingBatch}
-        onStartBatchTranslate={() => {}}
-        onConfirmBatchWrite={() => {}}
+        onStartBatchTranslate={handleStartBatchTranslate}
+        onConfirmBatchWrite={handleConfirmBatchWrite}
       />
     </div>
   );
