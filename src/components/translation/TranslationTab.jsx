@@ -155,23 +155,35 @@ export default function TranslationTab({
   const currentUser = useMemo(() => safeGetLocalStorage('user', null), []);
 
   const handleOpenBatchTranslate = async () => {
-    const itemsToTranslate = records.map(r => {
-      const missingLangs = TARGET_LANGUAGES.filter(lang => !r.fields[lang]);
+    const selectedRecords = records.filter(r => selectedRecordIds.has(r.id));
+    if (selectedRecords.length === 0) {
+      toast.info('请先选择要翻译的词条');
+      return;
+    }
+
+    const itemsToTranslate = selectedRecords.map(r => {
+      const fields = r.fields || {};
+      const missingLangs = TARGET_LANGUAGES.filter(lang => !fields[lang]);
       if (missingLangs.length === 0) return null;
       return {
         recordId: r.id,
-        KW: r.fields['KW'] || '',
-        '中文': r.fields['CN（中文）'] || '',
-        '所在页面': r.fields['所在页面'] || '',
+        KW: fields['KW'] || '',
+        '中文': fields['CN（中文）'] || '',
+        '所在页面': fields['所在页面'] || '',
         missingLangs,
         translations: {}
       };
     }).filter(Boolean);
 
+    if (itemsToTranslate.length === 0) {
+      toast.info('选中的词条都已完成翻译，无需重新翻译');
+      return;
+    }
+
     setBatchTargetTableId(selectedTableId);
     setBatchPreviewList(itemsToTranslate);
     setBatchTranslateOpen(true);
-    setBatchProgress({ total: itemsToTranslate.length, current: 0, status: itemsToTranslate.length > 0 ? '等待开始批量翻译' : '该版本下没有未翻译词条' });
+    setBatchProgress({ total: itemsToTranslate.length, current: 0, status: '等待开始批量翻译' });
     setSelectedBatchItemIds(new Set(itemsToTranslate.map(i => i.recordId)));
   };
 
