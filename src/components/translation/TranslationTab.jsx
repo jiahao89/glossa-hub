@@ -5,6 +5,9 @@ import HistoryModal from './HistoryModal';
 import { BatchCategoryModal, BatchCopyModal, BatchApproveModal } from './BatchActionsModal';
 import BatchTranslateModal from './BatchTranslateModal';
 import TranslationToolbar from './TranslationToolbar';
+import CSVImportHandler from './CSVImportHandler';
+import AddTermModal from './AddTermModal';
+import BatchAddModal from './BatchAddModal';
 import TranslationTable from './TranslationTable';
 
 const DEFAULT_TARGET_LANGUAGES = [
@@ -78,6 +81,13 @@ export default function TranslationTab({
   const [_fields, _setFields] = useState([]);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // State for Batch Add Modal
+  const [batchAddModalOpen, setBatchAddModalOpen] = useState(false);
+
+  useEffect(() => {
+    setModifiedCells({});
+  }, [selectedTableId]);
 
   // Column Visibility States
   const [colDropdownOpen, setColDropdownOpen] = useState(false);
@@ -178,6 +188,7 @@ export default function TranslationTab({
         const rData = await res.json();
         setRecords(rData.records || []);
         setTotalRecords(rData.total || 0);
+        // REMOVED: setModifiedCells({}) here to avoid pagination clearing
 
         const fMap = {
           'KW': 'KW',
@@ -205,7 +216,7 @@ export default function TranslationTab({
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated]);
+  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated, toast, TARGET_LANGUAGES, setModifiedCells]);
 
   useEffect(() => {
     loadTables();
@@ -225,7 +236,7 @@ export default function TranslationTab({
   const getRecordValueByName = useCallback((rec, fieldName) => {
     const fId = fieldMap[fieldName];
     if (fId) return getRecordValue(rec, fId);
-    return rec.fields ? rec.fields[fieldName] || '' : '';
+    return rec?.fields ? rec.fields[fieldName] || '' : '';
   }, [fieldMap, getRecordValue]);
 
   // We removed client-side filtering because it's now handled by the server
@@ -373,6 +384,29 @@ export default function TranslationTab({
     }
   };
 
+  const handleDataClean = async () => {
+    if (!window.confirm('确定要清理当前数据表中的空词条（无KW或无中文）吗？这无法撤销！')) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await apiFetch(`/api/tables/${selectedTableId}/clean-empty`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '清理失败');
+      }
+      const data = await res.json();
+      toast.success(data.message || '清理完成');
+      await loadTableData(selectedTableId);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
       <TranslationToolbar
@@ -404,10 +438,20 @@ export default function TranslationTab({
           Array.from(selectedRecordIds).forEach(id => handleToggleRowLock(id, true));
         }}
         onExportXLS={handleExportXLS}
-        onImportCSV={() => alert('CSV导入功能正在迁移中，即将恢复')}
+                csvImportNode={
+          <CSVImportHandler 
+            selectedTableId={selectedTableId}
+            currentRecords={records}
+            targetLanguages={TARGET_LANGUAGES}
+            onImportComplete={() => loadTableData(selectedTableId)}
+            disabled={loading}
+          />
+        }
         onAddTerm={() => setAddModalOpen(true)}
-        onBatchAdd={() => alert('批量新增功能正在迁移中，即将恢复')}
-        onDataClean={() => alert('数据清理功能正在迁移中，即将恢复')}
+        onBatchAdd={() => setBatchAddModalOpen(true)}
+
+
+        onDataClean={handleDataClean}
         onClearHighlights={() => setModifiedCells({})}
         modifiedCount={Object.keys(modifiedCells).length}
         loading={loading}
@@ -441,6 +485,21 @@ export default function TranslationTab({
       />
 
       {/* Subcomponent Modals */}
+      <AddTermModal
+        open={_addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        selectedTableId={selectedTableId}
+        targetLanguages={TARGET_LANGUAGES}
+        onAddSuccess={() => loadTableData(selectedTableId)}
+      />
+
+      <BatchAddModal
+        open={batchAddModalOpen}
+        onClose={() => setBatchAddModalOpen(false)}
+        selectedTableId={selectedTableId}
+        onAddSuccess={() => loadTableData(selectedTableId)}
+      />
+
       <HistoryModal
         open={snapshotsModalOpen}
         onClose={() => setSnapshotsModalOpen(false)}

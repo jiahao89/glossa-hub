@@ -34,8 +34,9 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    const term = res.body.find(t => t.recordId === testTermId);
+    expect(Array.isArray(res.body.records)).toBe(true);
+    expect(res.body.total).toBeDefined();
+    const term = res.body.records.find(t => t.recordId === testTermId);
     expect(term).toBeDefined();
     expect(term.fields['CN（中文）']).toBe('测试词条中文');
   });

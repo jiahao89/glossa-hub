@@ -167,7 +167,7 @@ export default function LogsTab() {
       setRollbackTermId(data.termId);
       setSnapshots(data.snapshots || []);
       if (data.isLocked) {
-        toast.warning('该词条已被锁定，回退需要先解锁');
+        toast.info('该词条已被锁定，回退需要先解锁');
       }
     } catch (err) {
       toast.error(`获取历史快照失败: ${err.message}`);

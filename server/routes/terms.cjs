@@ -2,18 +2,64 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const { db, getDbType } = require('../config/db.cjs');
-const { authenticateToken, requireTermOwnership } = require('../middleware/auth.cjs');
+const { authenticateToken, requireTermOwnership, requireVersionOwnership } = require('../middleware/auth.cjs');
 const { writeLimiter } = require('../middleware/rateLimiters.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
+const { TARGET_LANGUAGES } = require('../config/constants.cjs');
 
-// GET /api/tables/:tableId/records - 读取特定版本下的所有词条数据
+// GET /api/tables/:tableId/records - 读取特定版本下的所有词条数据 (分页)
 router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
   const { tableId } = req.params;
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 50;
+  const search = req.query.search || '';
+  const statusFilter = req.query.status || '';
+  const untranslated = req.query.untranslated === 'true' || req.query.untranslated === '1';
+
   try {
-    const terms = await db.query(
-      'SELECT * FROM terms WHERE version_id = $1 ORDER BY kw ASC',
-      [tableId]
-    );
+    const dbType = getDbType();
+    let whereClause = 'WHERE version_id = $1';
+    const queryParams = [tableId];
+    let paramIndex = 2;
+
+    if (search) {
+      if (dbType === 'sqlite') {
+        whereClause += ` AND (kw LIKE $${paramIndex} OR zh_cn LIKE $${paramIndex} OR context LIKE $${paramIndex} OR translations LIKE $${paramIndex})`;
+      } else {
+        whereClause += ` AND (kw ILIKE $${paramIndex} OR zh_cn ILIKE $${paramIndex} OR context ILIKE $${paramIndex} OR translations::text ILIKE $${paramIndex})`;
+      }
+      queryParams.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    if (statusFilter) {
+      if (statusFilter === 'DRAFT') {
+        whereClause += ` AND (status = 'DRAFT' OR status = 'PENDING_REVIEW' OR status = 'TRANSLATING')`;
+      } else {
+        whereClause += ` AND status = $${paramIndex}`;
+        queryParams.push(statusFilter);
+        paramIndex++;
+      }
+    }
+
+    if (untranslated) {
+      if (dbType === 'sqlite') {
+        const conditions = TARGET_LANGUAGES.map(lang => `(json_extract(translations, '$.${lang}') IS NULL OR json_extract(translations, '$.${lang}') = '')`);
+        whereClause += ` AND (${conditions.join(' OR ')})`;
+      } else {
+        const conditions = TARGET_LANGUAGES.map(lang => `(translations->>'${lang}' IS NULL OR translations->>'${lang}' = '')`);
+        whereClause += ` AND (${conditions.join(' OR ')})`;
+      }
+    }
+
+    const countQuery = `SELECT COUNT(*) as total FROM terms ${whereClause}`;
+    const dataQuery = `SELECT * FROM terms ${whereClause} ORDER BY kw ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    
+    const countResult = await db.queryOne(countQuery, queryParams);
+    const total = parseInt(countResult?.total || 0, 10);
+    
+    const dataParams = [...queryParams, pageSize, (page - 1) * pageSize];
+    const terms = await db.query(dataQuery, dataParams);
 
     const formatted = terms.map(term => {
       const trans = parseJsonField(term.translations);
@@ -39,12 +85,18 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
       };
     });
 
-    res.json(formatted);
+    res.json({
+      total,
+      page,
+      pageSize,
+      records: formatted
+    });
   } catch (err) {
     console.error('获取词条数据失败:', err);
     res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
+
 
 // GET /api/terms/by-kw-version - 按 KW 和版本名查找词条及其快照
 router.get('/terms/by-kw-version', authenticateToken, async (req, res) => {
@@ -706,7 +758,7 @@ router.post('/terms/batch-approve', authenticateToken, async (req, res) => {
       const validIds = validTerms.map(t => t.id);
       const reason = status === 'REJECTED' ? (rejectReason || '未填写具体原因') : null;
 
-      const updatePlaceholders = validIds.map((_, i) => `$${i + 3}`).join(',');
+      const updatePlaceholders = validIds.map((_, i) => `$${i + 4}`).join(',');
       const updateSql = dbType === 'postgres'
         ? `UPDATE terms SET status = $1, reject_reason = $2, updated_at = NOW(), updated_by = $3 WHERE id IN (${updatePlaceholders})`
         : `UPDATE terms SET status = $1, reject_reason = $2, updated_at = datetime('now'), updated_by = $3 WHERE id IN (${updatePlaceholders})`;
@@ -729,6 +781,107 @@ router.post('/terms/batch-approve', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('批量审核词条失败:', err);
     res.status(500).json({ error: '服务器内部错误，批量审核失败。' });
+  }
+});
+
+
+// POST /api/tables/:tableId/sync - Bulk Insert/Update/Delete records for a version
+router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req, res) => {
+  const { tableId } = req.params;
+  const { added = [], updated = [], deletedIds = [] } = req.body;
+
+  try {
+    if (!(await requireVersionOwnership(req.user.id, tableId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此数据表。' });
+    }
+
+    let successCount = 0;
+
+    await db.transaction(async (tx) => {
+      // 1. Delete
+      if (deletedIds.length > 0) {
+        const placeholders = deletedIds.map((_, i) => `$${i + 1}`).join(',');
+        await tx.query(`DELETE FROM terms WHERE id IN (${placeholders}) AND version_id = $${deletedIds.length + 1} AND (is_locked = 0 OR is_locked IS FALSE)`, [...deletedIds, tableId]);
+      }
+
+      // 2. Insert (Added)
+      for (const rec of added) {
+        const fieldsStr = JSON.stringify(rec.fields || {});
+        const translationsMetaStr = JSON.stringify(rec.translationsMeta || {});
+        const nowStr = new Date().toISOString();
+
+        await tx.query(`
+          INSERT INTO terms (id, version_id, kw, context, zh_cn, translations, translations_meta, is_locked, status, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `, [
+          rec.recordId,
+          tableId,
+          (rec.fields['KW'] || '').trim(),
+          (rec.fields['所在页面'] || '').trim(),
+          (rec.fields['CN（中文）'] || '').trim(),
+          fieldsStr,
+          translationsMetaStr,
+          0,
+          'DRAFT',
+          nowStr,
+          nowStr
+        ]);
+        successCount++;
+      }
+
+      // 3. Update (Modified)
+      for (const rec of updated) {
+        const fieldsStr = JSON.stringify(rec.fields || {});
+        const translationsMetaStr = JSON.stringify(rec.translationsMeta || {});
+        const nowStr = new Date().toISOString();
+
+        await tx.query(`
+          UPDATE terms
+          SET kw = $1, context = $2, zh_cn = $3, translations = $4, translations_meta = $5, updated_at = $6
+          WHERE id = $7 AND version_id = $8 AND (is_locked = 0 OR is_locked IS FALSE)
+        `, [
+          (rec.fields['KW'] || '').trim(),
+          (rec.fields['所在页面'] || '').trim(),
+          (rec.fields['CN（中文）'] || '').trim(),
+          fieldsStr,
+          translationsMetaStr,
+          nowStr,
+          rec.recordId,
+          tableId
+        ]);
+        successCount++;
+      }
+    });
+
+    res.json({ message: '同步成功', updatedRecords: successCount });
+  } catch (error) {
+    console.error('Batch sync error:', error);
+    res.status(500).json({ error: '批量同步数据失败' });
+  }
+});
+
+// DELETE /api/tables/:tableId/clean-empty - 删除空词条 (无KW或无中文)
+router.delete('/tables/:tableId/clean-empty', authenticateToken, writeLimiter, async (req, res) => {
+  const { tableId } = req.params;
+
+  try {
+    if (!(await requireVersionOwnership(req.user.id, tableId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此数据表。' });
+    }
+
+    const result = await db.run(`
+      DELETE FROM terms
+      WHERE version_id = $1
+        AND (TRIM(COALESCE(kw, '')) = '' OR TRIM(COALESCE(zh_cn, '')) = '')
+        AND (is_locked = 0 OR is_locked IS FALSE)
+    `, [tableId]);
+
+    const deletedCount = result.changes || 0;
+
+    res.json({ message: `清理完毕，共删除 ${deletedCount} 条空词条`, deletedCount });
+  } catch (error) {
+    console.error('Clean empty error:', error);
+    res.status(500).json({ error: '清理空词条失败' });
   }
 });
 

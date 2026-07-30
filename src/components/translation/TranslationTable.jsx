@@ -8,6 +8,7 @@ export default function TranslationTable({
   loading,
   records = [],
   paginatedRecords = [],
+  totalRecords = 0,
   safePage = 1,
   pageSize = 50,
   setCurrentPage,
@@ -114,7 +115,7 @@ export default function TranslationTable({
 
       {/* Fixed Footer Pagination */}
       <Pagination
-        total={records.length}
+        total={totalRecords}
         page={safePage}
         pageSize={pageSize}
         onPageChange={setCurrentPage}

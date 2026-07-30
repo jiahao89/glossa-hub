@@ -293,8 +293,7 @@ export default function UsersTab({ _projectRole }) {
         isOpen={addModalOpen}
         onClose={() => !submitting && setAddModalOpen(false)}
         title="新建系统用户"
-        icon={<User className="text-primary" />}
-        maxWidth="md"
+        maxWidth="480px"
       >
         <form onSubmit={handleAddUser} className="space-y-4">
           <div>
@@ -372,8 +371,7 @@ export default function UsersTab({ _projectRole }) {
         isOpen={editModalOpen}
         onClose={() => !submitting && setEditModalOpen(false)}
         title="编辑用户信息"
-        icon={<Edit2 className="text-blue-400" />}
-        maxWidth="md"
+        maxWidth="480px"
       >
         <form onSubmit={handleEditUser} className="space-y-4">
           <div>

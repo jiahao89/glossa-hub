@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Plus, FileInput, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2 } from 'lucide-react';
+import { Search, Plus, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2 } from 'lucide-react';
 
 export default function TranslationToolbar({
   tables = [],
@@ -26,7 +26,7 @@ export default function TranslationToolbar({
   onBatchLock,
   onBatchUnlock,
   onExportXLS,
-  onImportCSV,
+  csvImportNode,
   onAddTerm,
   onBatchAdd,
   onDataClean,
@@ -194,10 +194,7 @@ export default function TranslationToolbar({
                 <span>数据清理</span>
               </button>
 
-              <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onImportCSV} title="导入增量 CSV 文件">
-                <FileInput size={14} />
-                <span>导入 CSV</span>
-              </button>
+              {csvImportNode}
 
               <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchAdd} title="手动批量新增词条">
                 <Layers size={14} />

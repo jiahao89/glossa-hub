@@ -215,6 +215,7 @@ export default function GlossaryTab({ projectRole }) {
     const dateStr = `${mm}${dd}`;
     const tableName = activeTable?.table_name || '专业词汇表';
 
+    const link = document.createElement('a');
     link.setAttribute('href', url);
     link.setAttribute('download', `${tableName}_${dateStr}.csv`);
     document.body.appendChild(link);
@@ -239,6 +240,7 @@ export default function GlossaryTab({ projectRole }) {
           return;
         }
 
+        const firstRow = csvRows[0];
         const cnIdx = fuzzyFindIndex(firstRow, ['cn', 'zh', 'term', 'chinese', 'key'], ['中文', '词条', '键名']);
         const enIdx = fuzzyFindIndex(firstRow, ['en', 'english', 'translation'], ['英文', '翻译', '译文']);
         const descIdx = fuzzyFindIndex(firstRow, ['desc', 'description', 'info', 'context', 'remark'], ['说明', '定义', '释义', '备注']);
