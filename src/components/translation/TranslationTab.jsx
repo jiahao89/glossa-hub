@@ -154,6 +154,135 @@ export default function TranslationTab({
 
   const currentUser = useMemo(() => safeGetLocalStorage('user', null), []);
 
+  const handleOpenBatchTranslate = async () => {
+    const itemsToTranslate = records.map(r => {
+      const missingLangs = TARGET_LANGUAGES.filter(lang => !r.fields[lang]);
+      if (missingLangs.length === 0) return null;
+      return {
+        recordId: r.id,
+        KW: r.fields['KW'] || '',
+        '中文': r.fields['CN（中文）'] || '',
+        '所在页面': r.fields['所在页面'] || '',
+        missingLangs,
+        translations: {}
+      };
+    }).filter(Boolean);
+
+    setBatchTargetTableId(selectedTableId);
+    setBatchPreviewList(itemsToTranslate);
+    setBatchTranslateOpen(true);
+    setBatchProgress({ total: itemsToTranslate.length, current: 0, status: itemsToTranslate.length > 0 ? '等待开始批量翻译' : '该版本下没有未翻译词条' });
+    setSelectedBatchItemIds(new Set(itemsToTranslate.map(i => i.recordId)));
+  };
+
+  const handleStartBatchTranslate = async () => {
+    const { difyUrl, difyKey } = getDifyConfig();
+    if (!difyUrl || !difyKey) {
+      toast.error('请先在“引擎设置”配置 Dify');
+      return;
+    }
+    setIsTranslatingBatch(true);
+    const updatedList = [...batchPreviewList];
+
+    for (let i = 0; i < updatedList.length; i++) {
+      const item = updatedList[i];
+      if (!selectedBatchItemIds.has(item.recordId)) continue;
+      
+      setBatchProgress({
+        total: selectedBatchItemIds.size,
+        current: i + 1,
+        status: `正在翻译 (${i + 1}/${selectedBatchItemIds.size}): ${item.KW || item['中文']}`
+      });
+
+      try {
+        const inputs = {
+          KW: item.KW,
+          text: item['中文'],
+          context: item['所在页面'] || '无',
+          target_languages: TARGET_LANGUAGES.join(',')
+        };
+
+        const result = await runDifyWorkflow(difyUrl, difyKey, inputs);
+        
+        const trans = {};
+        item.missingLangs.forEach(lang => {
+          if (result[lang]) trans[lang] = result[lang];
+        });
+        
+        item.translations = trans;
+        setBatchPreviewList([...updatedList]);
+      } catch (err) {
+        console.error(`翻译词条 ${item.KW} 失败:`, err);
+      }
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    setIsTranslatingBatch(false);
+    setBatchProgress(prev => ({ ...prev, status: '批量翻译完成！请检查预览内容并确认写入。' }));
+  };
+
+  const handleConfirmBatchWrite = async () => {
+    try {
+      setIsSavingBatch(true);
+      const recordsToUpdate = [];
+      
+      batchPreviewList.forEach(item => {
+        if (!selectedBatchItemIds.has(item.recordId)) return;
+        const fields = {};
+        let hasNewTrans = false;
+        Object.keys(item.translations).forEach(lang => {
+          if (item.translations[lang]) {
+            fields[lang] = item.translations[lang];
+            hasNewTrans = true;
+          }
+        });
+        if (hasNewTrans) {
+          recordsToUpdate.push({
+            id: item.recordId,
+            ...fields
+          });
+        }
+      });
+
+      if (recordsToUpdate.length === 0) {
+        setBatchTranslateOpen(false);
+        return;
+      }
+
+      const updatedForSync = recordsToUpdate.map(r => {
+        const { id, ...newFields } = r;
+        const existingRec = records.find(rec => rec.id === id);
+        return {
+          recordId: id,
+          fields: {
+             ...(existingRec ? existingRec.fields : {}),
+             ...newFields
+          }
+        };
+      });
+
+      const res = await apiFetch(`/api/tables/${batchTargetTableId}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ added: [], updated: updatedForSync })
+      });
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '写入失败');
+      }
+      
+      toast.success('批量翻译写入成功');
+      setBatchTranslateOpen(false);
+      setBatchPreviewList([]);
+      loadTableData(batchTargetTableId);
+    } catch(err) {
+      toast.error(err.message);
+    } finally {
+      setIsSavingBatch(false);
+    }
+  };
+
   const loadTables = useCallback(async () => {
     try {
       setLoading(true);
@@ -432,7 +561,7 @@ export default function TranslationTab({
         setVisibleLanguages={setVisibleLanguages}
         selectedCount={selectedRecordIds.size}
         onClearSelection={() => setSelectedRecordIds(new Set())}
-        onBatchTranslate={() => setBatchTranslateOpen(true)}
+        onBatchTranslate={handleOpenBatchTranslate}
         onBatchApprove={() => setBatchApproveOpen(true)}
         onBatchCategory={() => setBatchUpdateOpen(true)}
         onBatchCopy={() => setBatchCopyOpen(true)}
