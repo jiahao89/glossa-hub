@@ -185,15 +185,17 @@ export default function TranslationTab({
   const handleStartBatchTranslate = async () => {
     setIsTranslatingBatch(true);
     const updatedList = [...batchPreviewList];
+    let translatedCount = 0;
 
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
       if (!selectedBatchItemIds.has(item.recordId)) continue;
       
+      translatedCount++;
       setBatchProgress({
         total: selectedBatchItemIds.size,
-        current: i + 1,
-        status: `正在翻译 (${i + 1}/${selectedBatchItemIds.size}): ${item.KW || item['中文']}`
+        current: translatedCount,
+        status: `正在翻译 (${translatedCount}/${selectedBatchItemIds.size}): ${item.KW || item['中文']}`
       });
 
       try {
@@ -456,8 +458,9 @@ export default function TranslationTab({
         setSelectedRecordIds(new Set());
         loadTableData(selectedTableId);
       }
-    } catch {
-      toast.error('批量操作失败');
+    } catch (err) {
+      const msg = await err?.json?.().then(d => d?.error).catch(() => null);
+      toast.error(`批量审核失败: ${msg || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -468,7 +471,7 @@ export default function TranslationTab({
     const termIds = Array.from(selectedRecordIds);
     try {
       setLoading(true);
-      const res = await apiFetch('/api/terms/batch-update-category', {
+      const res = await apiFetch('/api/terms/batch-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -482,9 +485,12 @@ export default function TranslationTab({
         setBatchUpdateOpen(false);
         setSelectedRecordIds(new Set());
         loadTableData(selectedTableId);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(`设置分类失败: ${data.error || '未知错误'}`);
       }
-    } catch {
-      toast.error('设置分类失败');
+    } catch (err) {
+      toast.error(`设置分类失败: ${err.message}`);
     } finally {
       setLoading(false);
     }
