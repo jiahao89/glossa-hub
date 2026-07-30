@@ -37,29 +37,29 @@ export default function TranslationToolbar({
     <div className="toolbar" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '0.8rem 1rem', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
       {/* Top row: search & primary filters */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.8rem' }}>
-        {/* Table Selector, Search & Status Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1, minWidth: '280px' }}>
-          {/* Table Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRight: '1px solid var(--border-color)', paddingRight: '0.6rem' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>数据表版本:</span>
-            <select 
-              value={selectedTableId} 
-              onChange={(e) => setSelectedTableId(e.target.value)}
-              className="select-input"
-              style={{ height: '32px', fontSize: '0.82rem', minWidth: '140px', maxWidth: '200px' }}
-              disabled={tables.length === 0}
-            >
-              {tables.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-              (共 {totalRecords} 条)
-            </span>
-          </div>
+        {/* Table Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>数据表版本:</span>
+          <select 
+            value={selectedTableId} 
+            onChange={(e) => setSelectedTableId(e.target.value)}
+            className="select-input"
+            style={{ height: '32px', fontSize: '0.82rem', minWidth: '140px', maxWidth: '200px' }}
+            disabled={tables.length === 0}
+          >
+            {tables.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+            (共 {totalRecords} 条)
+          </span>
+        </div>
 
+        {/* Search & Status Filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1, minWidth: '280px', flexWrap: 'wrap' }}>
           {/* Search Input */}
-          <div style={{ position: 'relative', flex: 1, maxWidth: '360px' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
             <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input
               type="text"
