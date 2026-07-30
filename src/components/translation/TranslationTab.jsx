@@ -404,10 +404,10 @@ export default function TranslationTab({
           Array.from(selectedRecordIds).forEach(id => handleToggleRowLock(id, true));
         }}
         onExportXLS={handleExportXLS}
-        onImportCSV={handleTriggerImport}
+        onImportCSV={() => alert('CSV导入功能正在迁移中，即将恢复')}
         onAddTerm={() => setAddModalOpen(true)}
-        onBatchAdd={() => { setBatchAddModalOpen(true); initBatchAddRows(); }}
-        onDataClean={handleDataClean}
+        onBatchAdd={() => alert('批量新增功能正在迁移中，即将恢复')}
+        onDataClean={() => alert('数据清理功能正在迁移中，即将恢复')}
         onClearHighlights={() => setModifiedCells({})}
         modifiedCount={Object.keys(modifiedCells).length}
         loading={loading}
