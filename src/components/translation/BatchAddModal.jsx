@@ -4,6 +4,32 @@ import { apiFetch } from '../../utils/api';
 import { useToast } from '../Toast';
 import { Plus, Trash2, Loader2, Sparkles } from 'lucide-react';
 
+function findTranslationForLang(result, targetLang) {
+  if (!result || typeof result !== 'object') return undefined;
+  if (result[targetLang] !== undefined) return result[targetLang];
+  
+  const codeMatch = targetLang.match(/^([A-Z]+)/i);
+  const code = codeMatch ? codeMatch[1].toUpperCase() : '';
+  const nameClean = targetLang.replace(/^[A-Z]+\s*[\（\(]?/i, '')
+                              .replace(/[\）\)]?$/g, '')
+                              .replace(/语|文/g, '')
+                              .trim();
+
+  for (const [k, v] of Object.entries(result)) {
+    if (v === undefined || v === null || String(v).trim() === '') continue;
+    const kUpper = k.toUpperCase().trim();
+    const kClean = k.replace(/[\（\(\）\)]/g, '').replace(/语|文/g, '').trim();
+
+    if (code && (kUpper === code || kUpper.startsWith(code + '_') || kUpper.startsWith(code + '-'))) {
+      return v;
+    }
+    if (nameClean && (kClean.includes(nameClean) || nameClean.includes(kClean))) {
+      return v;
+    }
+  }
+  return undefined;
+}
+
 export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuccess, targetLanguages = [], difyConfig = {} }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
@@ -134,8 +160,9 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
           const result = await res.json();
           
           targetLanguages.forEach(lang => {
-            if (result[lang]) {
-              row[lang] = result[lang];
+            const val = findTranslationForLang(result, lang);
+            if (val) {
+              row[lang] = val;
             }
           });
           
