@@ -155,18 +155,17 @@ export default function TranslationTab({
   const currentUser = useMemo(() => safeGetLocalStorage('user', null), []);
 
   const handleOpenBatchTranslate = async () => {
-    const selectedRecords = records.filter(r => selectedRecordIds.has(r.id));
-    if (selectedRecords.length === 0) {
-      toast.info('请先选择要翻译的词条');
-      return;
+    let targetRecords = records;
+    if (selectedRecordIds.size > 0) {
+      targetRecords = records.filter(r => selectedRecordIds.has(r.recordId || r.id));
     }
 
-    const itemsToTranslate = selectedRecords.map(r => {
+    const itemsToTranslate = targetRecords.map(r => {
       const fields = r.fields || {};
       const missingLangs = TARGET_LANGUAGES.filter(lang => !fields[lang]);
       if (missingLangs.length === 0) return null;
       return {
-        recordId: r.id,
+        recordId: r.recordId || r.id,
         KW: fields['KW'] || '',
         '中文': fields['CN（中文）'] || '',
         '所在页面': fields['所在页面'] || '',
@@ -176,7 +175,7 @@ export default function TranslationTab({
     }).filter(Boolean);
 
     if (itemsToTranslate.length === 0) {
-      toast.info('选中的词条都已完成翻译，无需重新翻译');
+      toast.info(selectedRecordIds.size > 0 ? '选中的词条都已完成翻译，无需重新翻译' : '当前表格中没有未翻译的词条');
       return;
     }
 

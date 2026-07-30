@@ -201,6 +201,49 @@ export default function TranslationToolbar({
                 <span>批量新增</span>
               </button>
 
+              {difyConfigured && (
+                <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchTranslate} title="调用 Dify 批量翻译 (无选中时扫描全部)">
+                  <Bot size={14} style={{ color: 'var(--purple)' }} />
+                  <span>批量 AI 翻译</span>
+                </button>
+              )}
+
+              {/* Selection-specific inline actions */}
+              {selectedCount > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border-color)', paddingLeft: '0.8rem', marginLeft: '0.4rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>已选 <strong style={{ color: 'var(--accent)' }}>{selectedCount}</strong> 项</span>
+                  
+                  <button className="btn-text btn-sm" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }} onClick={onClearSelection}>
+                    取消
+                  </button>
+
+                  <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchApprove}>
+                    <CheckCircle size={14} style={{ color: 'var(--green)' }} />
+                    <span>批量审核</span>
+                  </button>
+
+                  <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchCategory}>
+                    <Layers size={14} />
+                    <span>设置分类</span>
+                  </button>
+
+                  <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchCopy}>
+                    <Copy size={14} />
+                    <span>复制到其他表</span>
+                  </button>
+
+                  <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchLock} title="锁定选中的词条只读">
+                    <Lock size={14} style={{ color: 'var(--red)' }} />
+                    <span>锁定</span>
+                  </button>
+
+                  <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchUnlock} title="解锁选中的词条">
+                    <Unlock size={14} />
+                    <span>解锁</span>
+                  </button>
+                </div>
+              )}
+
               <button className="btn btn-primary btn-sm" style={{ height: '32px' }} onClick={onAddTerm}>
                 <Plus size={14} />
                 <span>新增词条</span>
@@ -209,67 +252,6 @@ export default function TranslationToolbar({
           )}
         </div>
       </div>
-
-      {/* Bottom row: Batch action bar (when rows selected) */}
-      {selectedCount > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justify: 'space-between',
-            padding: '0.4rem 0.8rem',
-            background: 'var(--bg-primary)',
-            border: '1px solid var(--accent)',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: '0.82rem'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-            <span>已选中 <strong style={{ color: 'var(--accent)' }}>{selectedCount}</strong> 项</span>
-            <button className="btn-text" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }} onClick={onClearSelection}>
-              取消选中
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            {difyConfigured && (
-              <button className="btn btn-secondary btn-sm" onClick={onBatchTranslate} title="调用 Dify 批量 AI 翻译选中的词条">
-                <Bot size={13} style={{ color: 'var(--purple)' }} />
-                <span>批量 AI 翻译</span>
-              </button>
-            )}
-
-            {projectRole !== 'viewer' && (
-              <>
-                <button className="btn btn-secondary btn-sm" onClick={onBatchApprove}>
-                  <CheckCircle size={13} style={{ color: 'var(--green)' }} />
-                  <span>批量审核</span>
-                </button>
-
-                <button className="btn btn-secondary btn-sm" onClick={onBatchCategory}>
-                  <Layers size={13} />
-                  <span>设置分类</span>
-                </button>
-
-                <button className="btn btn-secondary btn-sm" onClick={onBatchCopy}>
-                  <Copy size={13} />
-                  <span>复制到其他表</span>
-                </button>
-
-                <button className="btn btn-secondary btn-sm" onClick={onBatchLock} title="锁定选中的词条只读">
-                  <Lock size={13} style={{ color: 'var(--red)' }} />
-                  <span>锁定</span>
-                </button>
-
-                <button className="btn btn-secondary btn-sm" onClick={onBatchUnlock} title="解锁选中的词条">
-                  <Unlock size={13} />
-                  <span>解锁</span>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
