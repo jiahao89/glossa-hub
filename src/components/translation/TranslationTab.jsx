@@ -9,15 +9,15 @@ function findTranslationForLang(result, targetLang) {
   
   const codeMatch = targetLang.match(/^([A-Z]+)/i);
   const code = codeMatch ? codeMatch[1].toUpperCase() : '';
-  const nameClean = targetLang.replace(/^[A-Z]+\s*[\（\(]?/i, '')
-                              .replace(/[\）\)]?$/g, '')
+  const nameClean = targetLang.replace(/^[A-Z]+\s*[（(]?/i, '')
+                              .replace(/[）)]?$/g, '')
                               .replace(/语|文/g, '')
                               .trim();
 
   for (const [k, v] of Object.entries(result)) {
     if (v === undefined || v === null || String(v).trim() === '') continue;
     const kUpper = k.toUpperCase().trim();
-    const kClean = k.replace(/[\（\(\）\)]/g, '').replace(/语|文/g, '').trim();
+    const kClean = k.replace(/[（()）]/g, '').replace(/语|文/g, '').trim();
 
     if (code && (kUpper === code || kUpper.startsWith(code + '_') || kUpper.startsWith(code + '-'))) {
       return v;
@@ -113,7 +113,7 @@ export default function TranslationTab({
 
   useEffect(() => {
     setModifiedCells({});
-  }, [selectedTableId]);
+  }, [selectedTableId, setModifiedCells]);
 
   // Column Visibility States
   const [colDropdownOpen, setColDropdownOpen] = useState(false);
@@ -170,9 +170,9 @@ export default function TranslationTab({
 
   // History & Snapshots
   const [snapshotsModalOpen, setSnapshotsModalOpen] = useState(false);
-  const [snapshots, setSnapshots] = useState([]);
-  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
-  const [rollingBackId, setRollingBackId] = useState('');
+  const [snapshots, _setSnapshots] = useState([]);
+  const [loadingSnapshots, _setLoadingSnapshots] = useState(false);
+  const [rollingBackId, _setRollingBackId] = useState('');
 
   const currentUser = useMemo(() => safeGetLocalStorage('user', null), []);
 
@@ -433,7 +433,7 @@ export default function TranslationTab({
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated, toast, TARGET_LANGUAGES, setModifiedCells]);
+  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated, toast, TARGET_LANGUAGES]);
 
   useEffect(() => {
     loadTables();
@@ -587,21 +587,33 @@ export default function TranslationTab({
   };
 
   const handleExportXLS = async () => {
+    if (!selectedTableId) {
+      toast.error('请选择需要导出的数据表！');
+      return;
+    }
+
     try {
+      toast.info('正在导出 Excel 文件...');
       const res = await apiFetch(`/api/tables/${selectedTableId}/export-xls`);
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `GlossaHub_${selectedTableId}_Export.xlsx`;
+        const tableName = tables.find(t => t.id === selectedTableId)?.name || selectedTableId;
+        a.download = `GlossaHub_${tableName}_${new Date().toISOString().slice(0, 10)}.csv`;
         document.body.appendChild(a);
         a.click();
         a.remove();
-        toast.success('导出 Excel 文件成功！');
+        window.URL.revokeObjectURL(url);
+        toast.success('导出 Excel/CSV 文件成功！');
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(`导出失败: ${errData.error || '服务器响应异常'}`);
       }
-    } catch {
-      toast.error('导出 Excel 失败');
+    } catch (err) {
+      console.error('导出异常:', err);
+      toast.error(`导出失败: ${err.message}`);
     }
   };
 

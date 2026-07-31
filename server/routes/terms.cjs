@@ -24,12 +24,16 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
 
     if (search) {
       if (dbType === 'sqlite') {
-        whereClause += ` AND (kw LIKE $${paramIndex} OR zh_cn LIKE $${paramIndex} OR context LIKE $${paramIndex} OR translations LIKE $${paramIndex})`;
+        const p1 = paramIndex, p2 = paramIndex + 1, p3 = paramIndex + 2, p4 = paramIndex + 3;
+        whereClause += ` AND (kw LIKE $${p1} OR zh_cn LIKE $${p2} OR context LIKE $${p3} OR translations LIKE $${p4})`;
+        const searchPattern = `%${search}%`;
+        queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+        paramIndex += 4;
       } else {
         whereClause += ` AND (kw ILIKE $${paramIndex} OR zh_cn ILIKE $${paramIndex} OR context ILIKE $${paramIndex} OR translations::text ILIKE $${paramIndex})`;
+        queryParams.push(`%${search}%`);
+        paramIndex++;
       }
-      queryParams.push(`%${search}%`);
-      paramIndex++;
     }
 
     if (statusFilter) {
@@ -791,6 +795,8 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
   const { added = [], updated = [], deletedIds = [] } = req.body;
 
   try {
+    const dbType = getDbType();
+
     if (!(await requireVersionOwnership(req.user.id, tableId))) {
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此数据表。' });
     }
@@ -950,8 +956,74 @@ router.delete('/tables/:tableId/clean-empty', authenticateToken, writeLimiter, a
 
     res.json({ message: `清理完毕，共删除 ${deletedCount} 条空词条`, deletedCount });
   } catch (error) {
-    console.error('Clean empty error:', error);
-    res.status(500).json({ error: '清理空词条失败' });
+    console.error('清理空词条失败:', error);
+    res.status(500).json({ error: '服务器内部错误，清理失败。' });
+  }
+});
+
+// GET /api/tables/:tableId/export-xls - 导出 Excel/CSV 表格数据
+router.get('/tables/:tableId/export-xls', authenticateToken, async (req, res) => {
+  const { tableId } = req.params;
+
+  try {
+    if (!(await requireVersionOwnership(req.user.id, tableId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权导出此数据表。' });
+    }
+
+    const version = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [tableId]);
+    const terms = await db.query('SELECT * FROM terms WHERE version_id = $1 ORDER BY created_at ASC', [tableId]);
+
+    const TARGET_LANGUAGES = [
+      'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）',
+      'PT（葡萄牙）', 'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）',
+      'TC（繁）', 'DA（丹麦）', 'CZ(捷克)', '瑞典：', '荷兰：', '土耳其：'
+    ];
+
+    const headers = ['KW', 'CN（中文）', '所在页面', '字号类别', ...TARGET_LANGUAGES];
+    const rows = [headers];
+
+    for (const term of terms) {
+      let trans = {};
+      try {
+        trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
+      } catch {}
+
+      const row = [
+        term.kw && term.kw.startsWith('__EMPTY_KW_') ? '' : (term.kw || ''),
+        term.zh_cn || '',
+        term.context || '',
+        ''
+      ];
+
+      TARGET_LANGUAGES.forEach(lang => {
+        let val = trans[lang] || '';
+        if (!val) {
+          const key = Object.keys(trans).find(k => k === lang || k.includes(lang.slice(0, 2)));
+          if (key) val = trans[key];
+        }
+        row.push(val || '');
+      });
+
+      rows.push(row);
+    }
+
+    const csvContent = '\ufeff' + rows.map(r => 
+      r.map(cell => {
+        const str = String(cell ?? '');
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      }).join(',')
+    ).join('\r\n');
+
+    const fileName = encodeURIComponent(`GlossaHub_${version?.version_name || tableId}_Export.csv`);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${fileName}`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('导出表格失败:', error);
+    res.status(500).json({ error: '服务器内部错误，导出失败。' });
   }
 });
 
