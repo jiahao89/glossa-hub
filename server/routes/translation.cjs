@@ -248,14 +248,28 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
 
     if (!response.ok) {
       const errorText = await response.text();
-      let parsedError;
-      try {
-        parsedError = JSON.parse(errorText);
-      } catch {
-        parsedError = null;
+      let cleanMsg = errorText;
+      
+      if (response.status === 504 || errorText.includes('504') || errorText.includes('Gateway time-out') || errorText.includes('Gateway Timeout')) {
+        cleanMsg = 'Dify 接口响应超时 (HTTP 504 Gateway Timeout)。请检查网络或在【系统设置】中切换为【迈金 Night 专用引擎】。';
+      } else if (response.status === 502 || errorText.includes('502 Bad Gateway')) {
+        cleanMsg = 'Dify 网关响应异常 (HTTP 502 Bad Gateway)。建议在【系统设置】中切换为【迈金 Night 专用引擎】。';
+      } else if (response.status === 403 || errorText.includes('403 Forbidden')) {
+        cleanMsg = 'Dify 拒绝访问 (HTTP 403 Forbidden)。请检查 API Key 是否正确或已授权。';
+      } else if (response.status === 401 || errorText.includes('401 Unauthorized')) {
+        cleanMsg = 'Dify 校验失败 (HTTP 401 Unauthorized)。API Key 无效。';
+      } else if (errorText.includes('<html') || errorText.includes('<HTML')) {
+        cleanMsg = `Dify 远程服务器响应异常 (HTTP ${response.status})`;
+      } else {
+        try {
+          const parsed = JSON.parse(errorText);
+          cleanMsg = parsed?.message || parsed?.error || errorText;
+        } catch {
+          cleanMsg = errorText;
+        }
       }
-      const message = parsedError?.message || parsedError?.error || errorText;
-      return res.status(response.status).json({ error: `Dify API 响应错误: ${message}` });
+
+      return res.status(response.status).json({ error: `Dify API 响应错误: ${cleanMsg}` });
     }
 
     const data = await response.json();
