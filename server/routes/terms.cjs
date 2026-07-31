@@ -882,7 +882,15 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
           });
         }
 
-        const fieldsStr = JSON.stringify(translationsObj);
+        // Merge with existing translations in database so previous language translations are preserved
+        let existingTrans = {};
+        if (existing && existing.translations) {
+          try {
+            existingTrans = typeof existing.translations === 'string' ? JSON.parse(existing.translations) : (existing.translations || {});
+          } catch {}
+        }
+        const finalTranslationsObj = { ...existingTrans, ...translationsObj };
+        const fieldsStr = JSON.stringify(finalTranslationsObj);
 
         let mergedMeta = rec.translationsMeta;
         if (!mergedMeta && existing && existing.translations_meta) {
@@ -916,7 +924,7 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
     res.json({ message: '同步成功', updatedRecords: successCount });
   } catch (error) {
     console.error('Batch sync error:', error);
-    res.status(500).json({ error: '批量同步数据失败' });
+    res.status(500).json({ error: `批量同步数据失败: ${error.message || '未知错误'}` });
   }
 });
 
