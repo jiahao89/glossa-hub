@@ -299,12 +299,25 @@ export default function TranslationTab({
       const updatedForSync = recordsToUpdate.map(r => {
         const { id, ...newFields } = r;
         const existingRec = records.find(rec => (rec.recordId || rec.id) === id);
+        const itemInPreview = batchPreviewList.find(i => i.recordId === id);
+
+        const existingMeta = existingRec ? (existingRec.translationsMeta || {}) : {};
+        const newMeta = { ...existingMeta };
+        if (itemInPreview) {
+          Object.keys(itemInPreview.translations || {}).forEach(lang => {
+            if (itemInPreview.translations[lang]) {
+              newMeta[lang] = itemInPreview.tmMatch ? 'tm' : 'ai';
+            }
+          });
+        }
+
         return {
           recordId: id,
           fields: {
              ...(existingRec ? existingRec.fields : {}),
              ...newFields
-          }
+          },
+          translationsMeta: newMeta
         };
       });
 

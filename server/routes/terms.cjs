@@ -806,7 +806,25 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
 
       // 2. Insert (Added)
       for (const rec of added) {
-        const fieldsStr = JSON.stringify(rec.fields || {});
+        let kwVal = (rec.fields['KW'] || rec.kw || '').trim();
+        if (!kwVal) {
+          kwVal = `__EMPTY_KW_${crypto.randomUUID()}__`;
+        }
+        const zhCnVal = (rec.fields['CN（中文）'] || rec.zh_cn || '').trim();
+        const contextVal = (rec.fields['所在页面'] || rec.context || '').trim();
+
+        const systemKeys = ['KW', 'CN（中文）', '所在页面', '字号类别'];
+        let translationsObj = rec.translations;
+        if (!translationsObj || typeof translationsObj !== 'object') {
+          translationsObj = {};
+          Object.keys(rec.fields || {}).forEach(k => {
+            if (!systemKeys.includes(k) && rec.fields[k] !== undefined) {
+              translationsObj[k] = rec.fields[k];
+            }
+          });
+        }
+
+        const fieldsStr = JSON.stringify(translationsObj);
         const translationsMetaStr = JSON.stringify(rec.translationsMeta || {});
         const nowStr = new Date().toISOString();
 
@@ -816,9 +834,9 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
         `, [
           rec.recordId,
           tableId,
-          (rec.fields['KW'] || '').trim(),
-          (rec.fields['所在页面'] || '').trim(),
-          (rec.fields['CN（中文）'] || '').trim(),
+          kwVal,
+          contextVal,
+          zhCnVal,
           fieldsStr,
           translationsMetaStr,
           0,
@@ -831,8 +849,50 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
 
       // 3. Update (Modified)
       for (const rec of updated) {
-        const fieldsStr = JSON.stringify(rec.fields || {});
-        const translationsMetaStr = JSON.stringify(rec.translationsMeta || {});
+        const existing = await tx.queryOne('SELECT kw, zh_cn, context, translations_meta FROM terms WHERE id = $1', [rec.recordId]);
+        
+        let kwVal = rec.fields && rec.fields['KW'] !== undefined 
+          ? rec.fields['KW'].trim() 
+          : (rec.kw !== undefined ? rec.kw.trim() : (existing ? existing.kw : ''));
+
+        if (!kwVal) {
+          if (existing && existing.kw && existing.kw.startsWith('__EMPTY_KW_')) {
+            kwVal = existing.kw;
+          } else {
+            kwVal = `__EMPTY_KW_${crypto.randomUUID()}__`;
+          }
+        }
+
+        const zhCnVal = rec.fields && rec.fields['CN（中文）'] !== undefined 
+          ? rec.fields['CN（中文）'].trim() 
+          : (existing ? existing.zh_cn : '');
+
+        const contextVal = rec.fields && rec.fields['所在页面'] !== undefined 
+          ? rec.fields['所在页面'].trim() 
+          : (existing ? existing.context || '' : '');
+
+        const systemKeys = ['KW', 'CN（中文）', '所在页面', '字号类别'];
+        let translationsObj = rec.translations;
+        if (!translationsObj || typeof translationsObj !== 'object') {
+          translationsObj = {};
+          Object.keys(rec.fields || {}).forEach(k => {
+            if (!systemKeys.includes(k) && rec.fields[k] !== undefined) {
+              translationsObj[k] = rec.fields[k];
+            }
+          });
+        }
+
+        const fieldsStr = JSON.stringify(translationsObj);
+
+        let mergedMeta = rec.translationsMeta;
+        if (!mergedMeta && existing && existing.translations_meta) {
+          try {
+            mergedMeta = typeof existing.translations_meta === 'string' ? JSON.parse(existing.translations_meta) : existing.translations_meta;
+          } catch {
+            mergedMeta = {};
+          }
+        }
+        const translationsMetaStr = JSON.stringify(mergedMeta || {});
         const nowStr = new Date().toISOString();
 
         await tx.query(`
@@ -840,9 +900,9 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
           SET kw = $1, context = $2, zh_cn = $3, translations = $4, translations_meta = $5, updated_at = $6
           WHERE id = $7 AND version_id = $8 AND (is_locked = 0 OR is_locked IS FALSE)
         `, [
-          (rec.fields['KW'] || '').trim(),
-          (rec.fields['所在页面'] || '').trim(),
-          (rec.fields['CN（中文）'] || '').trim(),
+          kwVal,
+          contextVal,
+          zhCnVal,
           fieldsStr,
           translationsMetaStr,
           nowStr,
