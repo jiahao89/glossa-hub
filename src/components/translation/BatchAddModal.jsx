@@ -10,15 +10,15 @@ function findTranslationForLang(result, targetLang) {
   
   const codeMatch = targetLang.match(/^([A-Z]+)/i);
   const code = codeMatch ? codeMatch[1].toUpperCase() : '';
-  const nameClean = targetLang.replace(/^[A-Z]+\s*[\（\(]?/i, '')
-                              .replace(/[\）\)]?$/g, '')
+  const nameClean = targetLang.replace(/^[A-Z]+\s*[（(]?/i, '')
+                              .replace(/[）)]?$/g, '')
                               .replace(/语|文/g, '')
                               .trim();
 
   for (const [k, v] of Object.entries(result)) {
     if (v === undefined || v === null || String(v).trim() === '') continue;
     const kUpper = k.toUpperCase().trim();
-    const kClean = k.replace(/[\（\(\）\)]/g, '').replace(/语|文/g, '').trim();
+    const kClean = k.replace(/[（()）]/g, '').replace(/语|文/g, '').trim();
 
     if (code && (kUpper === code || kUpper.startsWith(code + '_') || kUpper.startsWith(code + '-'))) {
       return v;
@@ -30,7 +30,7 @@ function findTranslationForLang(result, targetLang) {
   return undefined;
 }
 
-export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuccess, targetLanguages = [], difyConfig = {} }) {
+export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuccess, targetLanguages = [], _difyConfig = {} }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);

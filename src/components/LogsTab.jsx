@@ -10,14 +10,24 @@ export default function LogsTab() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterVersion, setFilterVersion] = useState('');
   const [filterOperator, setFilterOperator] = useState('');
   const [filterAction, setFilterAction] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // Filter options from API
+  const [versionOptions, setVersionOptions] = useState([]);
+  const [operatorOptions, setOperatorOptions] = useState([]);
+  const [actionOptions, setActionOptions] = useState([]);
 
   // Diff Modal State
   const [diffModalOpen, setDiffModalOpen] = useState(false);
@@ -31,22 +41,48 @@ export default function LogsTab() {
   const [rollbackTermId, setRollbackTermId] = useState(null);
   const [rollingBack, setRollingBack] = useState(null); // R4: null 或正在回退的 snapshotId
 
-  const fetchLogs = async () => {
-    try {
-      const res = await apiFetch('/api/logs');
-      if (!res.ok) throw new Error('获取日志失败');
-      const data = await res.json();
-      setLogs(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Debounce search query
   useEffect(() => {
-    fetchLogs();
-  }, []);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch logs with server-side pagination + filtering
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams({
+          page: String(currentPage),
+          pageSize: String(pageSize),
+          search: debouncedSearch,
+          version: filterVersion,
+          operator: filterOperator,
+          action: filterAction,
+          startDate,
+          endDate
+        });
+        const res = await apiFetch(`/api/logs?${params.toString()}`);
+        if (cancelled) return;
+        if (!res.ok) throw new Error('获取日志失败');
+        const data = await res.json();
+        setLogs(data.logs || []);
+        setTotal(data.total || 0);
+        setVersionOptions(data.filters?.versions || []);
+        setOperatorOptions(data.filters?.operators || []);
+        setActionOptions(data.filters?.actions || []);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentPage, pageSize, debouncedSearch, filterVersion, filterOperator, filterAction, startDate, endDate, refreshKey]);
 
   const handleClearAllLogs = async () => {
     const confirmClear = window.confirm(
@@ -59,7 +95,8 @@ export default function LogsTab() {
         method: 'DELETE'
       });
       if (res.ok) {
-        setLogs([]);
+        setCurrentPage(1);
+        setRefreshKey(k => k + 1);
       } else {
         toast.error('清空日志失败');
       }
@@ -67,83 +104,6 @@ export default function LogsTab() {
       toast.error(`网络错误: ${err.message}`);
     }
   };
-
-  // Derive unique versions from logs
-  const versionsList = React.useMemo(() => {
-    const set = new Set();
-    logs.forEach(log => {
-      if (log.version_name) set.add(log.version_name);
-      else if (log.version) set.add(log.version);
-    });
-    return Array.from(set).sort();
-  }, [logs]);
-
-  // 操作人去重列表
-  const operatorsList = React.useMemo(() => {
-    const set = new Set();
-    logs.forEach(log => {
-      const op = log.operator_name || log.operator || '';
-      if (op) set.add(op);
-    });
-    return Array.from(set).sort();
-  }, [logs]);
-
-  // 操作类型去重列表（基于 action 字段）
-  const actionsList = React.useMemo(() => {
-    const set = new Set();
-    logs.forEach(log => {
-      if (log.action) set.add(log.action);
-    });
-    return Array.from(set).sort();
-  }, [logs]);
-
-  // Filtered Logs
-  const filteredLogs = React.useMemo(() => {
-    return logs.filter(log => {
-      // 1. Text Search (KW / Chinese / Operator / Details)
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const kw = (log.kw || '').toLowerCase();
-        const chinese = (log.chinese || '').toLowerCase();
-        const operator = (log.operator_name || log.operator || '未知用户').toLowerCase();
-        const details = (log.details || '').toLowerCase();
-
-        if (!kw.includes(query) && !chinese.includes(query) && !operator.includes(query) && !details.includes(query)) {
-          return false;
-        }
-      }
-
-      // 2. Version Filter
-      const logVer = log.version_name || log.version;
-      if (filterVersion && logVer !== filterVersion) {
-        return false;
-      }
-
-      // 2b. Operator Filter
-      const logOp = log.operator_name || log.operator || '';
-      if (filterOperator && logOp !== filterOperator) {
-        return false;
-      }
-
-      // 2c. Action Filter
-      if (filterAction && log.action !== filterAction) {
-        return false;
-      }
-
-      // 3. Date range filter
-      if (log.timestamp) {
-        const logDateStr = log.timestamp.split(' ')[0]; // Extract YYYY-MM-DD
-        if (startDate && logDateStr < startDate) {
-          return false;
-        }
-        if (endDate && logDateStr > endDate) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [logs, searchQuery, filterVersion, filterOperator, filterAction, startDate, endDate]);
 
   const handleOpenDiff = (log) => {
     setActiveLog(log);
@@ -195,7 +155,7 @@ export default function LogsTab() {
       }
       toast.success('词条已成功回退到历史版本');
       setRollbackModalOpen(false);
-      fetchLogs();
+      setRefreshKey(k => k + 1);
     } catch (err) {
       toast.error(`回退失败: ${err.message}`);
     } finally {
@@ -236,7 +196,7 @@ export default function LogsTab() {
     return (
       <div className="flex-center" style={{ height: '70vh', flexDirection: 'column', gap: '0.5rem' }}>
         <span style={{ color: 'var(--red)' }}>⚠️ {error}</span>
-        <button onClick={fetchLogs} className="btn btn-secondary">重试</button>
+        <button onClick={() => { setError(null); setRefreshKey(k => k + 1); }} className="btn btn-secondary">重试</button>
       </div>
     );
   }
@@ -280,12 +240,12 @@ export default function LogsTab() {
         <div style={{ flex: 1, minWidth: '120px' }}>
           <select
             value={filterVersion}
-            onChange={(e) => setFilterVersion(e.target.value)}
+            onChange={(e) => { setFilterVersion(e.target.value); setCurrentPage(1); }}
             className="text-input"
             style={{ height: '34px', padding: '0 0.5rem', fontSize: '0.82rem' }}
           >
             <option value="">所有版本大表</option>
-            {versionsList.map(v => (
+            {versionOptions.map(v => (
               <option key={v} value={v}>{v}</option>
             ))}
           </select>
@@ -295,13 +255,13 @@ export default function LogsTab() {
         <div style={{ flex: 1, minWidth: '120px' }}>
           <select
             value={filterOperator}
-            onChange={(e) => setFilterOperator(e.target.value)}
+            onChange={(e) => { setFilterOperator(e.target.value); setCurrentPage(1); }}
             className="text-input"
             style={{ height: '34px', padding: '0 0.5rem', fontSize: '0.82rem' }}
             title="按操作人筛选"
           >
             <option value="">所有操作人</option>
-            {operatorsList.map(op => (
+            {operatorOptions.map(op => (
               <option key={op} value={op}>{op}</option>
             ))}
           </select>
@@ -311,13 +271,13 @@ export default function LogsTab() {
         <div style={{ flex: 1, minWidth: '140px' }}>
           <select
             value={filterAction}
-            onChange={(e) => setFilterAction(e.target.value)}
+            onChange={(e) => { setFilterAction(e.target.value); setCurrentPage(1); }}
             className="text-input"
             style={{ height: '34px', padding: '0 0.5rem', fontSize: '0.82rem' }}
             title="按操作类型筛选"
           >
             <option value="">所有操作类型</option>
-            {actionsList.map(act => (
+            {actionOptions.map(act => (
               <option key={act} value={act}>{act}</option>
             ))}
           </select>
@@ -328,7 +288,7 @@ export default function LogsTab() {
           <input 
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
             className="text-input"
             style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.5rem', width: '125px' }}
           />
@@ -336,7 +296,7 @@ export default function LogsTab() {
           <input 
             type="date"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
             className="text-input"
             style={{ height: '34px', fontSize: '0.82rem', padding: '0 0.5rem', width: '125px' }}
           />
@@ -359,14 +319,14 @@ export default function LogsTab() {
             </tr>
           </thead>
           <tbody>
-            {filteredLogs.length === 0 ? (
+            {logs.length === 0 ? (
               <tr>
                 <td colSpan="7" style={{ padding: '0' }}>
                   <EmptyState
                     icon={History}
-                    title={logs.length === 0 ? '暂无任何操作日志' : '没有找到符合筛选条件的日志'}
+                    title={total === 0 ? '暂无任何操作日志' : '没有找到符合筛选条件的日志'}
                     description={
-                      logs.length === 0
+                      total === 0
                         ? '在“词条管理”页面编辑、审核或同步词条后，操作记录会自动显示在这里。'
                         : '试试清除部分筛选条件（操作人/操作类型/版本/日期范围）扩大查询范围。'
                     }
@@ -374,7 +334,7 @@ export default function LogsTab() {
                 </td>
               </tr>
             ) : (
-              filteredLogs.map(log => {
+              logs.map(log => {
                 const isDiff = isJsonDetails(log.details);
                 return (
                   <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)', height: '40px', cursor: 'pointer' }} onDoubleClick={() => handleOpenDiff(log)}>
@@ -434,6 +394,41 @@ export default function LogsTab() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {total > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', padding: '0.75rem 0', flexShrink: 0 }}>
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+            className="btn btn-secondary"
+            style={{ height: '34px', padding: '0 1rem', opacity: currentPage <= 1 ? 0.4 : 1 }}
+          >
+            上一页
+          </button>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            第 {currentPage} / {Math.ceil(total / pageSize)} 页（共 {total} 条）
+          </span>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(Math.ceil(total / pageSize), p + 1))}
+            disabled={currentPage >= Math.ceil(total / pageSize)}
+            className="btn btn-secondary"
+            style={{ height: '34px', padding: '0 1rem', opacity: currentPage >= Math.ceil(total / pageSize) ? 0.4 : 1 }}
+          >
+            下一页
+          </button>
+          <select
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+            className="text-input"
+            style={{ height: '34px', padding: '0 0.5rem', fontSize: '0.82rem' }}
+          >
+            <option value="20">20条/页</option>
+            <option value="50">50条/页</option>
+            <option value="100">100条/页</option>
+          </select>
+        </div>
+      )}
 
       {/* Git style Double Column Diff Modal */}
       {activeLog && (() => {

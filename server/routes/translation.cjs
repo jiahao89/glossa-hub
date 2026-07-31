@@ -445,7 +445,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
 
         try {
           let repaired = jsonMatch[0]
-            .replace(/,\s*([\}\]])/g, '$1')
+            .replace(/,\s*([}\]])/g, '$1')
             .replace(/(['"])?([a-zA-Z0-9_\u4e00-\u9fa5]+)\1\s*:/g, '"$2":');
           const obj = JSON.parse(repaired);
           if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
@@ -472,7 +472,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
           console.log('✅ 成功从 Dify Code 节点的 raw_output 中容错解析出完整 JSON 翻译!');
           return res.json(repairedObj);
         }
-        return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${rawVal.error}` });
+        return res.status(200).json({ error: `Dify 脚本节点抛出错误: ${rawVal.error}` });
       }
       return res.json(rawVal);
     }
@@ -486,7 +486,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
           console.log('✅ 成功容错修复解析 Dify raw_output JSON!');
           return res.json(repairedObj);
         }
-        return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${parsedObj.error}` });
+        return res.status(200).json({ error: `Dify 脚本节点抛出错误: ${parsedObj.error}` });
       }
       return res.json(parsedObj);
     }

@@ -3,15 +3,104 @@ const router = express.Router();
 const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken } = require('../middleware/auth.cjs');
 
-// GET /api/logs - 获取修改日志
-router.get('/', authenticateToken, async (_req, res) => {
+// GET /api/logs - 获取修改日志（分页 + 服务端筛选）
+router.get('/', authenticateToken, async (req, res) => {
   const dbType = getDbType();
+  const {
+    page = '1',
+    pageSize = '50',
+    search = '',
+    version = '',
+    operator = '',
+    action = '',
+    startDate = '',
+    endDate = ''
+  } = req.query;
+
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const size = Math.min(200, Math.max(1, parseInt(pageSize) || 50));
+  const offset = (pageNum - 1) * size;
+
   try {
     const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
+
+    // Build WHERE clause
+    let whereClause = ' WHERE 1=1';
+    const params = [];
+    let pi = 1; // paramIndex
+
+    if (search) {
+      if (dbType === 'sqlite') {
+        const p1 = pi, p2 = pi + 1, p3 = pi + 2, p4 = pi + 3;
+        const pattern = `%${search}%`;
+        whereClause += ` AND (l.kw LIKE $${p1} OR l.chinese LIKE $${p2} OR l.details LIKE $${p3} OR u.name LIKE $${p4})`;
+        params.push(pattern, pattern, pattern, pattern);
+        pi += 4;
+      } else {
+        whereClause += ` AND (l.kw ILIKE $${pi} OR l.chinese ILIKE $${pi} OR l.details ILIKE $${pi} OR u.name ILIKE $${pi})`;
+        params.push(`%${search}%`);
+        pi++;
+      }
+    }
+
+    if (version) {
+      whereClause += ` AND l.version_name = $${pi}`;
+      params.push(version);
+      pi++;
+    }
+
+    if (operator) {
+      whereClause += ` AND u.name = $${pi}`;
+      params.push(operator);
+      pi++;
+    }
+
+    if (action) {
+      whereClause += ` AND l.action = $${pi}`;
+      params.push(action);
+      pi++;
+    }
+
+    if (startDate) {
+      whereClause += ` AND l.timestamp >= $${pi}`;
+      params.push(startDate);
+      pi++;
+    }
+
+    if (endDate) {
+      whereClause += ` AND l.timestamp <= $${pi}`;
+      params.push(endDate + 'T23:59:59');
+      pi++;
+    }
+
+    // Paginated query
     const rows = await db.query(
       `SELECT l.*, u.name AS operator_name FROM ${logsTable} l
        LEFT JOIN users u ON l.user_id = u.id
-       ORDER BY l.id DESC`
+       ${whereClause}
+       ORDER BY l.id DESC
+       LIMIT $${pi} OFFSET $${pi + 1}`,
+      [...params, size, offset]
+    );
+
+    // Count query (reuse WHERE + params, no LIMIT/OFFSET)
+    const countRows = await db.query(
+      `SELECT COUNT(*) as total FROM ${logsTable} l
+       LEFT JOIN users u ON l.user_id = u.id
+       ${whereClause}`,
+      params
+    );
+    const total = countRows[0]?.total || 0;
+
+    // Filter options (full list, independent of pagination/filters)
+    const versionRows = await db.query(
+      `SELECT DISTINCT l.version_name FROM ${logsTable} l WHERE l.version_name IS NOT NULL AND l.version_name != '' ORDER BY l.version_name`
+    );
+    const operatorRows = await db.query(
+      `SELECT DISTINCT u.name FROM ${logsTable} l LEFT JOIN users u ON l.user_id = u.id WHERE u.name IS NOT NULL AND u.name != '' ORDER BY u.name`
+    );
+    const actionRows = await db.query(
+      `SELECT DISTINCT l.action FROM ${logsTable} l WHERE l.action IS NOT NULL AND l.action != '' ORDER BY l.action`
     );
 
     const formatted = rows.map(r => ({
@@ -25,7 +114,17 @@ router.get('/', authenticateToken, async (_req, res) => {
       operator: r.operator_name || '王赵云'
     }));
 
-    res.json(formatted);
+    res.json({
+      logs: formatted,
+      total,
+      page: pageNum,
+      pageSize: size,
+      filters: {
+        versions: versionRows.map(r => r.version_name).filter(Boolean),
+        operators: operatorRows.map(r => r.name).filter(Boolean),
+        actions: actionRows.map(r => r.action).filter(Boolean)
+      }
+    });
   } catch (err) {
     console.error('读取修改记录日志失败:', err);
     res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
