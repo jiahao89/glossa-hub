@@ -184,12 +184,16 @@ export default function TranslationTab({
 
     const itemsToTranslate = targetRecords.map(r => {
       const fields = r.fields || {};
-      const missingLangs = TARGET_LANGUAGES.filter(lang => !fields[lang]);
+      const zhCn = (fields['CN（中文）'] || '').trim();
+      if (!zhCn) return null; // Skip terms without Chinese source text
+      
+      const missingLangs = TARGET_LANGUAGES.filter(lang => !fields[lang] || String(fields[lang]).trim() === '');
       if (missingLangs.length === 0) return null;
+      
       return {
         recordId: r.recordId || r.id,
         KW: fields['KW'] || '',
-        '中文': fields['CN（中文）'] || '',
+        '中文': zhCn,
         '所在页面': fields['所在页面'] || '',
         missingLangs,
         translations: {}
@@ -197,7 +201,7 @@ export default function TranslationTab({
     }).filter(Boolean);
 
     if (itemsToTranslate.length === 0) {
-      toast.info(selectedRecordIds.size > 0 ? '选中的词条都已完成翻译，无需重新翻译' : '当前表格中没有未翻译的词条');
+      toast.info(selectedRecordIds.size > 0 ? '选中的词条包含空中文或都已完成翻译' : '当前表格中没有待翻译的词条');
       return;
     }
 
@@ -212,6 +216,8 @@ export default function TranslationTab({
     setIsTranslatingBatch(true);
     const updatedList = [...batchPreviewList];
     let translatedCount = 0;
+    let successCount = 0;
+    let errorCount = 0;
 
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
@@ -225,11 +231,15 @@ export default function TranslationTab({
       });
 
       try {
+        const targetLangsReq = (item.missingLangs && item.missingLangs.length > 0) 
+          ? item.missingLangs.join(',') 
+          : TARGET_LANGUAGES.join(',');
+
         const inputs = {
           KW: item.KW,
           text: item['中文'],
           context: item['所在页面'] || '无',
-          target_languages: TARGET_LANGUAGES.join(',')
+          target_languages: targetLangsReq
         };
 
         const res = await apiFetch(`/api/projects/proj-default/ai-translate`, {
@@ -255,9 +265,15 @@ export default function TranslationTab({
           item.tmMatch = true;
         }
         
-        item.translations = trans;
+        if (Object.keys(trans).length > 0) {
+          item.translations = { ...(item.translations || {}), ...trans };
+          successCount++;
+        } else {
+          errorCount++;
+        }
         setBatchPreviewList([...updatedList]);
       } catch (err) {
+        errorCount++;
         console.error(`翻译词条 ${item.KW} 失败:`, err);
         toast.error(`翻译词条 ${item.KW || item['中文']} 失败: ${err.message}`);
       }
@@ -265,7 +281,14 @@ export default function TranslationTab({
     }
 
     setIsTranslatingBatch(false);
-    setBatchProgress(prev => ({ ...prev, status: '批量翻译完成！请检查预览内容并确认写入。' }));
+    if (errorCount > 0) {
+      setBatchProgress(prev => ({ 
+        ...prev, 
+        status: `批量翻译完成！${successCount} 条成功` + (errorCount > 0 ? `，${errorCount} 条失败/无输出` : '') + '。请检查预览内容。' 
+      }));
+    } else {
+      setBatchProgress(prev => ({ ...prev, status: '批量翻译全部完成！请检查预览内容并确认写入。' }));
+    }
   };
 
   const handleConfirmBatchWrite = async () => {
