@@ -18,6 +18,22 @@ export default function SettingsTab({
   const [showOverride, setShowOverride] = useState(false);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState('magene_night'); // 'magene_night' | 'dify_cloud' | 'custom'
+
+  const handleApplyPreset = (presetType) => {
+    setSelectedPreset(presetType);
+    if (presetType === 'magene_night') {
+      setDifyUrl('https://night.magene.cn/v1');
+      setDifyKey('app-zV0Lo78Bi5WjhplWDL7OwsWR');
+      toast.info('已加载 [迈金 Night 专用引擎] 预设，请点击“保存配置”');
+    } else if (presetType === 'dify_cloud') {
+      setDifyUrl('https://api.dify.ai/v1');
+      setDifyKey('');
+      toast.info('已加载 [Dify 官方云服务] 预设，请输入对应的 API Key');
+    } else if (presetType === 'custom') {
+      toast.info('请在下方手动输入自定义 API 服务器与 API Key');
+    }
+  };
 
   // Recycle Bin states
   const [recycleItems, setRecycleItems] = useState([]);
@@ -252,6 +268,67 @@ export default function SettingsTab({
             </div>
           </div>
 
+          {/* Quick Engine Presets Bar */}
+          <div style={{
+            padding: '1rem 1.25rem',
+            borderRadius: '0.6rem',
+            border: '1px solid var(--border-color)',
+            backgroundColor: 'var(--bg-secondary)',
+            marginBottom: '1rem'
+          }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>🚀 快速切换 Dify 引擎预设</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>点击下方预设可快速填入参数</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.6rem' }}>
+              <div 
+                onClick={() => handleApplyPreset('magene_night')}
+                style={{
+                  padding: '0.6rem 0.8rem',
+                  borderRadius: '6px',
+                  border: `1.5px solid ${selectedPreset === 'magene_night' ? 'var(--accent)' : 'var(--border-color)'}`,
+                  backgroundColor: selectedPreset === 'magene_night' ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-primary)' }}>⚡ 迈金 Night 专用引擎</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>night.magene.cn</div>
+              </div>
+
+              <div 
+                onClick={() => handleApplyPreset('dify_cloud')}
+                style={{
+                  padding: '0.6rem 0.8rem',
+                  borderRadius: '6px',
+                  border: `1.5px solid ${selectedPreset === 'dify_cloud' ? 'var(--accent)' : 'var(--border-color)'}`,
+                  backgroundColor: selectedPreset === 'dify_cloud' ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-primary)' }}>🌐 Dify 官方云服务</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>api.dify.ai</div>
+              </div>
+
+              <div 
+                onClick={() => handleApplyPreset('custom')}
+                style={{
+                  padding: '0.6rem 0.8rem',
+                  borderRadius: '6px',
+                  border: `1.5px solid ${selectedPreset === 'custom' ? 'var(--accent)' : 'var(--border-color)'}`,
+                  backgroundColor: selectedPreset === 'custom' ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-primary)' }}>⚙️ 手动自定义引擎</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>自建服务器/其他地址</div>
+              </div>
+            </div>
+          </div>
+
           {/* Toggle advanced override */}
           {projectRole === 'owner' ? (
             <button
@@ -259,7 +336,7 @@ export default function SettingsTab({
               className="btn btn-secondary"
               style={{ marginBottom: '1rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem' }}
             >
-              {showOverride ? '收起高级配置' : (isCustom ? '修改自定义覆盖配置' : '连接异常？手动配置覆盖')}
+              {showOverride ? '收起 API 配置' : (isCustom ? '修改 API 服务器及 Key 参数' : '查看/编辑 API 参数细节')}
             </button>
           ) : (
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem', fontStyle: 'italic' }}>
@@ -270,16 +347,33 @@ export default function SettingsTab({
           {showOverride && projectRole === 'owner' && (
             <>
               <div className="form-group">
-                <label>Dify 接口地址 (Base URL)</label>
+                <label>引擎预设选择</label>
+                <select
+                  value={selectedPreset}
+                  onChange={(e) => handleApplyPreset(e.target.value)}
+                  className="select-input"
+                  style={{ width: '100%', marginBottom: '0.5rem' }}
+                >
+                  <option value="magene_night">⚡ 迈金 Night 专用引擎 (night.magene.cn)</option>
+                  <option value="dify_cloud">🌐 Dify 官方云服务 (api.dify.ai)</option>
+                  <option value="custom">⚙️ 手动自定义服务器 & API Key</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Dify API 服务器地址 (Base URL)</label>
                 <input 
                   type="text" 
                   value={difyUrl} 
-                  onChange={(e) => setDifyUrl(e.target.value)} 
-                  placeholder="例如: https://api.dify.ai/v1"
+                  onChange={(e) => {
+                    setDifyUrl(e.target.value);
+                    setSelectedPreset('custom');
+                  }} 
+                  placeholder="例如: https://night.magene.cn/v1"
                   className="text-input"
                 />
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  Dify 平台提供的工作流 API 基础路径，若为云服务填 https://api.dify.ai/v1
+                  Dify 平台提供的工作流 API 基础路径
                 </span>
               </div>
 
@@ -288,19 +382,22 @@ export default function SettingsTab({
                   Dify API 密钥 (API Key) 
                   {keyConfigured && (
                     <span style={{ marginLeft: '0.5rem', color: 'var(--accent)', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                      ● {isCustom ? '当前已使用自定义密钥' : '当前使用内置密钥'}
+                      ● {isCustom ? '当前已配置密钥' : '使用系统默认密钥'}
                     </span>
                   )}
                 </label>
                 <input 
                   type="password" 
                   value={difyKey} 
-                  onChange={(e) => setDifyKey(e.target.value)} 
-                  placeholder={keyConfigured ? "留空保持当前配置，输入新密钥覆盖更新" : "app-xxxxxxxxxxxx"}
+                  onChange={(e) => {
+                    setDifyKey(e.target.value);
+                    setSelectedPreset('custom');
+                  }} 
+                  placeholder={keyConfigured ? "留空保持当前配置，输入新密钥覆盖更新" : "app-zV0Lo78Bi5WjhplWDL7OwsWR"}
                   className="text-input"
                 />
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  在 Dify 对应工作流的“API 访问”页面中生成的密钥，以 app- 开头
+                  工作流“API 访问”页面中生成的 Key (以 app- 开头)
                 </span>
               </div>
 
@@ -320,7 +417,7 @@ export default function SettingsTab({
                   className="btn btn-primary"
                   style={{ flex: 1 }}
                 >
-                  {saving ? '正在保存...' : '保存配置'}
+                  {saving ? '正在保存...' : '保存并应用此配置'}
                 </button>
               </div>
             </>

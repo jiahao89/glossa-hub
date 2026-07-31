@@ -1,8 +1,8 @@
 const { db } = require('../config/db.cjs');
 
 const DEFAULT_DIFY_CONFIG = {
-  baseUrl: process.env.DIFY_BASE_URL || 'https://api.dify.ai/v1',
-  apiKey: process.env.DIFY_API_KEY || ''
+  baseUrl: process.env.DIFY_BASE_URL || 'https://night.magene.cn/v1',
+  apiKey: process.env.DIFY_API_KEY || 'app-zV0Lo78Bi5WjhplWDL7OwsWR'
 };
 
 async function getEffectiveDifyConfig(projectId) {
