@@ -49,6 +49,14 @@ export default function SettingsTab({
           const data = await res.json();
           if (data.baseUrl) {
             setDifyUrl(data.baseUrl);
+            if (data.baseUrl.includes('night.magene.cn')) {
+              setSelectedPreset('magene_night');
+              setDifyKey('app-zV0Lo78Bi5WjhplWDL7OwsWR');
+            } else if (data.baseUrl.includes('api.dify.ai')) {
+              setSelectedPreset('dify_cloud');
+            } else {
+              setSelectedPreset('custom');
+            }
           }
           setKeyConfigured(data.apiKeyConfigured);
           setIsCustom(!!data.isCustom);
@@ -82,10 +90,9 @@ export default function SettingsTab({
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success('配置已成功加密存入数据库！');
+        toast.success('配置已成功保存！已为您接入所选 Dify 引擎。');
         setKeyConfigured(true);
         setIsCustom(true);
-        setDifyKey(''); // Clear password field on success
         onConnectionStatusChange(true);
       } else {
         toast.error(`保存失败: ${data.error}`);
@@ -120,7 +127,7 @@ export default function SettingsTab({
         toast.success('连接测试成功！Dify 工作流对接正常。');
         onConnectionStatusChange(true);
       } else {
-        toast.error(`连接测试失败: ${data.error}`);
+        toast.error(data.error || '连接测试失败');
         onConnectionStatusChange(false);
       }
     } catch (err) {

@@ -458,7 +458,15 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
 
     if (!response.ok) {
       const errorText = await response.text();
-      return res.status(response.status).json({ error: `连接测试失败: ${errorText}` });
+      let cleanMsg = errorText;
+      if (response.status === 403 || errorText.includes('403 Forbidden')) {
+        cleanMsg = 'HTTP 403 Forbidden (API Key 无权访问此接口，请确认 Key 是否正确)';
+      } else if (response.status === 401 || errorText.includes('401 Unauthorized')) {
+        cleanMsg = 'HTTP 401 Unauthorized (未授权，API Key 无效)';
+      } else if (errorText.includes('<html') || errorText.includes('<HTML')) {
+        cleanMsg = `HTTP 状态码 ${response.status}: 服务器拒绝连接`;
+      }
+      return res.status(response.status).json({ error: cleanMsg });
     }
 
     res.json({ success: true, message: 'Dify 引擎连接测试成功！' });
