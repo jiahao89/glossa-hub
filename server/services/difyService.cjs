@@ -15,8 +15,17 @@ async function getEffectiveDifyConfig(projectId) {
       } else {
         cfg = JSON.parse(project.dify_config || '{}');
       }
-      if (cfg.baseUrl && cfg.apiKey) {
-        return { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, isCustom: true };
+      if (cfg.baseUrl) {
+        let apiKey = cfg.apiKey;
+        // Auto-correct if URL is night.magene.cn but key is empty or old invalid key
+        if (cfg.baseUrl.includes('night.magene.cn')) {
+          if (!apiKey || apiKey === 'app-aochEehgytnJciYeI3L1pqfj') {
+            apiKey = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
+          }
+        }
+        if (apiKey) {
+          return { baseUrl: cfg.baseUrl, apiKey, isCustom: true };
+        }
       }
     }
   } catch {

@@ -31,7 +31,15 @@ router.post('/projects/:projectId/dify', authenticateToken, requireProjectMember
         existingConfig = {};
       }
     }
-    const finalApiKey = apiKey || existingConfig.apiKey || '';
+    let finalApiKey = apiKey;
+    if (!finalApiKey || (baseUrl.includes('night.magene.cn') && finalApiKey === 'app-aochEehgytnJciYeI3L1pqfj')) {
+      if (baseUrl.includes('night.magene.cn')) {
+        finalApiKey = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
+      } else {
+        finalApiKey = existingConfig.apiKey || '';
+      }
+    }
+
     if (!finalApiKey) {
       return res.status(400).json({ error: 'apiKey 不能为空（尚未配置过密钥）' });
     }
@@ -440,7 +448,15 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
 
   const effective = await getEffectiveDifyConfig(projectId);
   const targetUrl = baseUrl || effective.baseUrl;
-  const targetKey = apiKey || effective.apiKey;
+  let targetKey = apiKey;
+
+  if (!targetKey || (targetUrl.includes('night.magene.cn') && targetKey === 'app-aochEehgytnJciYeI3L1pqfj')) {
+    if (targetUrl.includes('night.magene.cn')) {
+      targetKey = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
+    } else {
+      targetKey = effective.apiKey;
+    }
+  }
 
   if (!targetUrl || !targetKey) {
     return res.status(400).json({ error: 'baseUrl 和 apiKey 不能为空' });
