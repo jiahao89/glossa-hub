@@ -328,22 +328,73 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
       });
     }
 
-    if (typeof rawVal === 'object') {
+    // Robust JSON Repair & Extraction Helper
+    const tryExtractAndParseJson = (inputStr) => {
+      if (!inputStr || typeof inputStr !== 'string') return null;
+      let cleaned = inputStr.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+      try {
+        const obj = JSON.parse(cleaned);
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
+      } catch {}
+
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const obj = JSON.parse(jsonMatch[0]);
+          if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
+        } catch {}
+
+        try {
+          let repaired = jsonMatch[0]
+            .replace(/,\s*([\}\]])/g, '$1')
+            .replace(/(['"])?([a-zA-Z0-9_\u4e00-\u9fa5]+)\1\s*:/g, '"$2":');
+          const obj = JSON.parse(repaired);
+          if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
+        } catch {}
+      }
+      return null;
+    };
+
+    const isTranslationObj = (obj) => {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+      const keys = Object.keys(obj);
+      return keys.length > 0 && !obj.error && keys.some(k => 
+        k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || 
+        k.includes('EN') || k.includes('FR') || k.includes('DE') || k.includes('ES') || 
+        k.includes('CN') || k.includes('中文') || k.length <= 6
+      );
+    };
+
+    if (typeof rawVal === 'object' && rawVal !== null) {
       if (rawVal.error) {
+        const fallbackText = rawVal.raw_output || rawVal.text || rawVal.result || rawVal.raw || '';
+        const repairedObj = tryExtractAndParseJson(fallbackText);
+        if (repairedObj && isTranslationObj(repairedObj)) {
+          console.log('✅ 成功从 Dify Code 节点的 raw_output 中容错解析出完整 JSON 翻译!');
+          return res.json(repairedObj);
+        }
         return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${rawVal.error}` });
       }
       return res.json(rawVal);
     }
 
-    try {
-      const parsed = JSON.parse(String(rawVal));
-      if (parsed && typeof parsed === 'object' && parsed.error) {
-        return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${parsed.error}` });
+    const parsedObj = tryExtractAndParseJson(String(rawVal));
+    if (parsedObj && typeof parsedObj === 'object') {
+      if (parsedObj.error) {
+        const fallbackText = parsedObj.raw_output || parsedObj.text || '';
+        const repairedObj = tryExtractAndParseJson(fallbackText);
+        if (repairedObj && isTranslationObj(repairedObj)) {
+          console.log('✅ 成功容错修复解析 Dify raw_output JSON!');
+          return res.json(repairedObj);
+        }
+        return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${parsedObj.error}` });
       }
-      res.json(parsed);
-    } catch (parseErr) {
-      res.status(500).json({ error: `解析 Dify 输出 JSON 失败: ${parseErr.message}。原始输出为: ${String(rawVal).slice(0, 200)}` });
+      return res.json(parsedObj);
     }
+
+    res.status(500).json({ error: `解析 Dify 输出 JSON 失败。原始输出为: ${String(rawVal).slice(0, 200)}` });
   } catch (err) {
     console.error('中转 AI 翻译失败:', err);
     res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
