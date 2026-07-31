@@ -5,6 +5,78 @@ const { authenticateToken, requireProjectMember, requireRole } = require('../mid
 const { aiTranslateLimiter } = require('../middleware/rateLimiters.cjs');
 const { getEffectiveDifyConfig, generateKwHelper } = require('../services/difyService.cjs');
 
+const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GlossaHub/1.1';
+
+async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
+  const candidates = [
+    primaryConfig,
+    { baseUrl: 'https://night.magene.cn/v1', apiKey: 'app-zV0Lo78Bi5WjhplWDL7OwsWR' },
+    { baseUrl: 'https://api.dify.ai/v1', apiKey: 'app-aochEehgytnJciYeI3L1pqfj' }
+  ];
+
+  const uniqueCandidates = [];
+  const seen = new Set();
+
+  for (const c of candidates) {
+    if (!c || !c.baseUrl || !c.apiKey) continue;
+    let url = c.baseUrl.replace(/\/$/, '').trim();
+    let key = c.apiKey;
+    if (url.includes('night.magene.cn')) {
+      key = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
+    } else if (url.includes('api.dify.ai') && key === 'app-zV0Lo78Bi5WjhplWDL7OwsWR') {
+      key = 'app-aochEehgytnJciYeI3L1pqfj';
+    }
+    const sig = `${url}___${key}`;
+    if (!seen.has(sig)) {
+      seen.add(sig);
+      uniqueCandidates.push({ baseUrl: url, apiKey: key });
+    }
+  }
+
+  let lastStatus = 500;
+  let lastErrorText = '';
+
+  for (const item of uniqueCandidates) {
+    try {
+      const targetUrl = `${item.baseUrl}/workflows/run`;
+      const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${item.apiKey}`,
+          'User-Agent': BROWSER_USER_AGENT,
+          'Accept': 'application/json, text/plain, */*'
+        },
+        body: JSON.stringify({
+          inputs,
+          response_mode: 'blocking',
+          user: userIdStr || 'glossahub_client'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const status = data.data?.status || data.status;
+        if (status !== 'failed' && status !== 'stopped') {
+          return { ok: true, data, usedUrl: item.baseUrl };
+        } else {
+          lastErrorText = data.data?.error || data.error || `Workflow status: ${status}`;
+          console.warn(`⚠️ Dify workflow status ${status} on ${item.baseUrl}: ${lastErrorText}`);
+        }
+      } else {
+        lastStatus = response.status;
+        lastErrorText = await response.text();
+        console.warn(`⚠️ Dify API returned ${response.status} from ${item.baseUrl}, trying failover...`);
+      }
+    } catch (err) {
+      console.warn(`⚠️ Dify fetch exception on ${item.baseUrl}: ${err.message}`);
+      lastErrorText = err.message;
+    }
+  }
+
+  return { ok: false, status: lastStatus, errorText: lastErrorText };
+}
+
 // POST /api/projects/:projectId/dify - 保存项目的 Dify 配置
 router.post('/projects/:projectId/dify', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
   const { projectId } = req.params;
@@ -237,37 +309,22 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
     // === END GLOSSARY INTERCEPTION ===
 
     const config = await getEffectiveDifyConfig(projectId);
+    const result = await executeDifyWithFailover(config, inputs, `user_${userId}`);
 
-    const cleanBaseUrl = config.baseUrl.replace(/\/$/, '');
-    const url = `${cleanBaseUrl}/workflows/run`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`
-      },
-      body: JSON.stringify({
-        inputs,
-        response_mode: 'blocking',
-        user: 'glossahub_standalone_server'
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
+    if (!result.ok) {
+      const errorText = result.errorText || '';
       let cleanMsg = errorText;
       
-      if (response.status === 504 || errorText.includes('504') || errorText.includes('Gateway time-out') || errorText.includes('Gateway Timeout')) {
-        cleanMsg = 'Dify 接口响应超时 (HTTP 504 Gateway Timeout)。请检查网络或在【系统设置】中切换为【迈金 Night 专用引擎】。';
-      } else if (response.status === 502 || errorText.includes('502 Bad Gateway')) {
-        cleanMsg = 'Dify 网关响应异常 (HTTP 502 Bad Gateway)。建议在【系统设置】中切换为【迈金 Night 专用引擎】。';
-      } else if (response.status === 403 || errorText.includes('403 Forbidden')) {
+      if (result.status === 504 || errorText.includes('504') || errorText.includes('Gateway time-out') || errorText.includes('Gateway Timeout')) {
+        cleanMsg = 'Dify 接口响应超时 (HTTP 504 Gateway Timeout)。已重试全量备用引擎，请确认服务可用性。';
+      } else if (result.status === 502 || errorText.includes('502 Bad Gateway')) {
+        cleanMsg = 'Dify 网关响应异常 (HTTP 502 Bad Gateway)。建议在【系统设置】中切换引擎。';
+      } else if (result.status === 403 || errorText.includes('403 Forbidden')) {
         cleanMsg = 'Dify 拒绝访问 (HTTP 403 Forbidden)。请检查 API Key 是否正确或已授权。';
-      } else if (response.status === 401 || errorText.includes('401 Unauthorized')) {
+      } else if (result.status === 401 || errorText.includes('401 Unauthorized')) {
         cleanMsg = 'Dify 校验失败 (HTTP 401 Unauthorized)。API Key 无效。';
       } else if (errorText.includes('<html') || errorText.includes('<HTML')) {
-        cleanMsg = `Dify 远程服务器响应异常 (HTTP ${response.status})`;
+        cleanMsg = `Dify 远程服务器响应异常 (HTTP ${result.status})`;
       } else {
         try {
           const parsed = JSON.parse(errorText);
@@ -277,10 +334,10 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
         }
       }
 
-      return res.status(response.status).json({ error: `Dify API 响应错误: ${cleanMsg}` });
+      return res.status(result.status || 500).json({ error: `Dify API 响应错误: ${cleanMsg}` });
     }
 
-    const data = await response.json();
+    const data = result.data;
 
     const workflowStatus = data.data?.status || data.status;
     const workflowError = data.data?.error || data.error;
