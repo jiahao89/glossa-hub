@@ -801,7 +801,7 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
       // 1. Delete
       if (deletedIds.length > 0) {
         const placeholders = deletedIds.map((_, i) => `$${i + 1}`).join(',');
-        await tx.query(`DELETE FROM terms WHERE id IN (${placeholders}) AND version_id = $${deletedIds.length + 1} AND (is_locked = 0 OR is_locked IS FALSE)`, [...deletedIds, tableId]);
+        await tx.query(`DELETE FROM terms WHERE id IN (${placeholders}) AND version_id = $${deletedIds.length + 1} AND (is_locked IS NOT TRUE)`, [...deletedIds, tableId]);
       }
 
       // 2. Insert (Added)
@@ -828,6 +828,8 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
         const translationsMetaStr = JSON.stringify(rec.translationsMeta || {});
         const nowStr = new Date().toISOString();
 
+        const lockedFalseVal = dbType === 'postgres' ? false : 0;
+
         await tx.query(`
           INSERT INTO terms (id, version_id, kw, context, zh_cn, translations, translations_meta, is_locked, status, created_at, updated_at)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -839,7 +841,7 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
           zhCnVal,
           fieldsStr,
           translationsMetaStr,
-          0,
+          lockedFalseVal,
           'DRAFT',
           nowStr,
           nowStr
@@ -906,7 +908,7 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
         await tx.query(`
           UPDATE terms
           SET kw = $1, context = $2, zh_cn = $3, translations = $4, translations_meta = $5, updated_at = $6
-          WHERE id = $7 AND version_id = $8 AND (is_locked = 0 OR is_locked IS FALSE)
+          WHERE id = $7 AND version_id = $8 AND (is_locked IS NOT TRUE)
         `, [
           kwVal,
           contextVal,
@@ -941,7 +943,7 @@ router.delete('/tables/:tableId/clean-empty', authenticateToken, writeLimiter, a
       DELETE FROM terms
       WHERE version_id = $1
         AND (TRIM(COALESCE(kw, '')) = '' OR TRIM(COALESCE(zh_cn, '')) = '')
-        AND (is_locked = 0 OR is_locked IS FALSE)
+        AND (is_locked IS NOT TRUE)
     `, [tableId]);
 
     const deletedCount = result.changes || 0;

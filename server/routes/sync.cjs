@@ -252,7 +252,7 @@ router.post('/sync-table', authenticateToken, heavyOperationLimiter, async (req,
                  kw=excluded.kw, context=excluded.context, owner=excluded.owner, zh_cn=excluded.zh_cn,
                  translations=excluded.translations, translations_meta=excluded.translations_meta,
                  updated_by=excluded.updated_by, updated_at=datetime('now')
-               WHERE is_locked = 0 OR is_locked IS NULL`,
+               WHERE (is_locked IS NOT TRUE)`,
               [termId, tableId, kw, context, owner, zh_cn, translationsStr, finalMetaStr, req.user.id]
             );
           }
