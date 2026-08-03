@@ -27,8 +27,30 @@ const TranslationRow = memo(function TranslationRow({
   const recId = rec.recordId || rec.id;
   const canManageLock = currentUserRole === 'admin' || projectRole === 'owner';
 
+  // Row-level keyboard nav: Enter opens the edit modal. We bail when the
+  // user is already focused inside an interactive child (input/button/link)
+  // so we don't double-trigger or fight the inline editor's own keybinds.
+  const handleRowKeyDown = (e) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target;
+    // Don't hijack Enter when focus is on an input/button/select inside the row
+    if (target && target !== e.currentTarget) {
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'SELECT' || tag === 'TEXTAREA') {
+        return;
+      }
+    }
+    e.preventDefault();
+    onEditClick(rec);
+  };
+
   return (
-    <tr aria-selected={isSelected || undefined}>
+    <tr
+      aria-selected={isSelected || undefined}
+      tabIndex={0}
+      onKeyDown={handleRowKeyDown}
+      aria-label={kw ? `词条 ${kw}，按 Enter 编辑` : undefined}
+    >
       <td style={{ textAlign: 'center', width: '38px' }}>
         <input
           type="checkbox"
@@ -160,10 +182,10 @@ const TranslationRow = memo(function TranslationRow({
         <button
           onClick={() => onEditClick(rec)}
           className="btn btn-secondary btn-icon-only"
-          style={{ height: '24px', width: '24px' }}
+          style={{ height: '32px', width: '32px' }}  /* WCAG 2.5.5 touch target ≥ 24-32px */
           title="双击或点击编辑词条"
         >
-          <Edit2 size={12} />
+          <Edit2 size={13} />
         </button>
       </td>
     </tr>

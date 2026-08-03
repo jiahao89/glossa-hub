@@ -34,6 +34,8 @@ import TranslationToolbar from './TranslationToolbar';
 import CSVImportHandler from './CSVImportHandler';
 import AddTermModal from './AddTermModal';
 import BatchAddModal from './BatchAddModal';
+import EditTermModal from './EditTermModal';
+import InheritModal from './InheritModal';
 import TranslationTable from './TranslationTable';
 
 const DEFAULT_TARGET_LANGUAGES = [
@@ -110,6 +112,7 @@ export default function TranslationTab({
 
   // State for Batch Add Modal
   const [batchAddModalOpen, setBatchAddModalOpen] = useState(false);
+  const [inheritOpen, setInheritOpen] = useState(false);
 
   useEffect(() => {
     setModifiedCells({});
@@ -530,6 +533,43 @@ export default function TranslationTab({
     }
   };
 
+  // 批量删除 (走回收站, 30 天可恢复)
+  const handleBatchDelete = async () => {
+    if (selectedRecordIds.size === 0) return;
+    const termIds = Array.from(selectedRecordIds);
+    if (!window.confirm(
+      `确定要将选中的 ${termIds.length} 条词条送入回收站吗？\n\n` +
+      `• 30 天内可在「数据回收站」一键恢复\n` +
+      `• 已锁定的词条会被自动跳过\n` +
+      `• 此操作会写入「批量删除」审计日志`
+    )) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await apiFetch('/api/terms/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ termIds }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '批量删除失败');
+      }
+      const data = await res.json();
+      const lockedNote = data.lockedSkipped > 0
+        ? ` (跳过 ${data.lockedSkipped} 条已锁定词条)`
+        : '';
+      toast.success(`${data.message || '已删除'}${lockedNote}`);
+      setSelectedRecordIds(new Set());
+      await loadTableData(selectedTableId);
+    } catch (err) {
+      toast.error(err.message || '批量删除失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBatchUpdateCategorySubmit = async () => {
     if (selectedRecordIds.size === 0) return;
     const termIds = Array.from(selectedRecordIds);
@@ -671,6 +711,7 @@ export default function TranslationTab({
         onBatchUnlock={() => {
           Array.from(selectedRecordIds).forEach(id => handleToggleRowLock(id, true));
         }}
+        onBatchDelete={handleBatchDelete}
         onExportXLS={handleExportXLS}
                 csvImportNode={
           <CSVImportHandler 
@@ -683,6 +724,7 @@ export default function TranslationTab({
         }
         onAddTerm={() => setAddModalOpen(true)}
         onBatchAdd={() => setBatchAddModalOpen(true)}
+        onInherit={() => setInheritOpen(true)}
 
 
         onDataClean={handleDataClean}
@@ -725,6 +767,27 @@ export default function TranslationTab({
         selectedTableId={selectedTableId}
         targetLanguages={TARGET_LANGUAGES}
         onAddSuccess={() => loadTableData(selectedTableId)}
+      />
+
+      <EditTermModal
+        open={!!editModalRecord}
+        record={editModalRecord}
+        projectId="proj-default"
+        targetLanguages={TARGET_LANGUAGES}
+        fieldMap={fieldMap}
+        getRecordValue={getRecordValue}
+        currentUserRole={currentUser?.role}
+        projectRole={projectRole}
+        onClose={() => setEditModalRecord(null)}
+        onSaveSuccess={() => loadTableData(selectedTableId)}
+      />
+
+      <InheritModal
+        open={inheritOpen}
+        onClose={() => setInheritOpen(false)}
+        currentTableId={selectedTableId}
+        tables={tables}
+        onSuccess={() => loadTableData(selectedTableId)}
       />
 
       <BatchAddModal
