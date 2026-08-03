@@ -3,8 +3,8 @@
 This file contains the core principles, architecture constraints, and business rules for the Glossa-Hub project. As an AI agent working on this repository, you must always adhere to these rules.
 
 ## 1. Git & Deployment Workflow
-- **Dual Branch Commit**: When committing changes, always ensure code is pushed to BOTH the `v1.1` and `main` branches. 
-- **Environment Split**: Vercel automatically deploys from the `main` branch. Active feature development should be done on the `v1.1` branch, followed by a merge to `main`.
+- **Dual Branch Commit**: When committing changes, always ensure code is pushed to BOTH the `v1.2` and `main` branches. 
+- **Environment Split**: Vercel automatically deploys from the `main` branch. Active feature development should be done on the `v1.2` branch, followed by a merge to `main`.
 
 ## 2. Tech Stack & Architecture
 - **Frontend**: React 18, Vite, Tailwind CSS. Components should be functional, use React Hooks, and follow modern modular design.
