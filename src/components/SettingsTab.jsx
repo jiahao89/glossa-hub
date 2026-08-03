@@ -24,12 +24,15 @@ export default function SettingsTab({
     setSelectedPreset(presetType);
     if (presetType === 'magene_night') {
       setDifyUrl('https://night.magene.cn/v1');
+      // 显示占位符提示用户这是内置 key, 实际 key 由后端解析
       setDifyKey('app-zV0Lo78Bi5WjhplWDL7OwsWR');
-      toast.info('已加载 [迈金 Night 专用引擎] 预设，请点击“保存配置”');
+      toast.info('已加载 [迈金 Night 专用引擎] 内置预设');
     } else if (presetType === 'dify_cloud') {
       setDifyUrl('https://api.dify.ai/v1');
+      // 不再强制清空 — 后端会按 baseUrl 自动解析内置 key,
+      // 用户留空 = “使用内置 Dify App key” 的语义, 而非”未配置”
       setDifyKey('');
-      toast.info('已加载 [Dify 官方云服务] 预设，请输入对应的 API Key');
+      toast.info('已加载 [Dify 官方云服务] 内置预设 (Key 由服务端自动解析)');
     } else if (presetType === 'custom') {
       toast.info('请在下方手动输入自定义 API 服务器与 API Key');
     }
@@ -51,9 +54,12 @@ export default function SettingsTab({
             setDifyUrl(data.baseUrl);
             if (data.baseUrl.includes('night.magene.cn')) {
               setSelectedPreset('magene_night');
+              // 内置 magene key 仅作 UI 占位符显示, 真实校验由后端做
               setDifyKey('app-zV0Lo78Bi5WjhplWDL7OwsWR');
             } else if (data.baseUrl.includes('api.dify.ai')) {
               setSelectedPreset('dify_cloud');
+              // 不填 key — 后端会按 baseUrl 自动解析内置 Dify App key
+              setDifyKey('');
             } else {
               setSelectedPreset('custom');
             }
@@ -396,18 +402,28 @@ export default function SettingsTab({
                     </span>
                   )}
                 </label>
-                <input 
-                  type="password" 
-                  value={difyKey} 
+                <input
+                  type="password"
+                  value={difyKey}
                   onChange={(e) => {
                     setDifyKey(e.target.value);
                     setSelectedPreset('custom');
-                  }} 
-                  placeholder={keyConfigured ? "留空保持当前配置，输入新密钥覆盖更新" : "app-zV0Lo78Bi5WjhplWDL7OwsWR"}
+                  }}
+                  placeholder={
+                    keyConfigured
+                      ? '留空保持当前配置，输入新密钥覆盖更新'
+                      : (selectedPreset === 'magene_night'
+                          ? '使用内置迈金 Night 引擎 Key (留空即可)'
+                          : selectedPreset === 'dify_cloud'
+                          ? '使用内置 Dify 官方云 Key (留空即可)'
+                          : 'app-zV0Lo78Bi5WjhplWDL7OwsWR')
+                  }
                   className="text-input"
                 />
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  工作流“API 访问”页面中生成的 Key (以 app- 开头)
+                  {selectedPreset === 'magene_night' || selectedPreset === 'dify_cloud'
+                    ? '内置预设：留空由服务端自动填入运维预配置的 Key；如需用自己的 Key 覆盖，直接填入即可。'
+                    : '工作流“API 访问”页面中生成的 Key (以 app- 开头)'}
                 </span>
               </div>
 

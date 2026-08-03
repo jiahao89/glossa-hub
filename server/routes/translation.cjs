@@ -8,12 +8,38 @@ const { parseJsonField } = require('../utils/jsonFields.cjs');
 
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GlossaHub/1.1';
 
+// 内置 Dify 引擎 (由运维预配置, 前端无需手动输入 Key)
+const BUILTIN_DIFY_APPS = {
+  'night.magene.cn': 'app-zV0Lo78Bi5WjhplWDL7OwsWR',     // 迈金 Night 专用引擎
+  'api.dify.ai':     'app-aochEehgytnJciYeI3L1pqfj',     // Dify 官方云服务
+};
+
+/**
+ * 根据 baseUrl 解析应该使用的 API Key:
+ *   - 如果 baseUrl 命中内置引擎域名, 返回该引擎的内置 Key
+ *     (不管前端传什么, 运维管控的内置 Key 优先, 防止用户传错 Key)
+ *   - 否则返回前端传入的 key (可能是用户自定义)
+ *   - 都没有则返回 effective.apiKey (用户上次保存的自定义 Key)
+ *
+ * 这是单一来源, /dify-test 和 executeDifyWithFailover 都用它。
+ */
+function resolveBuiltinKey(baseUrl, providedKey, fallbackKey) {
+  for (const [host, builtinKey] of Object.entries(BUILTIN_DIFY_APPS)) {
+    if (baseUrl && baseUrl.includes(host)) {
+      return builtinKey;
+    }
+  }
+  return providedKey || fallbackKey;
+}
+
 async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
-  const candidates = [
-    primaryConfig,
-    { baseUrl: 'https://night.magene.cn/v1', apiKey: 'app-zV0Lo78Bi5WjhplWDL7OwsWR' },
-    { baseUrl: 'https://api.dify.ai/v1', apiKey: 'app-aochEehgytnJciYeI3L1pqfj' }
-  ];
+  // Built-in fallback candidates (运维预配置)
+  const builtinCandidates = Object.entries(BUILTIN_DIFY_APPS).map(([host, key]) => ({
+    baseUrl: `https://${host}/v1`,
+    apiKey: key,
+  }));
+
+  const candidates = [primaryConfig, ...builtinCandidates];
 
   const uniqueCandidates = [];
   const seen = new Set();
@@ -21,12 +47,8 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
   for (const c of candidates) {
     if (!c || !c.baseUrl || !c.apiKey) continue;
     let url = c.baseUrl.replace(/\/$/, '').trim();
-    let key = c.apiKey;
-    if (url.includes('night.magene.cn')) {
-      key = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
-    } else if (url.includes('api.dify.ai') && key === 'app-zV0Lo78Bi5WjhplWDL7OwsWR') {
-      key = 'app-aochEehgytnJciYeI3L1pqfj';
-    }
+    // Resolve the correct key for this URL (builtin takes precedence)
+    const key = resolveBuiltinKey(url, c.apiKey, null);
     const sig = `${url}___${key}`;
     if (!seen.has(sig)) {
       seen.add(sig);
@@ -509,24 +531,28 @@ router.post('/projects/:projectId/generate-kw', authenticateToken, requireProjec
 });
 
 // POST /api/projects/:projectId/dify-test - 测试 Dify 连接性
+//
+// 注意: 上游 Dify API 的 401/403 是 *业务错误* (Key 无效 / 权限不足),
+// 不是当前用户的会话失效, 不能让前端跳登录。
+// 因此 upstream 非 2xx 一律映射到 4xx/5xx 业务错误, 并通过 X-Business-Error
+// header 标识这是业务级错误 (前端 apiFetch 据此不触发跳登录)。
 router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
   const { baseUrl, apiKey } = req.body;
 
   const effective = await getEffectiveDifyConfig(projectId);
   const targetUrl = baseUrl || effective.baseUrl;
-  let targetKey = apiKey;
-
-  if (!targetKey || (targetUrl.includes('night.magene.cn') && targetKey === 'app-aochEehgytnJciYeI3L1pqfj')) {
-    if (targetUrl.includes('night.magene.cn')) {
-      targetKey = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
-    } else {
-      targetKey = effective.apiKey;
-    }
-  }
+  // 复用 executeDifyWithFailover 的内置 Key 解析逻辑:
+  //   baseUrl 命中 night.magene.cn → 内置 magene key
+  //   baseUrl 命中 api.dify.ai     → 内置 dify_cloud key
+  //   否则用前端传入的 key, 没有则回退到 effective.apiKey
+  const targetKey = resolveBuiltinKey(targetUrl, apiKey, effective.apiKey);
 
   if (!targetUrl || !targetKey) {
-    return res.status(400).json({ error: 'baseUrl 和 apiKey 不能为空' });
+    return res
+      .status(400)
+      .set('X-Business-Error', 'missing-config')
+      .json({ error: 'baseUrl 和 apiKey 不能为空，请选择内置预设或填写自定义参数' });
   }
 
   try {
@@ -544,7 +570,9 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${targetKey}`
+        'Authorization': `Bearer ${targetKey}`,
+        'User-Agent': BROWSER_USER_AGENT,
+        'Accept': 'application/json, text/plain, */*'
       },
       body: JSON.stringify({
         inputs: testInputs,
@@ -559,17 +587,26 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
       if (response.status === 403 || errorText.includes('403 Forbidden')) {
         cleanMsg = 'HTTP 403 Forbidden (API Key 无权访问此接口，请确认 Key 是否正确)';
       } else if (response.status === 401 || errorText.includes('401 Unauthorized')) {
-        cleanMsg = 'HTTP 401 Unauthorized (未授权，API Key 无效)';
+        cleanMsg = 'HTTP 401 Unauthorized (API Key 无效或已过期，请重新配置)';
       } else if (errorText.includes('<html') || errorText.includes('<HTML')) {
-        cleanMsg = `HTTP 状态码 ${response.status}: 服务器拒绝连接`;
+        cleanMsg = `HTTP ${response.status}: 服务器拒绝连接 (可能接口地址错误或服务器不可达)`;
       }
-      return res.status(response.status).json({ error: cleanMsg });
+      // 把 upstream 401/403 透传会被前端误判为"用户会话失效", 一律映射为 502
+      // (业务错误, 不是认证错误) 并带 X-Business-Error 头让 apiFetch 区分。
+      const businessStatus = response.status === 401 || response.status === 403 ? 502 : 400;
+      return res
+        .status(businessStatus)
+        .set('X-Business-Error', 'dify-upstream-rejected')
+        .json({ error: cleanMsg });
     }
 
     res.json({ success: true, message: 'Dify 引擎连接测试成功！' });
   } catch (err) {
     console.error('连接测试失败:', err);
-    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+    res
+      .status(500)
+      .set('X-Business-Error', 'dify-network-error')
+      .json({ error: '服务器内部错误，请稍后重试。' });
   }
 });
 

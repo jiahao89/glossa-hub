@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './Toast';
-import { Plus, Trash2, User, AlertOctagon, Edit2, Shield } from 'lucide-react';
+import { Plus, Trash2, AlertOctagon, Edit2, Shield } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
+import EmptyState from './EmptyState';
 
 export default function UsersTab({ _projectRole }) {
   const toast = useToast();
@@ -231,9 +232,11 @@ export default function UsersTab({ _projectRole }) {
             <tbody>
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500">
-                    <User size={48} className="mx-auto mb-3 opacity-20" />
-                    暂无用户数据
+                  <td colSpan={5}>
+                    <EmptyState
+                      title="暂无用户数据"
+                      description="点击右上角「新建用户」添加第一位协作者。"
+                    />
                   </td>
                 </tr>
               ) : (

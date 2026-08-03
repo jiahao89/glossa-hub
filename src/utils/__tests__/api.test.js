@@ -61,9 +61,12 @@ describe('apiFetch', () => {
     expect(callHeaders['Content-Type']).toBe('application/json');
   });
 
-  it('401 响应时清除 localStorage 并重定向', async () => {
+  it('401 响应且无 X-Business-Error: 清除 localStorage 并重定向 (用户会话失效)', async () => {
     localStorageMock.getItem.mockReturnValue('expired-token');
-    mockFetch.mockResolvedValue({ status: 401 });
+    mockFetch.mockResolvedValue({
+      status: 401,
+      headers: { get: (k) => (k.toLowerCase() === 'x-business-error' ? null : '') },
+    });
 
     // Mock window.location.href
     const originalLocation = window.location;
@@ -77,6 +80,26 @@ describe('apiFetch', () => {
     expect(window.location.href).toBe('/');
 
     // 恢复 window.location
+    window.location = originalLocation;
+  });
+
+  it('401 响应且带 X-Business-Error: 不清除 token, 不跳登录 (业务级 401, 例如 Dify upstream 拒签)', async () => {
+    localStorageMock.getItem.mockReturnValue('valid-token');
+    mockFetch.mockResolvedValue({
+      status: 401,
+      headers: { get: (k) => (k.toLowerCase() === 'x-business-error' ? 'dify-upstream-rejected' : '') },
+    });
+
+    const originalLocation = window.location;
+    delete window.location;
+    window.location = { href: '' };
+
+    // 不应 throw, 应返回 response 让调用方处理
+    const res = await apiFetch('/api/projects/proj-default/dify-test', { method: 'POST' });
+    expect(res.status).toBe(401);
+    expect(localStorageMock.removeItem).not.toHaveBeenCalled();
+    expect(window.location.href).toBe('');
+
     window.location = originalLocation;
   });
 

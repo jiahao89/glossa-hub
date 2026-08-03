@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Database, FileText, CheckCircle, BarChart3, Activity, Clock, User, Languages, Cpu, Zap } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { Skeleton } from './Skeleton';
+import EmptyState from './EmptyState';
 
 function formatLogTime(timestampStr) {
   if (!timestampStr) return '';
@@ -196,7 +197,12 @@ export default function DashboardTab({ onNavigate }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {stats.tableProgress.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>暂无词条表，请在“数据表管理”中创建。</div>
+              <EmptyState
+                title="暂无词条表"
+                description="请前往「数据表管理」创建第一张词条表,即可在此查看翻译进度。"
+                actionLabel="前往数据表管理"
+                onAction={() => onNavigate && onNavigate('versions')}
+              />
             ) : (
               stats.tableProgress.map(v => (
                 <div key={v.id} className="progress-item" style={{ background: 'var(--bg-primary)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
@@ -229,7 +235,10 @@ export default function DashboardTab({ onNavigate }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
             {stats.recentLogs.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>暂无协作修改日志。</div>
+              <EmptyState
+                title="暂无协作修改日志"
+                description="一旦词条被翻译或锁定,操作记录会自动出现在此处。"
+              />
             ) : (
               stats.recentLogs.map(log => {
                 let parsedDetails = log.details;

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './Toast';
-import { Plus, Trash2, FileText, LayoutGrid, AlertOctagon, ArrowRight, Clock, User, Edit2 } from 'lucide-react';
+import { Plus, Trash2, FileText, AlertOctagon, ArrowRight, Clock, User, Edit2 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
+import EmptyState from './EmptyState';
 
 export default function VersionsTab({ onNavigate, projectRole }) {
   const toast = useToast();
@@ -319,9 +320,11 @@ export default function VersionsTab({ onNavigate, projectRole }) {
               ))}
               {tables.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
-                    <LayoutGrid size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
-                    <p>暂无任何数据表，请点击右上角新建数据表开始。</p>
+                  <td colSpan={5}>
+                    <EmptyState
+                      title="暂无任何数据表"
+                      description="点击右上角「新建数据表」开始管理第一张词条版本表。"
+                    />
                   </td>
                 </tr>
               )}

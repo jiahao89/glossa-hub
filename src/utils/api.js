@@ -1,7 +1,11 @@
 /**
  * 统一 API 请求封装
- * 自动附带 JWT Token，401 时自动跳转登录页
+ * 自动附带 JWT Token，**用户会话** 401 时自动跳转登录页
  * 支持通过环境变量配置 API 地址（云端部署）
+ *
+ * 注意: 业务级 401 (例如 Dify upstream 拒签) 由后端通过 X-Business-Error
+ * header 标识, 不会触发跳转登录 — 用户可能仍然登录态正常,
+ * 只是某个上游服务的 Key 失效了。
  */
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -16,8 +20,10 @@ export async function apiFetch(url, options = {}) {
     },
   });
 
-  // 401: 登录过期，清除状态并跳转登录页
-  if (res.status === 401) {
+  // 401: 仅当是当前用户的会话失效时才跳登录。
+  // 后端用 X-Business-Error header 标识业务级错误 (例如 Dify upstream
+  // 返回的 401/403), 这些不应让前端误判为登录态失效。
+  if (res.status === 401 && !res.headers.get('X-Business-Error')) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     window.location.href = '/';
