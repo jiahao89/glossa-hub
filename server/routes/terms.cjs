@@ -4,6 +4,7 @@ const router = express.Router();
 const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken, requireTermOwnership, requireVersionOwnership } = require('../middleware/auth.cjs');
 const { writeLimiter } = require('../middleware/rateLimiters.cjs');
+const { backupToRecycleBin } = require('../services/recycleBin.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
 const { TARGET_LANGUAGES, LEGACY_TO_NEW_LANG_MAP } = require('../config/constants.cjs');
 
@@ -605,6 +606,101 @@ router.post('/terms/batch-update', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('批量修改分类字段失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// POST /api/terms/batch-delete - 批量软删除词条 (走回收站, 30 天可恢复)
+//
+// 行为:
+//   1. 验证 termIds 全部存在且属于同一项目
+//   2. 跳过已锁定的词条 (lockedSkipped 计数)
+//   3. 每个成功删除的词条写入 recycle_bin (含完整 term + snapshots)
+//   4. 在事务中硬删 terms 行
+//   5. 写一条 '批量删除' 审计日志
+// Owner / Editor 角色可调; Viewer 拒绝 (权限继承自 batch-update 的 requireTermOwnership)
+router.post('/terms/batch-delete', authenticateToken, writeLimiter, async (req, res) => {
+  const { termIds } = req.body;
+  const dbType = getDbType();
+
+  if (!Array.isArray(termIds) || termIds.length === 0) {
+    return res.status(400).json({ error: '必须包含 termIds 数组' });
+  }
+
+  // 防止误操作: 限制单次最多 200 条
+  if (termIds.length > 200) {
+    return res.status(400).json({ error: '单次最多删除 200 条, 请分批操作' });
+  }
+
+  try {
+    // RBAC: 用第一条做抽样检查 (与 batch-update 同样的策略)
+    if (!(await requireTermOwnership(req.user.id, termIds[0]))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权删除此项目的词条。' });
+    }
+
+    const placeholders = termIds.map((_, i) => `$${i + 1}`).join(',');
+    const terms = await db.query(
+      `SELECT id, kw, zh_cn, is_locked FROM terms WHERE id IN (${placeholders})`,
+      termIds
+    );
+
+    let deletedCount = 0;
+    let lockedSkipped = 0;
+    const skippedLockedIds = [];
+    const deletedKwList = [];
+
+    for (const t of terms) {
+      if (t.is_locked === 1 || t.is_locked === true) {
+        lockedSkipped++;
+        skippedLockedIds.push(t.id);
+        continue;
+      }
+      // 走回收站: 备份完整 term + snapshots
+      const entityName = t.zh_cn || t.kw || t.id;
+      try {
+        await backupToRecycleBin('term', t.id, entityName, req.user.id);
+      } catch (e) {
+        console.error(`[batch-delete] backupToRecycleBin 失败, termId=${t.id}:`, e.message);
+        // 继续处理下一个, 不阻塞整体
+        continue;
+      }
+      // 硬删 term 行 (事务外, 因为 backupToRecycleBin 已独立写 recycle_bin)
+      if (dbType === 'postgres') {
+        await db.run('DELETE FROM terms WHERE id = $1', [t.id]);
+      } else {
+        await db.run('DELETE FROM terms WHERE id = $1', [t.id]);
+      }
+      deletedCount++;
+      deletedKwList.push(t.kw);
+    }
+
+    // 写一条审计日志
+    if (deletedCount > 0) {
+      const details = `批量软删除 ${deletedCount} 条词条 (已送入回收站, 30 天后清理): ${deletedKwList.slice(0, 10).join(', ')}${deletedKwList.length > 10 ? ` ... 等 ${deletedKwList.length} 条` : ''}`;
+      const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
+      if (dbType === 'postgres') {
+        await db.run(
+          `INSERT INTO ${logsTable} (timestamp, action, details, version_name, user_id)
+           VALUES (NOW(), '批量删除', $1, $2, $3)`,
+          [details, '', req.user.id]
+        );
+      } else {
+        await db.run(
+          `INSERT INTO ${logsTable} (timestamp, action, details, version_name, user_id)
+           VALUES (datetime('now'), '批量删除', $1, $2, $3)`,
+          [details, '', req.user.id]
+        );
+      }
+    }
+
+    res.json({
+      message: `成功删除 ${deletedCount} 条词条 (送入回收站, 30 天内可恢复)`,
+      deletedCount,
+      lockedSkipped,
+      skippedLockedIds,
+    });
+  } catch (err) {
+    console.error('批量删除词条失败:', err);
     res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
   }
 });

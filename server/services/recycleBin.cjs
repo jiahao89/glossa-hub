@@ -40,6 +40,12 @@ async function backupToRecycleBin(entityType, entityId, entityName, userId) {
       }
     }
     payload = { language, term_translations: termTranslations };
+  } else if (entityType === 'term') {
+    // 单个词条: 记录完整字段, 恢复时通过 batch-restore 走快照路径
+    const term = await db.queryOne('SELECT * FROM terms WHERE id = $1', [entityId]);
+    if (!term) return;
+    const snapshots = await db.query('SELECT * FROM term_snapshots WHERE term_id = $1', [entityId]);
+    payload = { term, snapshots };
   } else {
     throw new Error('Unsupported entity type: ' + entityType);
   }
