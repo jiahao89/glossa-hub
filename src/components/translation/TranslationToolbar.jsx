@@ -25,10 +25,12 @@ export default function TranslationToolbar({
   onBatchCopy,
   onBatchLock,
   onBatchUnlock,
+  onBatchDelete,
   onExportXLS,
   csvImportNode,
   onAddTerm,
   onBatchAdd,
+  onInherit,
   onDataClean,
   onClearHighlights,
   modifiedCount = 0,
@@ -201,6 +203,19 @@ export default function TranslationToolbar({
                 <span>批量新增</span>
               </button>
 
+              {/* 从其他大表继承翻译 — v1.2 重构后丢失, 现在恢复 */}
+              {onInherit && tables.length > 1 && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ height: '32px' }}
+                  onClick={onInherit}
+                  title="从其他大表继承补全未翻译的 cell (跳过已锁定词条)"
+                >
+                  <Layers size={14} style={{ color: 'var(--accent)' }} />
+                  <span>继承翻译</span>
+                </button>
+              )}
+
               {difyConfigured && (
                 <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchTranslate} title="调用 Dify 批量翻译 (无选中时扫描全部)">
                   <Bot size={14} style={{ color: 'var(--purple)' }} />
@@ -240,6 +255,17 @@ export default function TranslationToolbar({
                   <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchUnlock} title="解锁选中的词条">
                     <Unlock size={14} />
                     <span>解锁</span>
+                  </button>
+
+                  {/* 批量删除: 走回收站 (30 天可恢复) */}
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ height: '32px', borderColor: 'rgba(239, 68, 68, 0.3)', color: 'var(--red)' }}
+                    onClick={onBatchDelete}
+                    title="将选中的词条送入回收站 (30 天内可恢复)"
+                  >
+                    <Trash2 size={14} />
+                    <span>删除</span>
                   </button>
                 </div>
               )}
