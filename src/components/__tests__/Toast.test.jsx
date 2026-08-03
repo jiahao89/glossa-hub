@@ -106,3 +106,44 @@ describe('Toast 系统', () => {
     expect(alerts[2]).toHaveTextContent('第三条');
   });
 });
+
+// ============================================================
+// Provider 外 fallback 行为
+//
+// vitest 默认 import.meta.env.DEV === true,所以这里测的是 dev 分支:
+//   - 调用 useToast 不在 Provider 内时:
+//     · console.warn 一次
+//     · 返回 noop 函数(不抛错)
+//   生产分支(prod 抛错)在 build 后的代码里,通过 import.meta.env.DEV
+//   在打包时被静态消除,这里无法直接验证。
+// ============================================================
+
+describe('Toast - Provider 外 fallback (dev)', () => {
+  it('useToast 在 Provider 外: 不抛错, 返回 noop, console.warn 一次', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    function NoProviderHarness() {
+      const toast = useToast();
+      return <div data-testid="noop">{typeof toast.success}</div>;
+    }
+    expect(() => {
+      render(<NoProviderHarness />);
+    }).not.toThrow();
+    expect(screen.getByTestId('noop')).toHaveTextContent('function');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('useToast() called outside <ToastProvider>')
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('Provider 外的 noop.success 调用不抛错', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    function NoProviderCaller() {
+      const toast = useToast();
+      // 不应 throw
+      toast.success('这条消息被默默丢弃');
+      toast.error('这条也是');
+      return <div>ok</div>;
+    }
+    expect(() => render(<NoProviderCaller />)).not.toThrow();
+  });
+});

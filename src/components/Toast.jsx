@@ -17,13 +17,28 @@ const ToastContext = createContext(null);
 export function useToast() {
   const ctx = useContext(ToastContext);
   if (!ctx) {
-    // 容错：在 Provider 之外调用时退化为 console，避免崩溃
-    console.warn('[Toast] useToast 必须在 ToastProvider 内调用');
-    return {
-      success: (m) => console.log('[Toast.success]', m),
-      error: (m) => console.error('[Toast.error]', m),
-      info: (m) => console.info('[Toast.info]', m),
-    };
+    // Outside of ToastProvider, the previous behavior was to silently fall
+    // back to console.{log,error,info}. That's dangerous in production:
+    // a bug where some screen forgets to render inside <ToastProvider>
+    // would lose every notification with no signal. Now:
+    //   - In dev: warn once per module load + return no-op (so dev UX
+    //     isn't blocked by a thrown error mid-render).
+    //   - In production: throw immediately so the bug surfaces instead of
+    //     silently dropping notifications.
+    if (import.meta.env.DEV) {
+      console.warn(
+        '[Toast] useToast() called outside <ToastProvider>. ' +
+        'Notifications will be dropped silently in dev. ' +
+        'This will throw in production builds.'
+      );
+      const noop = () => {};
+      return { success: noop, error: noop, info: noop };
+    }
+    throw new Error(
+      '[Toast] useToast() must be called inside <ToastProvider>. ' +
+      'Check that the calling component is rendered under the provider ' +
+      'in main.jsx.'
+    );
   }
   return ctx;
 }

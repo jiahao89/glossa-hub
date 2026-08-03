@@ -307,7 +307,7 @@ export default function App() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
                 <span style={{ fontWeight: '700', fontSize: '1rem', background: 'var(--logo-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>GlossaHub</span>
-                <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>迈金词条管理平台</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>迈金词条管理平台</span>
               </div>
             </div>
           )}
@@ -450,7 +450,7 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
                   <span style={{ fontSize: '0.78rem', fontWeight: '600' }}>{user?.name || '协作成员'}</span>
-                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '1px' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '1px' }}>
                     <ShieldCheck size={10} style={{ color: 'var(--green)' }} /> {
                       projectRole === 'owner' ? '所有者' :
                       projectRole === 'editor' ? '译员' : '只读审核'
@@ -566,7 +566,7 @@ export default function App() {
         </div>
 
         {/* Footer */}
-        <footer className="footer" style={{ height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0, fontSize: '0.72rem' }}>
+        <footer className="footer" style={{ height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0, fontSize: '0.8rem' }}>
           <div>GlossaHub v1.1 © Magene translation platform</div>
         </footer>
 
