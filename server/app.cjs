@@ -51,8 +51,10 @@ app.use(async (_req, res, next) => {
     await ensureDbInit();
     next();
   } catch (err) {
+    // 注意: 不要把 err.message 暴露给客户端 — PG/驱动错误常包含主机/端口/账号片段,
+    // 容易成为凭证枚举的入口。详细堆栈只写服务端日志。
     console.error('❌ DB 初始化异常:', err);
-    res.status(500).json({ error: `数据库无法建立连接: ${err.message}` });
+    res.status(500).json({ error: '数据库初始化失败，请联系管理员。' });
   }
 });
 

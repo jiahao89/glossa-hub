@@ -27,12 +27,22 @@ router.post('/users', authenticateToken, requireSystemAdmin, async (req, res) =>
     const hashedPwd = hashPassword(password);
     const userId = crypto.randomUUID();
     const targetRole = role === 'admin' ? 'admin' : 'user';
-    const createdAt = getDbType() === 'postgres' ? new Date() : new Date().toISOString();
+    // PG 列定义里有 DEFAULT NOW()，让它自动填充，避免传 JS Date 对象导致时区信息丢失。
+    // SQLite 列没有默认值，所以传 ISO 字符串兜底。
+    const createdAt = getDbType() === 'postgres' ? undefined : new Date().toISOString();
 
-    await db.run(
-      'INSERT INTO users (id, username, password_hash, name, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-      [userId, username, hashedPwd, name, targetRole, createdAt]
-    );
+    if (getDbType() === 'postgres') {
+      await db.run(
+        'INSERT INTO users (id, username, password_hash, name, role) VALUES ($1, $2, $3, $4, $5)',
+        [userId, username, hashedPwd, name, targetRole]
+      );
+    } else {
+      await db.run(
+        'INSERT INTO users (id, username, password_hash, name, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+        [userId, username, hashedPwd, name, targetRole, createdAt]
+      );
+    }
+
     res.status(201).json({ success: true, user: { id: userId, username, name, role: targetRole, created_at: createdAt } });
   } catch (err) {
     console.error('Failed to create user:', err);

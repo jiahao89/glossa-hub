@@ -456,8 +456,9 @@ export default function TranslationTab({
     return rec?.fields ? rec.fields[fieldName] || '' : '';
   }, [fieldMap, getRecordValue]);
 
-  // We removed client-side filtering because it's now handled by the server
-  const filteredRecords = records;
+  // We removed client-side filtering because it's now handled by the server.
+  // `paginatedRecords` is just an alias kept for use in `handleSelectPage`-style
+  // batch-selection helpers and the JSX prop below.
   const paginatedRecords = records;
 
   // Handlers
@@ -694,7 +695,7 @@ export default function TranslationTab({
 
       <TranslationTable
         loading={loading}
-        records={filteredRecords}
+        records={records}
         paginatedRecords={paginatedRecords}
         totalRecords={totalRecords}
         safePage={currentPage}

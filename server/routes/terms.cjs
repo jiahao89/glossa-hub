@@ -5,7 +5,7 @@ const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken, requireTermOwnership, requireVersionOwnership } = require('../middleware/auth.cjs');
 const { writeLimiter } = require('../middleware/rateLimiters.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
-const { TARGET_LANGUAGES } = require('../config/constants.cjs');
+const { TARGET_LANGUAGES, LEGACY_TO_NEW_LANG_MAP } = require('../config/constants.cjs');
 
 // GET /api/tables/:tableId/records - 读取特定版本下的所有词条数据 (分页)
 router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
@@ -168,10 +168,6 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: '词条不存在' });
     }
 
-    if (term.is_locked === 1 || term.is_locked === true) {
-      return res.status(403).json({ error: 'LOCKED', message: '该词条目前已被锁定，无法修改。如需变更请联系管理员解锁！' });
-    }
-
     let finalKw = (kw !== undefined ? kw : term.kw).trim();
     if (!finalKw) {
       finalKw = `__EMPTY_KW_${crypto.randomUUID()}__`;
@@ -244,7 +240,7 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
         return await tx.run(
           `UPDATE terms
            SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5::jsonb, translations_meta = $6::jsonb, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
-           WHERE id = $9 AND date_trunc('ms', updated_at) = date_trunc('ms', $10::timestamptz)`,
+           WHERE id = $9 AND date_trunc('ms', updated_at) = date_trunc('ms', $10::timestamptz) AND is_locked IS NOT TRUE`,
           [finalKw, finalContext, finalOwner, finalZhCn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
         );
       } else {
@@ -252,7 +248,7 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
         return await tx.run(
           `UPDATE terms
            SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = $8, updated_by = $9
-           WHERE id = $10 AND updated_at = $11`,
+           WHERE id = $10 AND updated_at = $11 AND is_locked != 1`,
           [finalKw, finalContext, finalOwner, finalZhCn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, nowIso, req.user.id, termId, oldUpdatedAt]
         );
       }
@@ -260,6 +256,15 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
 
     const affectedRows = updateResult.changes || 0;
     if (affectedRows === 0) {
+      // The UPDATE may have missed for two reasons:
+      //   (a) optimistic-lock mismatch (someone else edited since this client fetched),
+      //   (b) the term was locked concurrently by an admin/owner.
+      // We re-read to tell them apart and return the appropriate status code so
+      // the UI can show the right recovery hint.
+      const fresh = await db.queryOne('SELECT is_locked FROM terms WHERE id = $1', [termId]);
+      if (fresh && (fresh.is_locked === 1 || fresh.is_locked === true)) {
+        return res.status(403).json({ error: 'LOCKED', message: '该词条目前已被锁定，无法修改。如需变更请联系管理员解锁！' });
+      }
       return res.status(409).json({ error: 'CONCURRENCY_CONFLICT', message: '该词条已被其他人修改，请刷新后重试。' });
     }
 
@@ -897,12 +902,8 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
         }
 
         // Merge with existing translations in database so previous language translations are preserved
-        let existingTrans = {};
-        if (existing && existing.translations) {
-          try {
-            existingTrans = typeof existing.translations === 'string' ? JSON.parse(existing.translations) : (existing.translations || {});
-          } catch {}
-        }
+        // Use parseJsonField so a corrupted JSON column is reported (logged) instead of silently swallowed.
+        let existingTrans = parseJsonField(existing && existing.translations);
         const finalTranslationsObj = { ...existingTrans, ...translationsObj };
         const fieldsStr = JSON.stringify(finalTranslationsObj);
 
@@ -979,20 +980,25 @@ router.get('/tables/:tableId/export-xls', authenticateToken, async (req, res) =>
     const version = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [tableId]);
     const terms = await db.query('SELECT * FROM terms WHERE version_id = $1 ORDER BY created_at ASC', [tableId]);
 
-    const TARGET_LANGUAGES = [
-      'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）',
-      'PT（葡萄牙）', 'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）',
-      'TC（繁）', 'DA（丹麦）', 'CZ(捷克)', '瑞典：', '荷兰：', '土耳其：'
-    ];
-
+    // Use the canonical language list from server/config/constants.cjs — keeps
+    // the exported CSV in lockstep with the keys actually stored under
+    // `translations` and with what the importer recognises via LEGACY_TO_NEW_LANG_MAP.
     const headers = ['KW', 'CN（中文）', '所在页面', '字号类别', ...TARGET_LANGUAGES];
     const rows = [headers];
 
+    // Build a canonical -> [legacy-aliases] map so terms saved with any older
+    // alias key (e.g. "日", "日语", "JP") still line up with the canonical column
+    // when exported. The first non-empty match wins.
+    const ALIASES_BY_CANONICAL = Object.entries(LEGACY_TO_NEW_LANG_MAP).reduce((acc, [legacy, canonical]) => {
+      (acc.get(canonical) || acc.set(canonical, []).get(canonical)).push(legacy);
+      return acc;
+    }, new Map());
+
     for (const term of terms) {
-      let trans = {};
-      try {
-        trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
-      } catch {}
+      // Use parseJsonField so a corrupted translations JSON is logged and the row
+      // degrades gracefully (every language column empty) instead of silently emitting
+      // an incomplete export.
+      const trans = parseJsonField(term.translations);
 
       const row = [
         term.kw && term.kw.startsWith('__EMPTY_KW_') ? '' : (term.kw || ''),
@@ -1002,18 +1008,27 @@ router.get('/tables/:tableId/export-xls', authenticateToken, async (req, res) =>
       ];
 
       TARGET_LANGUAGES.forEach(lang => {
-        let val = trans[lang] || '';
-        if (!val) {
-          const key = Object.keys(trans).find(k => k === lang || k.includes(lang.slice(0, 2)));
-          if (key) val = trans[key];
+        let val = trans[lang];
+        if (val === undefined || val === null || String(val).trim() === '') {
+          const aliases = ALIASES_BY_CANONICAL.get(lang);
+          if (aliases) {
+            for (const alias of aliases) {
+              const candidate = trans[alias];
+              if (candidate !== undefined && candidate !== null && String(candidate).trim() !== '') {
+                val = candidate;
+                break;
+              }
+            }
+          }
         }
-        row.push(val || '');
+        if (val === undefined || val === null) val = '';
+        row.push(val);
       });
 
       rows.push(row);
     }
 
-    const csvContent = '\ufeff' + rows.map(r => 
+    const csvContent = '\ufeff' + rows.map(r =>
       r.map(cell => {
         const str = String(cell ?? '');
         if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {

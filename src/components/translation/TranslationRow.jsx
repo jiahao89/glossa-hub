@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { Lock, Unlock, Edit2, Bot, Check, Loader2 } from 'lucide-react';
+import StatusBadge from './StatusBadge';
 
 const TranslationRow = memo(function TranslationRow({
   rec,
@@ -27,7 +28,7 @@ const TranslationRow = memo(function TranslationRow({
   const canManageLock = currentUserRole === 'admin' || projectRole === 'owner';
 
   return (
-    <tr style={{ background: isSelected ? 'rgba(59, 130, 246, 0.05)' : undefined }}>
+    <tr aria-selected={isSelected || undefined}>
       <td style={{ textAlign: 'center', width: '38px' }}>
         <input
           type="checkbox"
@@ -43,53 +44,47 @@ const TranslationRow = memo(function TranslationRow({
       <td style={{ textAlign: 'center', width: '70px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
           {lockLoadingId === recId ? (
-            <Loader2 className="animate-spin" size={12} color="var(--accent)" />
-          ) : isLocked ? (
-            <Lock
-              size={12}
-              style={{ color: 'var(--red)', cursor: canManageLock ? 'pointer' : 'not-allowed' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (canManageLock) onToggleLock(recId, true);
-              }}
-              title={canManageLock ? '点击解锁此行' : '已被管理员锁定只读'}
-            />
+            <Loader2 className="animate-spin" size={12} color="var(--accent)" aria-label="正在切换锁定状态" />
           ) : (
-            <Unlock
-              size={12}
-              className="unlock-icon-hover"
-              style={{ color: 'var(--text-muted)', opacity: 0.25, cursor: canManageLock ? 'pointer' : 'default' }}
+            <button
+              type="button"
+              className="lock-toggle-btn"
+              aria-pressed={isLocked}
+              aria-label={
+                isLocked
+                  ? (canManageLock ? '已锁定,点击解锁此行' : '已被管理员锁定只读')
+                  : (canManageLock ? '未锁定,点击锁定此行' : '未锁定')
+              }
+              disabled={!canManageLock}
               onClick={(e) => {
                 e.stopPropagation();
-                if (canManageLock) onToggleLock(recId, false);
+                onToggleLock(recId, isLocked);
               }}
-              title={canManageLock ? '点击锁定此行' : '未锁定'}
-            />
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '2px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 'var(--radius-sm)',
+                cursor: canManageLock ? 'pointer' : 'not-allowed',
+                color: isLocked ? 'var(--red)' : 'var(--text-muted)',
+                opacity: isLocked ? 1 : 0.4,
+                transition: 'opacity 0.15s, color 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (canManageLock) e.currentTarget.style.opacity = '1';
+              }}
+              onMouseLeave={(e) => {
+                if (!isLocked) e.currentTarget.style.opacity = '0.4';
+              }}
+            >
+              {isLocked ? <Lock size={12} /> : <Unlock size={12} />}
+            </button>
           )}
 
-          {(() => {
-            const recStatus = rec.status || 'DRAFT';
-            const badgeBase = {
-              backgroundColor: 'transparent',
-              fontSize: '0.68rem',
-              fontWeight: '400',
-              padding: '0.05rem 0.35rem',
-              borderWidth: '1px',
-              borderStyle: 'solid',
-              borderRadius: '3px',
-              lineHeight: '1.4'
-            };
-            if (recStatus === 'DRAFT' || recStatus === 'PENDING_REVIEW' || recStatus === 'TRANSLATING') {
-              return <span className="diff-tag" style={{ ...badgeBase, color: 'var(--yellow)', borderColor: 'var(--yellow)' }}>待审核</span>;
-            } else if (recStatus === 'APPROVED') {
-              return <span className="diff-tag" style={{ ...badgeBase, color: 'var(--green)', borderColor: 'var(--green)' }}>已审核</span>;
-            } else if (recStatus === 'REJECTED') {
-              return <span className="diff-tag" style={{ ...badgeBase, color: 'var(--red)', borderColor: 'var(--red)' }} title={rec.rejectReason || '已驳回'}>已驳回</span>;
-            } else if (recStatus === 'PUBLISHED') {
-              return <span className="diff-tag" style={{ ...badgeBase, color: 'var(--purple)', borderColor: 'var(--purple)' }}>已发布</span>;
-            }
-            return null;
-          })()}
+          <StatusBadge status={rec.status || 'DRAFT'} rejectReason={rec.rejectReason} />
         </div>
       </td>
 
@@ -106,7 +101,9 @@ const TranslationRow = memo(function TranslationRow({
           return val && String(val).trim() ? count + 1 : count;
         }, 0);
         const pct = totalLangs > 0 ? Math.round((translatedCount / totalLangs) * 100) : 0;
-        const color = translatedCount === 0 ? 'var(--red)'
+        // Color tiers — neutral for 0% (it's a normal initial state, not an
+        // error), warning for partial, accent for in-progress, success for done.
+        const color = translatedCount === 0 ? 'var(--text-muted)'
           : pct < 50 ? 'var(--yellow)'
           : pct < 100 ? 'var(--accent)'
           : 'var(--green)';
@@ -117,7 +114,7 @@ const TranslationRow = memo(function TranslationRow({
               <div style={{ width: '36px', height: '4px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '2px', overflow: 'hidden' }}>
                 <div style={{ width: `${pct}%`, height: '100%', backgroundColor: color }} />
               </div>
-              <span style={{ fontVariantNumeric: 'tabular-nums', color }}>
+              <span style={{ fontVariantNumeric: 'tabular-nums', color, fontWeight: 600 }}>
                 {translatedCount}/{totalLangs}
               </span>
             </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
-import { Trash2, RotateCcw, AlertCircle, Loader2 } from 'lucide-react';
+import { Trash2, RotateCcw, AlertCircle, Loader2, Rocket } from 'lucide-react';
 import { useToast } from './Toast';
 
 export default function SettingsTab({ 
@@ -284,7 +284,10 @@ export default function SettingsTab({
             marginBottom: '1rem'
           }}>
             <div style={{ fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>🚀 快速切换 Dify 引擎预设</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Rocket size={15} aria-hidden="true" style={{ color: 'var(--accent)' }} />
+                快速切换 Dify 引擎预设
+              </span>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>点击下方预设可快速填入参数</span>
             </div>
 

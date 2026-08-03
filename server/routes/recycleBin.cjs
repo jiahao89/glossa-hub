@@ -205,6 +205,12 @@ router.delete('/recycle-bin/:id', authenticateToken, async (req, res) => {
       if ((!member || member.role !== 'owner') && req.user.role !== 'admin') {
         return res.status(403).json({ error: 'FORBIDDEN', message: '只有项目所有者或系统管理员能够彻底删除回收站条目。' });
       }
+    } else {
+      // 兜底: payload 缺 projectId 时无法判断项目归属, 必须收口到系统管理员
+      // (避免"无主回收条目"被任意登录用户硬删)
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '该回收条目无法解析项目归属，仅系统管理员可以彻底删除。' });
+      }
     }
 
     await db.run('DELETE FROM recycle_bin WHERE id = $1', [id]);

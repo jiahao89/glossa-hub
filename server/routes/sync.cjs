@@ -6,6 +6,15 @@ const { authenticateToken, requireVersionOwnership } = require('../middleware/au
 const { heavyOperationLimiter } = require('../middleware/rateLimiters.cjs');
 const { TARGET_LANGUAGES, LEGACY_TO_NEW_LANG_MAP } = require('../config/constants.cjs');
 
+// This file holds two synchronisation endpoints with **distinct active callers**:
+//   - POST /sync-table       — full-table bulk upsert; called by the legacy
+//                              Python integration test (test_full_api.py). The
+//                              current frontend CSV import path goes through
+//                              `/api/tables/:tableId/sync` (terms.cjs:804) instead.
+//   - POST /versions/sync-terms — version-diff merge; called by
+//                              ComparisonTab.jsx when the user clicks "应用变更".
+// Do NOT remove either route without first grepping these callers.
+
 // POST /api/sync-table - 批量同步词条数据
 router.post('/sync-table', authenticateToken, heavyOperationLimiter, async (req, res) => {
   const { tableId, tableName, records } = req.body;

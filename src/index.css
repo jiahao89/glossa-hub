@@ -132,14 +132,36 @@ button:focus-visible,
 .btn:focus-visible,
 .nav-item-btn:focus-visible,
 .icon-btn:focus-visible,
-.close-btn:focus-visible {
+.close-btn:focus-visible,
+.lock-toggle-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Lock toggle button (TranslationRow inline edit lock column) */
+.lock-toggle-btn:not(:disabled):hover {
+  background-color: var(--bg-hover);
+}
+.lock-toggle-btn:disabled {
+  /* viewers/editors still see the state but cannot click */
+  cursor: not-allowed;
 }
 
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
+  /* WCAG 2.4.7: focus must be visible */
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+/* For mouse focus, the per-component :focus rule (border + box-shadow) already
+   provides enough visual feedback. Suppress the keyboard-only outline so we
+   don't get a triple-stack (border + 1px glow + 2px outline). */
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
   outline: none;
 }
 
@@ -395,8 +417,10 @@ textarea:focus-visible {
   padding: 0.4rem 0.8rem;
   font-size: 0.875rem;
   border-radius: var(--radius-md);
-  outline: none;
-  transition: all 0.2s;
+  /* Note: do NOT set outline:none here. WCAG 2.4.7 requires visible focus.
+     The :focus selector below handles border + glow; :focus-visible (set
+     globally above) adds a 2px outline for keyboard users specifically. */
+  transition: border-color 0.15s, box-shadow 0.15s, outline-offset 0.15s;
   height: 34px;
   box-sizing: border-box;
 }
@@ -572,6 +596,8 @@ textarea:focus-visible {
 
 .data-table tr:hover {
   background-color: var(--bg-hover);
+  /* Subtle transition so it doesn't feel jarring on long tables */
+  transition: background-color 0.12s ease;
 }
 
 .data-table tbody tr:hover {
@@ -595,8 +621,17 @@ textarea:focus-visible {
   border-right: 2px solid var(--border-color);
 }
 
-.data-table tr.row-selected td {
-  background-color: var(--bg-tertiary) !important;
+/* Selected row — uses theme accent (rgba(--accent-rgb) is set on :root and
+   html.light-mode) so highlight stays on-brand across dark/light themes. */
+.data-table tr.row-selected td,
+.data-table tr[aria-selected="true"] td {
+  background-color: rgba(var(--accent-rgb), 0.08) !important;
+}
+
+.data-table tr.row-selected:hover td,
+.data-table tr[aria-selected="true"]:hover td {
+  /* Slightly stronger tint when hovering a selected row */
+  background-color: rgba(var(--accent-rgb), 0.12) !important;
 }
 
 .data-table th.sticky-col-1, .data-table th.sticky-col-2 {
@@ -605,6 +640,11 @@ textarea:focus-visible {
 
 .data-table tr:hover td.sticky-col-1, .data-table tr:hover td.sticky-col-2 {
   background-color: var(--bg-tertiary);
+}
+/* But for selected rows, keep the accent tint on sticky cols */
+.data-table tr[aria-selected="true"]:hover td.sticky-col-1,
+.data-table tr[aria-selected="true"]:hover td.sticky-col-2 {
+  background-color: rgba(var(--accent-rgb), 0.12) !important;
 }
 
 /* Cell Highlight (Modifications / Errors) */
@@ -727,7 +767,7 @@ textarea:focus-visible {
   padding: 0.5rem 0.8rem;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
-  outline: none;
+  /* outline handled by global input:focus-visible (WCAG 2.4.7) */
 }
 
 .form-group input:focus, .form-group textarea:focus {
@@ -770,6 +810,28 @@ textarea:focus-visible {
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
 }
+
+/* Status Badge — translation row state indicator
+   Uses outline (border) on transparent bg so multiple badges in a dense
+   table don't visually compete with cell text. */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  line-height: 1.4;
+  border: 1px solid;
+  background-color: transparent;
+  /* Help the user perceive state via both color and the textual label —
+     don't rely on color alone (a11y guideline). */
+}
+
+.status-badge-pending { color: var(--yellow); border-color: var(--yellow); }
+.status-badge-success { color: var(--green);   border-color: var(--green); }
+.status-badge-danger  { color: var(--red);     border-color: var(--red); }
+.status-badge-info    { color: var(--purple);  border-color: var(--purple); }
 
 .diff-tag-added {
   background-color: var(--green);

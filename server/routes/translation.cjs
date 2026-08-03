@@ -4,6 +4,7 @@ const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken, requireProjectMember, requireRole } = require('../middleware/auth.cjs');
 const { aiTranslateLimiter } = require('../middleware/rateLimiters.cjs');
 const { getEffectiveDifyConfig, generateKwHelper } = require('../services/difyService.cjs');
+const { parseJsonField } = require('../utils/jsonFields.cjs');
 
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GlossaHub/1.1';
 
@@ -200,10 +201,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
 
       const scoredMatches = allMatches.map(term => {
         let score = 0;
-        let termFields = {};
-        try {
-          termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
-        } catch {}
+        let termFields = parseJsonField(term && term.fields);
 
         const pageContext = (termFields['所在页面'] || '').trim();
         const termKwVal = (termFields.KW || term.kw || '').trim().toLowerCase();
@@ -251,10 +249,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
     if (fullMatch) {
       const parsedTargetLangs = (typeof targetLangs === 'string' ? targetLangs.split(',') : targetLangs).map(l => l.trim()).filter(Boolean);
       let tmTranslations = {};
-      let termFields = {};
-      try {
-        termFields = typeof fullMatch.fields === 'string' ? JSON.parse(fullMatch.fields || '{}') : (fullMatch.fields || {});
-      } catch {}
+      const termFields = parseJsonField(fullMatch && fullMatch.fields);
 
       const fieldsKeys = Object.keys(termFields);
       parsedTargetLangs.forEach(lang => {
@@ -284,10 +279,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
     let matchedTerms = [];
     glossaryTerms.forEach(term => {
       if (zhCn.includes(term.cn_term)) {
-        let termFields = {};
-        try {
-          termFields = typeof term.fields === 'string' ? JSON.parse(term.fields || '{}') : (term.fields || {});
-        } catch {}
+        const termFields = parseJsonField(term && term.fields);
 
         let targetConstraints = { "英文": term.en_term };
         Object.keys(termFields).forEach(k => {

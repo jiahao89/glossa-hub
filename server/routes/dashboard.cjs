@@ -106,7 +106,11 @@ router.get('/stats', authenticateToken, async (_req, res) => {
       action: r.action,
       details: r.details,
       version: r.version_name,
-      operator: r.operator_name || '王赵云'
+      // Do NOT fall back to a real person's name when the actor's user row has
+      // been deleted (ON DELETE SET NULL would leave operator_name NULL). The
+      // previous fallback used "王赵云" here, which silently mis-attributed
+      // orphan log entries to an existing super-admin — an audit-trail bug.
+      operator: r.operator_name || '已删除用户'
     }));
 
     res.json({
