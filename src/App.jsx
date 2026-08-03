@@ -36,11 +36,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedTableId, setSelectedTableId] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('glossahub_sidebar_collapsed') === 'true';
+    return safeGetLocalStorage('glossahub_sidebar_collapsed', 'false') === 'true';
   });
 
   // 主题状态: 'dark' 或 'light'
-  const [theme, setTheme] = useState(() => localStorage.getItem('glossahub_theme') || 'light');
+  const [theme, setTheme] = useState(() => safeGetLocalStorage('glossahub_theme', 'light'));
 
   // 主题切换时动态应用 light-mode CSS 样式并持久化存储
   useEffect(() => {

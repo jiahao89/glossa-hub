@@ -87,4 +87,26 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('CONCURRENCY_CONFLICT');
   });
+
+  it('should allow clearing context and owner fields when updated with empty strings', async () => {
+    const fetchRes = await request(app)
+      .get(`/api/tables/${testVersionId}/records`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const currentTerm = fetchRes.body.records.find(t => t.recordId === testTermId);
+
+    const editRes = await request(app)
+      .put(`/api/terms/${testTermId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        kw: 'KW_TEST_TERM',
+        zh_cn: '测试词条中文',
+        context: '',
+        owner: '',
+        oldUpdatedAt: currentTerm.updatedAt
+      });
+
+    expect(editRes.status).toBe(200);
+    expect(editRes.body.context).toBe('');
+    expect(editRes.body.owner).toBe('');
+  });
 });

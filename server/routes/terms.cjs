@@ -190,6 +190,10 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
       }
     }
 
+    const finalContext = context !== undefined ? context : (term.context || '');
+    const finalOwner = owner !== undefined ? owner : (term.owner || '');
+    const finalZhCn = zh_cn !== undefined ? zh_cn : term.zh_cn;
+
     let updatedTrans = '';
     const inputTrans = translations !== undefined ? translations : term.translations;
     if (typeof inputTrans === 'string') {
@@ -209,7 +213,7 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
 
     const dbTransStr = typeof term.translations === 'string' ? term.translations : JSON.stringify(term.translations || {});
     const isTransChanged = dbTransStr !== updatedTrans;
-    const isZhChanged = zh_cn && term.zh_cn !== zh_cn;
+    const isZhChanged = finalZhCn && term.zh_cn !== finalZhCn;
     const isKwChanged = finalKw !== term.kw;
 
     let nextStatus = 'PENDING_REVIEW';
@@ -227,10 +231,11 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
             [snapshotId, termId, term.version_id, term.kw, term.zh_cn, dbTransStr, req.user.id]
           );
         } else {
+          const snapNow = new Date().toISOString();
           await tx.run(
             `INSERT INTO term_snapshots (id, term_id, version_id, kw, zh_cn, translations, created_at, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, datetime('now'), $7)`,
-            [snapshotId, termId, term.version_id, term.kw, term.zh_cn, dbTransStr, req.user.id]
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [snapshotId, termId, term.version_id, term.kw, term.zh_cn, dbTransStr, snapNow, req.user.id]
           );
         }
       }
@@ -240,14 +245,15 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
           `UPDATE terms
            SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5::jsonb, translations_meta = $6::jsonb, status = $7, reject_reason = NULL, updated_at = NOW(), updated_by = $8
            WHERE id = $9 AND date_trunc('ms', updated_at) = date_trunc('ms', $10::timestamptz)`,
-          [finalKw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
+          [finalKw, finalContext, finalOwner, finalZhCn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
         );
       } else {
+        const nowIso = new Date().toISOString();
         return await tx.run(
           `UPDATE terms
-           SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = datetime('now'), updated_by = $8
-           WHERE id = $9 AND updated_at = $10`,
-          [finalKw, context || term.context, owner || term.owner, zh_cn || term.zh_cn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, req.user.id, termId, oldUpdatedAt]
+           SET kw = $1, context = $2, owner = $3, zh_cn = $4, translations = $5, translations_meta = $6, status = $7, reject_reason = NULL, updated_at = $8, updated_by = $9
+           WHERE id = $10 AND updated_at = $11`,
+          [finalKw, finalContext, finalOwner, finalZhCn, updatedTrans, JSON.stringify(translationsMeta || {}), nextStatus, nowIso, req.user.id, termId, oldUpdatedAt]
         );
       }
     });
