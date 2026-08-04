@@ -377,7 +377,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
         };
         console.warn(`🔍 [dify-debug] status=${result.status} tried=${responseBody.debug.triedUrls.join(' → ')}`);
         console.warn(`🔍 [dify-debug] raw: ${responseBody.debug.difyRaw}`);
-        console.warn(`🔍 [dify-debug] outboundIp: ${outboundIp || 'unknown'}`);
+        console.warn(`🔍 [dify-debug] outboundIp: ${result.outboundIp || 'unknown'}`);
       }
 
       return res.status(result.status || 500).json(responseBody);
