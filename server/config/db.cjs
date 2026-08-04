@@ -357,11 +357,17 @@ async function initDatabase() {
   if (pgUrl) {
     try {
       const { Pool } = require('pg');
-      const { parse } = require('pg-connection-string');
 
       let pgConfig = {};
       try {
-        pgConfig = parse(pgUrl);
+        const u = new URL(pgUrl);
+        pgConfig = {
+          host: u.hostname,
+          port: u.port,
+          user: decodeURIComponent(u.username),
+          password: decodeURIComponent(u.password),
+          database: u.pathname.replace(/^\//, '')
+        };
       } catch {
         pgConfig = {};
       }
