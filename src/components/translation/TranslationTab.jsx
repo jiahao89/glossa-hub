@@ -116,6 +116,11 @@ export default function TranslationTab({
 
   useEffect(() => {
     setModifiedCells({});
+    // Switching data tables must clear the row-selection set; otherwise
+    // a recordId selected in the previous table would silently fail to
+    // match anything in the new table, and downstream bulk actions would
+    // either report "都已完成翻译" (misleading) or operate on 0 rows.
+    setSelectedRecordIds(new Set());
   }, [selectedTableId, setModifiedCells]);
 
   // Column Visibility States
@@ -204,7 +209,16 @@ export default function TranslationTab({
     }).filter(Boolean);
 
     if (itemsToTranslate.length === 0) {
-      toast.info(selectedRecordIds.size > 0 ? '选中的词条包含空中文或都已完成翻译' : '当前表格中没有待翻译的词条');
+      if (selectedRecordIds.size > 0) {
+        // 区分两种原因: 选中但过滤后为空 → 跨表选中的脏数据; 真没待翻译条目
+        if (targetRecords.length === 0) {
+          toast.info('选中的记录不在当前表中, 请重新勾选');
+        } else {
+          toast.info('选中的词条包含空中文或都已完成翻译');
+        }
+      } else {
+        toast.info('当前表格中没有待翻译的词条');
+      }
       return;
     }
 
@@ -245,15 +259,20 @@ export default function TranslationTab({
           target_languages: targetLangsReq
         };
 
-        const res = await apiFetch(`/api/projects/proj-default/ai-translate`, {
+        const res = await apiFetch(`/api/projects/proj-default/ai-translate?debug=1`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ inputs })
         });
-        
+
         if (!res.ok) {
            const error = await res.json();
-           throw new Error(error.error || '翻译接口失败');
+           // ⭐ 调试模式:把 Dify 真实响应 + 试过的 URL 一起抛出去
+           const debugInfo = error.debug
+             ? ` | [debug] status=${error.debug.difyStatus} | tried=${error.debug.triedUrls?.join(' → ')} | raw=${error.debug.difyRaw?.slice(0, 200)}`
+             : '';
+           console.error(`🔍 [batch-translate] Dify error:`, error);
+           throw new Error((error.error || '翻译接口失败') + debugInfo);
         }
         
         const result = await res.json();

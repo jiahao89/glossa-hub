@@ -44,12 +44,29 @@ const TranslationRow = memo(function TranslationRow({
     onEditClick(rec);
   };
 
+  // 双击整行触发编辑 (Enter 已有, 双击是常见肌肉记忆).
+  // 如果目标在按钮上 (如锁定 / 编辑按钮), 让按钮自身的 onClick 接管,
+  // 不重复触发 onEditClick.
+  const handleRowDoubleClick = (e) => {
+    const target = e.target;
+    if (target && target !== e.currentTarget) {
+      const tag = target.tagName;
+      const closestButton = target.closest && target.closest('button');
+      if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'SELECT' || tag === 'TEXTAREA' || closestButton) {
+        return;
+      }
+    }
+    onEditClick(rec);
+  };
+
   return (
     <tr
       aria-selected={isSelected || undefined}
       tabIndex={0}
       onKeyDown={handleRowKeyDown}
-      aria-label={kw ? `词条 ${kw}，按 Enter 编辑` : undefined}
+      onDoubleClick={handleRowDoubleClick}
+      style={{ cursor: 'pointer' }}
+      aria-label={kw ? `词条 ${kw}，按 Enter 或双击编辑` : undefined}
     >
       <td style={{ textAlign: 'center', width: '38px' }}>
         <input

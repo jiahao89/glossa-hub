@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collaborative translation term-management platform for cross-language hardware firmware apps. Vite + React frontend, Express + SQLite/PostgreSQL backend, deployable as Vercel (frontend) + Render (backend) + Supabase (database).
 
-Repository status: **v1.1** (current dev branch), v1.0 is the last release. Cloud-deployed as `glossa-hub.vercel.app` (frontend) and `glossahub-api.onrender.com` (backend).
+Repository status: **v1.1** (current dev branch), v1.0 is the last release. Cloud-deployed as `glossa-hub.vercel.app` (frontend) and `glossa-hub.onrender.com` (backend).
 
 ---
 

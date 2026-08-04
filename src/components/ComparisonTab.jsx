@@ -114,7 +114,10 @@ export default function ComparisonTab() {
       const res = await apiFetch(`/api/tables/${tableId}/records`);
       if (!res.ok) throw new Error('无法读取数据表内容');
       const dbRecords = await res.json();
-      return dbRecords.map(r => {
+      // 后端返回分页对象 { records: [...], total, page, pageSize }
+      // 旧的 API 直接返回数组 — 这次重构(commit history) 改成分页但客户端未同步
+      const recordList = Array.isArray(dbRecords) ? dbRecords : (dbRecords.records || []);
+      return recordList.map(r => {
         const trans = {};
         TARGET_LANGUAGES.forEach(lang => {
           trans[lang] = r.fields[lang] || '';

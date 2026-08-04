@@ -146,15 +146,19 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
             target_languages: targetLanguages.join(',')
           };
 
-          const res = await apiFetch(`/api/projects/proj-default/ai-translate`, {
+          const res = await apiFetch(`/api/projects/proj-default/ai-translate?debug=1`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ inputs })
           });
-          
+
           if (!res.ok) {
              const error = await res.json();
-             throw new Error(error.error || '翻译接口失败');
+             const debugInfo = error.debug
+               ? ` | [debug] status=${error.debug.difyStatus} | tried=${error.debug.triedUrls?.join(' → ')} | raw=${error.debug.difyRaw?.slice(0, 200)}`
+               : '';
+             console.error(`🔍 [batch-add] Dify error:`, error);
+             throw new Error((error.error || '翻译接口失败') + debugInfo);
           }
           
           const result = await res.json();

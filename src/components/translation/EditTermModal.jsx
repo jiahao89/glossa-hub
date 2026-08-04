@@ -138,14 +138,25 @@ export default function EditTermModal({
     setLoading(true);
     try {
       const termId = record.recordId || record.id;
+      // 把 fields 拆成 server 期望的 { kw, context, owner, zh_cn, translations, translationsMeta, oldUpdatedAt }
+      const translations = {};
+      const translationsMeta = {};
+      for (const lang of targetLanguagesRef.current) {
+        translations[lang] = fields[lang] || '';
+      }
       const res = await apiFetch(`/api/terms/${termId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fields,
-          // Optimistic locking — pass through updated_at if available so
-          // concurrent edits get the same 409 disambiguation as the row.
-          updatedAt: record.updatedAt || record.updated_at,
+          kw: fields.KW,
+          context: fields['所在页面'] ?? '',
+          owner: fields['字号类别'] ?? '',
+          zh_cn: fields['CN（中文）'] ?? '',
+          translations,
+          translationsMeta,
+          // Optimistic locking — server-side `oldUpdatedAt` parameter name,
+          // value is the record's last-known updatedAt from the fetch.
+          oldUpdatedAt: record.updatedAt || record.updated_at,
         }),
       });
       if (!res.ok) {
