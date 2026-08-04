@@ -77,7 +77,7 @@ export default function InheritModal({ open, onClose, currentTableId, tables = [
 
   return (
     <GlossaModal
-      isOpen={true}
+      isOpen={open}
       onClose={onClose}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
