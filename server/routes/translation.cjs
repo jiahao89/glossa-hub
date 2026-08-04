@@ -107,7 +107,7 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
     }
   }
 
-  return { ok: false, status: lastStatus, errorText: lastErrorText, triedUrls: uniqueCandidates.map(c => c.baseUrl) };
+  return { ok: false, status: lastStatus, errorText: lastErrorText, triedUrls: uniqueCandidates.map(c => c.baseUrl), outboundIp };
 }
 
 // POST /api/projects/:projectId/dify - 保存项目的 Dify 配置
@@ -372,7 +372,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
           difyStatus: result.status,
           difyRaw: (errorText || '').slice(0, 1000),
           triedUrls: result.triedUrls || [],
-          outboundIp, // ⭐ Render 后端对外 IP(排查 IP 白名单)
+          outboundIp: result.outboundIp || null, // ⭐ Render 后端对外 IP
           timestamp: new Date().toISOString(),
         };
         console.warn(`🔍 [dify-debug] status=${result.status} tried=${responseBody.debug.triedUrls.join(' → ')}`);
