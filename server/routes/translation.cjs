@@ -33,6 +33,16 @@ function resolveBuiltinKey(baseUrl, providedKey, fallbackKey) {
 }
 
 async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
+  // ⭐ 诊断:从 Render 出去的 IP(用于排查 IP 白名单导致的 403)
+  let outboundIp = null;
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    if (r.ok) {
+      const j = await r.json();
+      outboundIp = j.ip;
+    }
+  } catch {}
+
   // Built-in fallback candidates (运维预配置)
   const builtinCandidates = Object.entries(BUILTIN_DIFY_APPS).map(([host, key]) => ({
     baseUrl: `https://${host}/v1`,
@@ -362,10 +372,12 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
           difyStatus: result.status,
           difyRaw: (errorText || '').slice(0, 1000),
           triedUrls: uniqueCandidates.map(c => c.baseUrl),
+          outboundIp, // ⭐ Render 后端对外 IP(排查 IP 白名单)
           timestamp: new Date().toISOString(),
         };
         console.warn(`🔍 [dify-debug] status=${result.status} tried=${responseBody.debug.triedUrls.join(' → ')}`);
         console.warn(`🔍 [dify-debug] raw: ${responseBody.debug.difyRaw}`);
+        console.warn(`🔍 [dify-debug] outboundIp: ${outboundIp || 'unknown'}`);
       }
 
       return res.status(result.status || 500).json(responseBody);
