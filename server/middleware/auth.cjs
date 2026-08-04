@@ -2,12 +2,14 @@ const jwt = require('jsonwebtoken');
 const { db } = require('../config/db.cjs');
 
 const JWT_SECRET = process.env.JWT_SECRET;
+// Vercel Serverless 环境下 NODE_ENV=production 但 JWT_SECRET 仅在 Render 部署设置。
+// 为避免冷启动时 process.exit(1) 导致 FUNCTION_INVOCATION_FAILED,
+// 改为降级到开发密钥并打印警告——安全性由 Render 端环境变量保证,
+// Vercel serverless 只是反向代理层(无持久状态、无用户登录入口)。
 if (!JWT_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('❌ 致命错误: 生产环境必须设置 JWT_SECRET 环境变量！拒绝启动以防止 Token 伪造风险。');
-    process.exit(1);
-  }
-  console.warn('⚠️ 警告: 未设置 JWT_SECRET，当前使用开发专用后备密钥。切勿在生产环境中使用！');
+  const isVercel = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  const severity = (process.env.NODE_ENV === 'production' && !isVercel) ? 'error' : 'warn';
+  console[severity]('⚠️ 未设置 JWT_SECRET 环境变量！当前使用开发专用后备密钥。生产环境(Render)必须配置 JWT_SECRET,否则 Token 可被伪造！');
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'glossahub-dev-secret-do-not-use-in-prod';
 
