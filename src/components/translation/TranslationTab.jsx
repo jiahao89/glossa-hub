@@ -116,6 +116,11 @@ export default function TranslationTab({
 
   useEffect(() => {
     setModifiedCells({});
+    // Switching data tables must clear the row-selection set; otherwise
+    // a recordId selected in the previous table would silently fail to
+    // match anything in the new table, and downstream bulk actions would
+    // either report "都已完成翻译" (misleading) or operate on 0 rows.
+    setSelectedRecordIds(new Set());
   }, [selectedTableId, setModifiedCells]);
 
   // Column Visibility States
@@ -204,7 +209,16 @@ export default function TranslationTab({
     }).filter(Boolean);
 
     if (itemsToTranslate.length === 0) {
-      toast.info(selectedRecordIds.size > 0 ? '选中的词条包含空中文或都已完成翻译' : '当前表格中没有待翻译的词条');
+      if (selectedRecordIds.size > 0) {
+        // 区分两种原因: 选中但过滤后为空 → 跨表选中的脏数据; 真没待翻译条目
+        if (targetRecords.length === 0) {
+          toast.info('选中的记录不在当前表中, 请重新勾选');
+        } else {
+          toast.info('选中的词条包含空中文或都已完成翻译');
+        }
+      } else {
+        toast.info('当前表格中没有待翻译的词条');
+      }
       return;
     }
 
