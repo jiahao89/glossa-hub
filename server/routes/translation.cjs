@@ -604,20 +604,42 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
     if (!response.ok) {
       const errorText = await response.text();
       let cleanMsg = errorText;
-      if (response.status === 403 || errorText.includes('403 Forbidden')) {
+      // ⭐ 精确匹配 HTTP status,不再用 errorText.includes('403 Forbidden') 模糊判断
+      //    (Dify 工作流错误描述里偶尔会带 "403" 字样, 会被误判)
+      if (response.status === 403) {
         cleanMsg = 'HTTP 403 Forbidden (API Key 无权访问此接口，请确认 Key 是否正确)';
-      } else if (response.status === 401 || errorText.includes('401 Unauthorized')) {
+      } else if (response.status === 401) {
         cleanMsg = 'HTTP 401 Unauthorized (API Key 无效或已过期，请重新配置)';
       } else if (errorText.includes('<html') || errorText.includes('<HTML')) {
         cleanMsg = `HTTP ${response.status}: 服务器拒绝连接 (可能接口地址错误或服务器不可达)`;
+      } else {
+        // ⭐ 其他情况(Dify 400 workflow 执行错误等):透传 Dify 真实 message
+        try {
+          const parsed = JSON.parse(errorText);
+          cleanMsg = `Dify 返回错误 (HTTP ${response.status}): ${parsed?.message || parsed?.error || errorText}`;
+        } catch {
+          cleanMsg = `Dify 返回错误 (HTTP ${response.status}): ${errorText.slice(0, 200)}`;
+        }
       }
       // 把 upstream 401/403 透传会被前端误判为"用户会话失效", 一律映射为 502
       // (业务错误, 不是认证错误) 并带 X-Business-Error 头让 apiFetch 区分。
       const businessStatus = response.status === 401 || response.status === 403 ? 502 : 400;
+      const responseBody = { error: cleanMsg };
+      // ⭐ 调试模式:返回真实 Dify 响应
+      if (req.query.debug === '1' || req.body?.debug === true) {
+        responseBody.debug = {
+          difyStatus: response.status,
+          difyRaw: errorText.slice(0, 500),
+          targetUrl,
+          keySuffix: targetKey ? `...${targetKey.slice(-4)}` : null,
+        };
+        console.warn(`🔍 [dify-test-debug] status=${response.status} url=${targetUrl} keySuffix=${responseBody.debug.keySuffix}`);
+        console.warn(`🔍 [dify-test-debug] raw: ${errorText.slice(0, 500)}`);
+      }
       return res
         .status(businessStatus)
         .set('X-Business-Error', 'dify-upstream-rejected')
-        .json({ error: cleanMsg });
+        .json(responseBody);
     }
 
     res.json({ success: true, message: 'Dify 引擎连接测试成功！' });
