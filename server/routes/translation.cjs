@@ -540,7 +540,18 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
     res.status(500).json({ error: `解析 Dify 输出 JSON 失败。原始输出为: ${String(rawVal).slice(0, 200)}` });
   } catch (err) {
     console.error('中转 AI 翻译失败:', err);
-    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+    // ⭐ 调试模式:把异常消息 + Render 出口 IP 暴露出来
+    const debugInfo = {
+      message: err?.message || String(err),
+      stack: (err?.stack || '').split('\n').slice(0, 3).join(' | '),
+    };
+    if (req.query.debug === '1' || req.body?.debug === true) {
+      debugInfo.timestamp = new Date().toISOString();
+    }
+    res.status(500).json({
+      error: `服务器内部错误: ${err?.message || err}`,
+      debug: Object.keys(debugInfo).length > 1 ? debugInfo : undefined,
+    });
   }
 });
 
