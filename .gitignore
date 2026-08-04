@@ -39,3 +39,5 @@ test-screenshots/
 # Recordings & videos
 videos/
 
+glossahub.db-shm
+glossahub.db-wal
