@@ -349,60 +349,78 @@ async function initDatabase() {
       const { Pool } = require('pg');
       const { parse } = require('pg-connection-string');
 
-      const pgConfig = parse(pgUrl);
-
-      const regexMatch = pgUrl.match(/postgres(?:ql)?:\/\/([^:]+):(.*)@([^:/]+):([0-9]+)\/([^?]+)/);
-      if (regexMatch) {
-        pgConfig.user = regexMatch[1];
-        pgConfig.password = regexMatch[2];
-        pgConfig.host = regexMatch[3];
-        pgConfig.port = regexMatch[4];
-        pgConfig.database = regexMatch[5].split('?')[0];
-        console.log('📝 已通过正则安全还原可能存在截断的 PG 账号及密码信息');
+      let pgConfig = {};
+      try {
+        pgConfig = parse(pgUrl);
+      } catch {
+        pgConfig = {};
       }
 
-      if (pgConfig.password) {
-        try {
-          pgConfig.password = decodeURIComponent(pgConfig.password);
-        } catch {
-          // 忽略
+      const isSupabase = pgUrl.includes('supabase');
+      const sslConfig = isSupabase ? { rejectUnauthorized: false } : false;
+
+      // 1. First attempt: Direct connection string as provided in DATABASE_URL
+      try {
+        const primaryPool = new Pool({
+          connectionString: pgUrl,
+          ssl: sslConfig,
+          max: 5,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 8000
+        });
+
+        await primaryPool.query('SELECT 1');
+        pgPool = primaryPool;
+        dbType = 'postgres';
+        pgDebug = { host: pgConfig.host || 'connectionString', user: pgConfig.user || 'pg', database: pgConfig.database || 'postgres' };
+        console.log('⚡ 成功直接连接到云端 PostgreSQL 数据库 (DATABASE_URL)');
+      } catch (directErr) {
+        console.warn('⚠️ 数据库直连尝试失败:', directErr.message, '尝试应用 Supabase Pooler 智能重写...');
+
+        // 2. Fallback attempt: Apply Supabase Pooler rewrite helper
+        const regexMatch = pgUrl.match(/postgres(?:ql)?:\/\/([^:]+):(.*)@([^:/]+):([0-9]+)\/([^?]+)/);
+        if (regexMatch) {
+          pgConfig.user = regexMatch[1];
+          pgConfig.password = regexMatch[2];
+          pgConfig.host = regexMatch[3];
+          pgConfig.port = regexMatch[4];
+          pgConfig.database = regexMatch[5].split('?')[0];
         }
+
+        if (pgConfig.password) {
+          try { pgConfig.password = decodeURIComponent(pgConfig.password); } catch {}
+        }
+
+        const directMatch = pgConfig.host && pgConfig.host.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
+        if (directMatch) {
+          const projectRef = directMatch[1];
+          pgConfig.host = 'aws-1-ap-northeast-2.pooler.supabase.com';
+          pgConfig.port = '6543';
+          pgConfig.user = `postgres.${projectRef}`;
+        }
+
+        if (pgConfig.host === 'aws-0-ap-northeast-2.pooler.supabase.com') {
+          pgConfig.host = 'aws-1-ap-northeast-2.pooler.supabase.com';
+          pgConfig.port = '6543';
+        }
+
+        const servername = pgConfig.host || undefined;
+        pgConfig.ssl = isSupabase ? { rejectUnauthorized: false, servername } : false;
+        pgConfig.max = 5;
+        pgConfig.idleTimeoutMillis = 30000;
+        pgConfig.connectionTimeoutMillis = 10000;
+
+        pgDebug = { host: pgConfig.host, port: pgConfig.port, user: pgConfig.user, database: pgConfig.database, sslServername: servername };
+        pgPool = new Pool(pgConfig);
+
+        await pgPool.query('SELECT 1');
+        dbType = 'postgres';
+        console.log('⚡ 通过 Pooler 智能重写成功连接到云端 PostgreSQL 数据库');
       }
-
-      const directMatch = pgConfig.host && pgConfig.host.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
-      if (directMatch) {
-        const projectRef = directMatch[1];
-        pgConfig.host = 'aws-1-ap-northeast-2.pooler.supabase.com';
-        pgConfig.port = '6543';
-        pgConfig.user = `postgres.${projectRef}`;
-        console.log(`🔧 Supabase 直连→Pooler 重写: ${projectRef} ➔ aws-1-ap-northeast-2.pooler.supabase.com:6543`);
-      }
-
-      if (pgConfig.host === 'aws-0-ap-northeast-2.pooler.supabase.com') {
-        pgConfig.host = 'aws-1-ap-northeast-2.pooler.supabase.com';
-        pgConfig.port = '6543';
-        console.log('🔧 自动将 aws-0-ap-northeast-2.pooler.supabase.com 重定向至官方可用节点: aws-1-ap-northeast-2.pooler.supabase.com:6543');
-      }
-
-      const servername = pgConfig.host || undefined;
-      pgConfig.ssl = pgUrl.includes('supabase') ? { rejectUnauthorized: false, servername } : false;
-
-      pgConfig.max = 5;
-      pgConfig.idleTimeoutMillis = 30000;
-      pgConfig.connectionTimeoutMillis = 10000;
-
-      pgDebug = { host: pgConfig.host, port: pgConfig.port, user: pgConfig.user, database: pgConfig.database, sslServername: servername };
-      console.log('🔍 PG 连接配置:', JSON.stringify(pgDebug));
-
-      pgPool = new Pool(pgConfig);
 
       pgPool.on('error', (err) => {
         console.error('⚠️ PG 连接池空闲连接错误 (已自动恢复):', err.message);
       });
-
-      await pgPool.query('SELECT 1');
-      dbType = 'postgres';
-      console.log('⚡ 成功连接到云端 PostgreSQL 数据库 (DATABASE_URL)');
 
       try {
         await pgPool.query(`
