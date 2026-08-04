@@ -167,6 +167,10 @@ export default function App() {
           const data = await res.json();
           setDifyConnected(data.apiKeyConfigured);
           setDifyBaseUrl(data.baseUrl || '');
+          // ⭐ 调试用:后端存的 Key 末 4 位 + 是否匹配内置预设(诊断 403)
+          if (data.apiKeySuffix) {
+            console.log(`🔍 [dify-config] baseUrl=${data.baseUrl} keySuffix=...${data.apiKeySuffix} matchedBuiltin=${data.matchedBuiltin || 'none'}`);
+          }
         }
       } catch (err) {
         console.error('加载 Dify 状态失败:', err);

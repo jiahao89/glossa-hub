@@ -176,7 +176,10 @@ router.get('/projects/:projectId/dify', authenticateToken, requireProjectMember,
     res.json({
       baseUrl: config.baseUrl,
       apiKeyConfigured: !!config.apiKey,
-      isCustom: config.isCustom
+      isCustom: config.isCustom,
+      // ⭐ 调试用:返回 Key 末 4 位 + 是否匹配内置预设,便于排查 403 问题
+      apiKeySuffix: config.apiKey ? config.apiKey.slice(-4) : null,
+      matchedBuiltin: config.matchedBuiltin || null,
     });
   } catch (err) {
     console.error('读取 Dify 配置失败:', err);
@@ -329,13 +332,14 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
       const errorText = result.errorText || '';
       let cleanMsg = errorText;
       
-      if (result.status === 504 || errorText.includes('504') || errorText.includes('Gateway time-out') || errorText.includes('Gateway Timeout')) {
+      // ⭐ 精确匹配 HTTP status,不再用 errorText.includes 模糊判断(Dify 错误描述里可能带 "403" 等字样)
+      if (result.status === 504) {
         cleanMsg = 'Dify 接口响应超时 (HTTP 504 Gateway Timeout)。已重试全量备用引擎，请确认服务可用性。';
-      } else if (result.status === 502 || errorText.includes('502 Bad Gateway')) {
+      } else if (result.status === 502) {
         cleanMsg = 'Dify 网关响应异常 (HTTP 502 Bad Gateway)。建议在【系统设置】中切换引擎。';
-      } else if (result.status === 403 || errorText.includes('403 Forbidden')) {
+      } else if (result.status === 403) {
         cleanMsg = 'Dify 拒绝访问 (HTTP 403 Forbidden)。请检查 API Key 是否正确或已授权。';
-      } else if (result.status === 401 || errorText.includes('401 Unauthorized')) {
+      } else if (result.status === 401) {
         cleanMsg = 'Dify 校验失败 (HTTP 401 Unauthorized)。API Key 无效。';
       } else if (errorText.includes('<html') || errorText.includes('<HTML')) {
         cleanMsg = `Dify 远程服务器响应异常 (HTTP ${result.status})`;
@@ -348,7 +352,23 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
         }
       }
 
-      return res.status(result.status || 500).json({ error: `Dify API 响应错误: ${cleanMsg}` });
+      // ⭐ 调试模式:返回 Dify 真实响应,前端能直接看到原始错误
+      const debugPayload = req.query.debug === '1' || req.body?.debug === true;
+      const responseBody = {
+        error: `Dify API 响应错误: ${cleanMsg}`,
+      };
+      if (debugPayload) {
+        responseBody.debug = {
+          difyStatus: result.status,
+          difyRaw: (errorText || '').slice(0, 1000),
+          triedUrls: uniqueCandidates.map(c => c.baseUrl),
+          timestamp: new Date().toISOString(),
+        };
+        console.warn(`🔍 [dify-debug] status=${result.status} tried=${responseBody.debug.triedUrls.join(' → ')}`);
+        console.warn(`🔍 [dify-debug] raw: ${responseBody.debug.difyRaw}`);
+      }
+
+      return res.status(result.status || 500).json(responseBody);
     }
 
     const data = result.data;

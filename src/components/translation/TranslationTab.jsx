@@ -259,15 +259,20 @@ export default function TranslationTab({
           target_languages: targetLangsReq
         };
 
-        const res = await apiFetch(`/api/projects/proj-default/ai-translate`, {
+        const res = await apiFetch(`/api/projects/proj-default/ai-translate?debug=1`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ inputs })
         });
-        
+
         if (!res.ok) {
            const error = await res.json();
-           throw new Error(error.error || '翻译接口失败');
+           // ⭐ 调试模式:把 Dify 真实响应 + 试过的 URL 一起抛出去
+           const debugInfo = error.debug
+             ? ` | [debug] status=${error.debug.difyStatus} | tried=${error.debug.triedUrls?.join(' → ')} | raw=${error.debug.difyRaw?.slice(0, 200)}`
+             : '';
+           console.error(`🔍 [batch-translate] Dify error:`, error);
+           throw new Error((error.error || '翻译接口失败') + debugInfo);
         }
         
         const result = await res.json();
