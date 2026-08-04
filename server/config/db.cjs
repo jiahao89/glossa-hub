@@ -314,7 +314,16 @@ async function initSqliteTables() {
 
 async function initSqlite() {
   dbType = 'sqlite';
-  const sqlite3 = require('sqlite3').verbose();
+  let sqlite3;
+  try {
+    sqlite3 = require('sqlite3').verbose();
+  } catch (err) {
+    if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      console.warn('⚠️ Vercel 云端 Serverless 环境下原生 sqlite3 模块不可用。', err.message);
+      throw new Error('Vercel 环境必须在环境变量中配置有效的 DATABASE_URL 以连接 PostgreSQL / Supabase。');
+    }
+    throw err;
+  }
 
   return new Promise((resolve, reject) => {
     sqliteDb = new sqlite3.Database(DB_PATH, async (err) => {
