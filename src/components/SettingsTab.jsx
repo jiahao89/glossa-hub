@@ -119,7 +119,7 @@ export default function SettingsTab({
     setTesting(true);
 
     try {
-      const res = await apiFetch('/api/projects/proj-default/dify-test', {
+      const res = await apiFetch('/api/projects/proj-default/dify-test?debug=1', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -133,7 +133,11 @@ export default function SettingsTab({
         toast.success('连接测试成功！Dify 工作流对接正常。');
         onConnectionStatusChange(true);
       } else {
-        toast.error(data.error || '连接测试失败');
+        console.error('🔍 [dify-test] error:', data);
+        const debugInfo = data.debug
+          ? ` | [debug] status=${data.debug.difyStatus} url=${data.debug.targetUrl} key=${data.debug.keySuffix} | raw=${data.debug.difyRaw?.slice(0, 200)}`
+          : '';
+        toast.error((data.error || '连接测试失败') + debugInfo, { autoClose: 10000 });
         onConnectionStatusChange(false);
       }
     } catch (err) {
