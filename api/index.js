@@ -11,7 +11,7 @@
 //
 // Falls back to a static error if RENDER_BACKEND_URL is missing.
 
-const TARGET = process.env.RENDER_BACKEND_URL || 'https://glossahub-api.onrender.com';
+const TARGET = process.env.RENDER_BACKEND_URL || 'https://glossa-hub.onrender.com';
 
 export default async function handler(req, res) {
   if (!TARGET) {

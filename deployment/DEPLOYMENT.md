@@ -56,7 +56,7 @@
    | `NODE_ENV` | `production` | 运行环境 |
    | `CORS_ORIGINS` | `https://你的前端域名.vercel.app` | 允许的前端跨域（可在第三步部署完回填） |
 
-5. 点击 **Create Web Service**，等待构建完成后，复制顶部生成的后端 API 地址（如 `https://glossahub-api.onrender.com`）。
+5. 点击 **Create Web Service**，等待构建完成后，复制顶部生成的后端 API 地址（如 `https://glossa-hub.onrender.com`）。
 
 ### 🤖 让 AI (Antigravity) 帮您诊断连接：
 部署完毕后，您可以直接告诉我：
@@ -78,7 +78,7 @@
 
    | 键 (Key) | 值 (Value) |
    | :--- | :--- |
-   | `VITE_API_BASE_URL` | 刚才 Render 部署完成的后端 API 地址（如 `https://glossahub-api.onrender.com`） |
+   | `VITE_API_BASE_URL` | 刚才 Render 部署完成的后端 API 地址（如 `https://glossa-hub.onrender.com`） |
 
 5. 点击 **Deploy** 部署。完成后即可获得前端正式域名（如 `https://glossa-hub.vercel.app`）。
 6. **(可选)** 回到 Render 控制台，将 `CORS_ORIGINS` 环境变量更新为您实际的前端 Vercel 域名，保存以触发自动重新部署。
