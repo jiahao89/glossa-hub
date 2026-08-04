@@ -79,7 +79,6 @@ app.use('/api', translationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api', recycleBinRoutes);
 app.use('/api/logs', logRoutes);
-app.use('/api/_diag', require('./routes/_diag_ip.cjs')); // 临时:返回 Render 出口 IP
 
 // Start Server (only when NOT running in Vercel Serverless Environment)
 let server = null;
