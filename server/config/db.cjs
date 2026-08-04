@@ -316,7 +316,8 @@ async function initSqlite() {
   dbType = 'sqlite';
   let sqlite3;
   try {
-    sqlite3 = require('sqlite3').verbose();
+    const dynamicRequire = eval('require');
+    sqlite3 = dynamicRequire('sqlite3').verbose();
   } catch (err) {
     if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
       console.warn('⚠️ Vercel 云端 Serverless 环境下原生 sqlite3 模块不可用。', err.message);
