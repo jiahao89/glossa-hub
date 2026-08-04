@@ -22,6 +22,14 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 
+// 启动日志:便于确认 Render 部署的代码版本
+const { execSync } = require('child_process');
+let gitCommit = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || 'unknown';
+if (gitCommit === 'unknown') {
+  try { gitCommit = execSync('git rev-parse --short HEAD', { cwd: __dirname + '/..' }).toString().trim(); } catch {}
+}
+console.log(`🚀 GlossaHub backend starting | commit=${gitCommit} | port=${PORT} | node=${process.version}`);
+
 // CORS 配置：支持跨域白名单（从环境变量读取，默认开发与 vercel.app 动态匹配）
 const defaultOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
 const envOrigins = process.env.CORS_ORIGINS
