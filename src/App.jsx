@@ -14,15 +14,15 @@ const LanguagesTab = lazy(() => import('./components/LanguagesTab'));
 const LogsTab = lazy(() => import('./components/LogsTab'));
 const UsersTab = lazy(() => import('./components/UsersTab'));
 const SettingsTab = lazy(() => import('./components/SettingsTab'));
-import { 
-  LayoutDashboard, 
-  Languages, 
-  ArrowLeftRight, 
-  Globe, 
-  History, 
-  Settings, 
-  LogOut, 
-  ChevronLeft, 
+import {
+  LayoutDashboard,
+  Languages,
+  ArrowLeftRight,
+  Globe,
+  History,
+  Settings,
+  LogOut,
+  ChevronLeft,
   ChevronRight,
   User,
   ShieldCheck,
@@ -31,6 +31,8 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
+import DifySwitcher from './components/DifySwitcher';
+import { useToast } from './components/Toast';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -97,6 +99,9 @@ export default function App() {
 
   // Dify connection status
   const [difyConnected, setDifyConnected] = useState(false);
+  const [difyBaseUrl, setDifyBaseUrl] = useState('');
+  const [difySwitching, setDifySwitching] = useState(false);
+  const toast = useToast();
 
   // Project Role (RBAC) state
   const [projectRole, setProjectRole] = useState(() => localStorage.getItem('project_role') || 'viewer');
@@ -161,6 +166,7 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           setDifyConnected(data.apiKeyConfigured);
+          setDifyBaseUrl(data.baseUrl || '');
         }
       } catch (err) {
         console.error('加载 Dify 状态失败:', err);
@@ -168,6 +174,44 @@ export default function App() {
     }
     loadDifyState();
   }, [token]);
+
+  // 切换 Dify 引擎预设 (owner 限定). 返回 Promise<boolean> 表示成功
+  async function handleDifySwitch(newBaseUrl) {
+    setDifySwitching(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/projects/proj-default/dify`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ baseUrl: newBaseUrl }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      // 成功后立即更新本地状态
+      setDifyBaseUrl(newBaseUrl);
+      // 重新拉一次确认后端一致 (后端可能插入 builtin key)
+      const refresh = await fetch(`${API_BASE}/api/projects/proj-default/dify`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (refresh.ok) {
+        const fresh = await refresh.json();
+        setDifyBaseUrl(fresh.baseUrl || newBaseUrl);
+        setDifyConnected(fresh.apiKeyConfigured);
+      }
+      toast.success('已切换 Dify 翻译引擎');
+      return true;
+    } catch (err) {
+      console.error('切换 Dify 失败:', err);
+      toast.error(`切换失败: ${err.message}`);
+      return false;
+    } finally {
+      setDifySwitching(false);
+    }
+  }
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -518,14 +562,14 @@ export default function App() {
 
             <div style={{ width: '1px', height: '14px', background: 'var(--border-color)' }} />
 
-            <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Globe size={13} style={{ color: 'var(--text-muted)' }} />
-              <span style={{ color: 'var(--text-secondary)' }}>Dify 翻译引擎状态:</span>
-              <div className={`status-dot ${difyConnected ? 'active' : 'inactive'}`} />
-              <span style={{ color: difyConnected ? 'var(--green)' : 'var(--red)', fontWeight: '500' }}>
-                {difyConnected ? '已联通' : '未配置'}
-              </span>
-            </div>
+            <DifySwitcher
+              baseUrl={difyBaseUrl}
+              connected={difyConnected}
+              canSwitch={user?.role === 'admin' || projectRole === 'owner'}
+              switching={difySwitching}
+              onSwitch={handleDifySwitch}
+              onOpenSettings={() => setActiveTab('settings')}
+            />
           </div>
         </header>
 
