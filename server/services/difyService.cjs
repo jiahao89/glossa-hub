@@ -50,7 +50,8 @@ async function generateKwHelper(projectId, text) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`
+          'Authorization': `Bearer ${config.apiKey}`,
+          'X-Magene-Source': 'GlossaHub'
         },
         body: JSON.stringify({
           inputs: {
