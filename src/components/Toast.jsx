@@ -65,11 +65,11 @@ export function ToastProvider({ children }) {
     return id;
   }, [dismiss]);
 
-  const toast = {
-    success: useCallback((m) => push('success', m), [push]),
-    error: useCallback((m) => push('error', m), [push]),
-    info: useCallback((m) => push('info', m), [push]),
-  };
+  const toast = React.useMemo(() => ({
+    success: (m) => push('success', m),
+    error: (m) => push('error', m),
+    info: (m) => push('info', m),
+  }), [push]);
 
   return (
     <ToastContext.Provider value={toast}>
