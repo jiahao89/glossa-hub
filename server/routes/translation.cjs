@@ -78,7 +78,8 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${item.apiKey}`,
           'User-Agent': BROWSER_USER_AGENT,
-          'Accept': 'application/json, text/plain, */*'
+          'Accept': 'application/json, text/plain, */*',
+          'X-Magene-Source': 'GlossaHub'
         },
         body: JSON.stringify({
           inputs,
@@ -615,7 +616,8 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${targetKey}`,
         'User-Agent': BROWSER_USER_AGENT,
-        'Accept': 'application/json, text/plain, */*'
+        'Accept': 'application/json, text/plain, */*',
+        'X-Magene-Source': 'GlossaHub'
       },
       body: JSON.stringify({
         inputs: testInputs,
