@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ToastProvider } from '../../Toast';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import InheritModal from '../InheritModal';
 
@@ -43,13 +44,15 @@ describe('InheritModal', () => {
 
   it('打开时, 默认选中第一张非自身的表作为源', () => {
     render(
-      <InheritModal
+      <ToastProvider>
+        <InheritModal
         open={true}
         onClose={mockOnClose}
         currentTableId="ver-current"
         tables={tables}
         onSuccess={mockOnSuccess}
       />
+      </ToastProvider>
     );
 
     // 标题
@@ -61,13 +64,15 @@ describe('InheritModal', () => {
 
   it('没有其他大表时, 显示警告且按钮 disabled', () => {
     render(
-      <InheritModal
+      <ToastProvider>
+        <InheritModal
         open={true}
         onClose={mockOnClose}
         currentTableId="ver-only"
         tables={[{ id: 'ver-only', name: '唯一的表' }]}
         onSuccess={mockOnSuccess}
       />
+      </ToastProvider>
     );
 
     expect(screen.getByText(/当前项目下没有其他大表/)).toBeInTheDocument();
@@ -82,13 +87,15 @@ describe('InheritModal', () => {
     });
 
     render(
-      <InheritModal
+      <ToastProvider>
+        <InheritModal
         open={true}
         onClose={mockOnClose}
         currentTableId="ver-current"
         tables={tables}
         onSuccess={mockOnSuccess}
       />
+      </ToastProvider>
     );
 
     fireEvent.click(screen.getByText('开始继承'));
@@ -116,13 +123,15 @@ describe('InheritModal', () => {
     });
 
     render(
-      <InheritModal
+      <ToastProvider>
+        <InheritModal
         open={true}
         onClose={mockOnClose}
         currentTableId="ver-current"
         tables={tables}
         onSuccess={mockOnSuccess}
       />
+      </ToastProvider>
     );
 
     fireEvent.click(screen.getByText('开始继承'));
@@ -141,13 +150,15 @@ describe('InheritModal', () => {
     });
 
     render(
-      <InheritModal
+      <ToastProvider>
+        <InheritModal
         open={true}
         onClose={mockOnClose}
         currentTableId="ver-current"
         tables={tables}
         onSuccess={mockOnSuccess}
       />
+      </ToastProvider>
     );
 
     fireEvent.click(screen.getByText('开始继承'));
@@ -163,13 +174,15 @@ describe('InheritModal', () => {
 
   it('未选源表时, 按钮 disabled, 不调端点', () => {
     render(
-      <InheritModal
+      <ToastProvider>
+        <InheritModal
         open={true}
         onClose={mockOnClose}
         currentTableId="ver-current"
         tables={tables}
         onSuccess={mockOnSuccess}
       />
+      </ToastProvider>
     );
 
     // 默认选了 ver-old-domestic, 手动清空让它 disabled

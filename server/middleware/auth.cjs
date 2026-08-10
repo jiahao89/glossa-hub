@@ -8,8 +8,11 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // Vercel serverless 只是反向代理层(无持久状态、无用户登录入口)。
 if (!JWT_SECRET) {
   const isVercel = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-  const severity = (process.env.NODE_ENV === 'production' && !isVercel) ? 'error' : 'warn';
-  console[severity]('⚠️ 未设置 JWT_SECRET 环境变量！当前使用开发专用后备密钥。生产环境(Render)必须配置 JWT_SECRET,否则 Token 可被伪造！');
+  if (process.env.NODE_ENV === 'production' && !isVercel) {
+    console.error('🚨 致命错误：生产环境未设置 JWT_SECRET 环境变量！出于安全考虑，服务将拒绝启动。');
+    process.exit(1);
+  }
+  console.warn('⚠️ 未设置 JWT_SECRET 环境变量！当前使用开发专用后备密钥。生产环境(Render)必须配置 JWT_SECRET,否则 Token 可被伪造！');
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'glossahub-dev-secret-do-not-use-in-prod';
 

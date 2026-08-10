@@ -316,6 +316,7 @@ async function initSqlite() {
   dbType = 'sqlite';
   let sqlite3;
   try {
+    // eslint-disable-next-line no-eval
     const dynamicRequire = eval('require');
     sqlite3 = dynamicRequire('sqlite3').verbose();
   } catch (err) {
