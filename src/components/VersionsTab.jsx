@@ -23,6 +23,12 @@ export default function VersionsTab({ onNavigate, projectRole }) {
   const [editVersionName, setEditVersionName] = useState('');
   const [updating, setUpdating] = useState(false);
 
+  // Delete table modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingTable, setDeletingTable] = useState(null);
+  const [deleteInput, setDeleteInput] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
   const fetchTables = async () => {
     try {
       const res = await apiFetch('/api/tables');
@@ -163,32 +169,41 @@ export default function VersionsTab({ onNavigate, projectRole }) {
     }
   };
 
-  const handleDeleteTable = async (table, e) => {
+  const handleDeleteTable = (table, e) => {
     e.stopPropagation();
-    const confirmDelete = window.confirm(
-      `🚨🚨 极端危险警告!!! 🚨🚨\n\n您正在准备永久删除数据表 [${table.name}]。\n该操作将立即清空该表下所有词条的键名(Key)以及全部目标语种翻译！\n并且系统内的日志中与此相关的统计也会受到影响！\n\n您确实要执行此彻底清空删除操作吗？`
-    );
-    if (!confirmDelete) return;
+    setDeletingTable(table);
+    setDeleteInput('');
+    setDeleteModalOpen(true);
+  };
 
-    const doubleCheck = window.confirm(
-      `再次确认：请输入“确认删除”以最终执行对 [${table.name}] 的彻底删除：`
-    );
-    if (!doubleCheck) return;
+  const handleConfirmDelete = async () => {
+    if (!deletingTable) return;
+    const isConfirmed = deleteInput.trim() === deletingTable.name || deleteInput.trim() === '确认删除';
+    if (!isConfirmed) {
+      toast.error('输入内容不匹配，无法执行删除');
+      return;
+    }
 
+    setDeleting(true);
     try {
-      const res = await apiFetch(`/api/projects/proj-default/versions/${table.id}`, {
+      const res = await apiFetch(`/api/projects/proj-default/versions/${deletingTable.id}`, {
         method: 'DELETE'
       });
 
       const data = await res.json();
       if (res.ok) {
         toast.success(data.message || '数据表删除成功！');
+        setDeleteModalOpen(false);
+        setDeletingTable(null);
+        setDeleteInput('');
         fetchTables();
       } else {
         toast.error(`删除失败: ${data.error || '未知错误'}`);
       }
     } catch (err) {
       toast.error(`网络错误: ${err.message}`);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -432,6 +447,101 @@ export default function VersionsTab({ onNavigate, projectRole }) {
                 </button>
               </div>
             </form>
+      </GlossaModal>
+
+      {/* Delete Confirmation Modal */}
+      <GlossaModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          if (!deleting) {
+            setDeleteModalOpen(false);
+            setDeletingTable(null);
+            setDeleteInput('');
+          }
+        }}
+        variant="simple"
+        width="460px"
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', color: 'var(--red, #ef4444)' }}>
+          <AlertOctagon size={22} />
+          <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+            删除固件数据表
+          </h3>
+        </div>
+
+        <div style={{
+          padding: '0.85rem 1rem',
+          backgroundColor: 'rgba(239, 68, 68, 0.08)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: '6px',
+          marginBottom: '1.25rem',
+          fontSize: '0.84rem',
+          lineHeight: '1.5',
+          color: 'var(--text-secondary)'
+        }}>
+          <p style={{ margin: '0 0 0.4rem 0', color: 'var(--red, #ef4444)', fontWeight: '600' }}>
+            ⚠️ 警告：您正在准备删除数据表 [{deletingTable?.name}]
+          </p>
+          <p style={{ margin: 0 }}>
+            该操作将清空该表下所有词条的键名(Key)及全部目标语种翻译。删除后数据将备份至回收站（可在「翻译引擎设置 - 回收站」中还原）。
+          </p>
+        </div>
+
+        <form onSubmit={(e) => { e.preventDefault(); handleConfirmDelete(); }}>
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', fontSize: '0.82rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+              为防止误操作，请输入 <span style={{ color: 'var(--text-primary)', fontWeight: '600' }}>{deletingTable?.name}</span> 或 <span style={{ color: 'var(--red, #ef4444)', fontWeight: '600' }}>确认删除</span>：
+            </label>
+            <input
+              type="text"
+              value={deleteInput}
+              onChange={(e) => setDeleteInput(e.target.value)}
+              placeholder={`请输入 "${deletingTable?.name || ''}" 或 "确认删除"`}
+              autoFocus
+              required
+              disabled={deleting}
+              style={{
+                width: '100%',
+                padding: '0.62rem',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => {
+                setDeleteModalOpen(false);
+                setDeletingTable(null);
+                setDeleteInput('');
+              }}
+              className="btn btn-secondary"
+              style={{ padding: '0.5rem 1rem' }}
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              disabled={deleting || (deleteInput.trim() !== deletingTable?.name && deleteInput.trim() !== '确认删除')}
+              className="btn"
+              style={{
+                padding: '0.5rem 1.25rem',
+                backgroundColor: (deleteInput.trim() === deletingTable?.name || deleteInput.trim() === '确认删除') ? 'var(--red, #ef4444)' : 'rgba(239, 68, 68, 0.4)',
+                color: '#fff',
+                border: 'none',
+                cursor: (deleting || (deleteInput.trim() !== deletingTable?.name && deleteInput.trim() !== '确认删除')) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {deleting ? '正在删除...' : '确认删除'}
+            </button>
+          </div>
+        </form>
       </GlossaModal>
     </div>
   );

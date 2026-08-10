@@ -180,7 +180,7 @@ describe('POST /api/projects/:projectId/dify-test — 内置 Dify App key fallba
 
   it('显式传空 baseUrl 但 effective 也没配置: backend 返回 400', async () => {
     // Force effective.baseUrl to be empty by deleting it
-    const { db } = require('../config/db.cjs');
+
     // We can't easily nullify DEFAULT_DIFY_CONFIG, so this case is hard to
     // reproduce. Instead, test the code path via X-Business-Error header
     // detection on a real error: send invalid baseUrl that points nowhere.

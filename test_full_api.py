@@ -7,7 +7,7 @@ import json, urllib.request, urllib.error, time, uuid, sqlite3
 
 BASE = "http://localhost:3001"
 PID = "proj-default"
-DB_PATH = "/Users/jacko/Desktop/Projects/glossa-hub/glossahub.db"
+DB_PATH = "/Users/jacko/Projects/glossa-hub/glossahub.db"
 
 def api(method, path, token=None, data=None):
     headers = {"Content-Type": "application/json"}

@@ -2,7 +2,7 @@ const request = require('supertest');
 // vitest globals (describe/it/expect/beforeAll/beforeEach) come from
 // vitest.config.js `globals: true`. afterAll is also global.
 const app = require('../app.cjs');
-const { ensureDbInit, db, getDbType } = require('../config/db.cjs');
+const { ensureDbInit, db } = require('../config/db.cjs');
 
 // ============================================================
 // POST /api/terms/batch-delete — 批量软删除 (走回收站)
@@ -17,7 +17,6 @@ const { ensureDbInit, db, getDbType } = require('../config/db.cjs');
 
 describe('Bug-regression batch: 批量删除 (走回收站)', () => {
   let adminToken = '';
-  let userToken = '';
   const testVersionId = 'ver-batch-del-' + Date.now();
   const baseTermId = 'term-bd-' + Date.now();
   let lockedTermId;
@@ -32,10 +31,7 @@ describe('Bug-regression batch: 批量删除 (走回收站)', () => {
       .send({ username: 'wangzhaoyun', password: 'magene123' });
     adminToken = adminRes.body.token;
 
-    const userRes = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'user1', password: 'user123' });
-    userToken = userRes.body.token;
+
 
     // Clean any prior failed run residue
     await db.run("DELETE FROM terms WHERE id LIKE 'term-bd-%'");

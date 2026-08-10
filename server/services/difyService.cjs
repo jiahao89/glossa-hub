@@ -53,6 +53,7 @@ async function generateKwHelper(projectId, text) {
           'Authorization': `Bearer ${config.apiKey}`,
           'X-Magene-Source': 'GlossaHub'
         },
+        signal: AbortSignal.timeout(20000),
         body: JSON.stringify({
           inputs: {
             KW: 'KW_GENERATE_TEMP',

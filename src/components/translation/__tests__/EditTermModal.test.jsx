@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ToastProvider } from '../../Toast';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import EditTermModal from '../EditTermModal';
 
@@ -66,18 +67,22 @@ describe('EditTermModal', () => {
 
   it('当 record 为 null 时, 不渲染任何内容', () => {
     const { container } = render(
-      <EditTermModal
-        open={false}
-        record={null}
-        onClose={mockOnClose}
-      />
+      <ToastProvider>
+        <EditTermModal
+          open={false}
+          record={null}
+          onClose={mockOnClose}
+        />
+      </ToastProvider>
     );
-    expect(container.firstChild).toBeNull();
+    expect(container.querySelector('.modal-backdrop')).toBeNull();
+    expect(container.querySelector('form')).toBeNull();
   });
 
   it('打开模态框时, 用 record.fields 填充表单', () => {
     render(
-      <EditTermModal
+      <ToastProvider>
+        <EditTermModal
         open={true}
         record={sampleRecord}
         fieldMap={fieldMap}
@@ -85,6 +90,7 @@ describe('EditTermModal', () => {
         targetLanguages={['EN（英文）']}
         onClose={mockOnClose}
       />
+      </ToastProvider>
     );
 
     // KW field 显示现有值
@@ -105,7 +111,8 @@ describe('EditTermModal', () => {
     });
 
     render(
-      <EditTermModal
+      <ToastProvider>
+        <EditTermModal
         open={true}
         record={sampleRecord}
         fieldMap={fieldMap}
@@ -113,6 +120,7 @@ describe('EditTermModal', () => {
         targetLanguages={['EN（英文）']}
         onClose={mockOnClose}
       />
+      </ToastProvider>
     );
 
     fireEvent.click(screen.getByText('生成 KW').closest('button'));
@@ -137,7 +145,8 @@ describe('EditTermModal', () => {
     const emptyRecord = { ...sampleRecord, fields: { ...sampleRecord.fields, 'CN（中文）': '' } };
 
     render(
-      <EditTermModal
+      <ToastProvider>
+        <EditTermModal
         open={true}
         record={emptyRecord}
         fieldMap={fieldMap}
@@ -148,6 +157,7 @@ describe('EditTermModal', () => {
         targetLanguages={['EN（英文）']}
         onClose={mockOnClose}
       />
+      </ToastProvider>
     );
 
     fireEvent.click(screen.getByText('生成 KW').closest('button'));
@@ -166,7 +176,8 @@ describe('EditTermModal', () => {
     });
 
     render(
-      <EditTermModal
+      <ToastProvider>
+        <EditTermModal
         open={true}
         record={sampleRecord}
         fieldMap={fieldMap}
@@ -175,6 +186,7 @@ describe('EditTermModal', () => {
         onClose={mockOnClose}
         onSaveSuccess={mockOnSaveSuccess}
       />
+      </ToastProvider>
     );
 
     fireEvent.click(screen.getByText('保存修改'));
@@ -232,7 +244,8 @@ describe('EditTermModal 右侧 tab', () => {
     });
 
     render(
-      <EditTermModal
+      <ToastProvider>
+        <EditTermModal
         open={true}
         record={recordWithVersion}
         fieldMap={fieldMap}
@@ -240,6 +253,7 @@ describe('EditTermModal 右侧 tab', () => {
         targetLanguages={['EN（英文）']}
         onClose={mockOnClose}
       />
+      </ToastProvider>
     );
 
     await waitFor(() => {
@@ -267,7 +281,8 @@ describe('EditTermModal 右侧 tab', () => {
       });
 
     render(
-      <EditTermModal
+      <ToastProvider>
+        <EditTermModal
         open={true}
         record={recordWithVersion}
         fieldMap={fieldMap}
@@ -275,6 +290,7 @@ describe('EditTermModal 右侧 tab', () => {
         targetLanguages={['EN（英文）']}
         onClose={mockOnClose}
       />
+      </ToastProvider>
     );
 
     // 切到"修改历史" tab — 用 role=tab 定位避免歧义
@@ -302,7 +318,8 @@ describe('EditTermModal 右侧 tab', () => {
     });
 
     render(
-      <EditTermModal
+      <ToastProvider>
+        <EditTermModal
         open={true}
         record={recordWithVersion}
         fieldMap={fieldMap}
@@ -310,6 +327,7 @@ describe('EditTermModal 右侧 tab', () => {
         targetLanguages={['EN（英文）']}
         onClose={mockOnClose}
       />
+      </ToastProvider>
     );
 
     // 等跨版本参考数据加载
@@ -342,7 +360,8 @@ describe('EditTermModal 右侧 tab', () => {
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) });  // /rollback
 
     render(
-      <EditTermModal
+      <ToastProvider>
+        <EditTermModal
         open={true}
         record={recordWithVersion}
         fieldMap={fieldMap}
@@ -352,6 +371,7 @@ describe('EditTermModal 右侧 tab', () => {
         onSaveSuccess={mockOnSaveSuccess}
         currentUserRole="admin"  // 让 canRollback=true
       />
+      </ToastProvider>
     );
 
     fireEvent.click(screen.getByRole('tab', { name: /修改历史/ }));
