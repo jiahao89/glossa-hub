@@ -11,14 +11,23 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 export async function apiFetch(url, options = {}) {
   const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
+  
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${url}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch (err) {
+    if (err.message === 'Failed to fetch') {
+      throw new Error('网络请求失败：后端服务可能正在唤醒中（约需 50 秒），请稍后刷新重试。');
+    }
+    throw err;
+  }
 
   // 401: 仅当是当前用户的会话失效时才跳登录。
   // 后端用 X-Business-Error header 标识业务级错误 (例如 Dify upstream
