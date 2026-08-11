@@ -31,8 +31,8 @@ export const BUILTIN_DIFY_PRESETS = [
  */
 export function matchBuiltinPreset(baseUrl) {
   if (!baseUrl) return null;
-  const lower = baseUrl.toLowerCase();
-  return BUILTIN_DIFY_PRESETS.find(p => lower.includes(p.id))?.id || null;
+  const lower = baseUrl.toLowerCase().replace(/\/$/, '');
+  return BUILTIN_DIFY_PRESETS.find(p => p.baseUrl.toLowerCase().replace(/\/$/, '') === lower)?.id || null;
 }
 
 /**
