@@ -78,25 +78,69 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${item.apiKey}`,
           'User-Agent': BROWSER_USER_AGENT,
-          'Accept': 'application/json, text/plain, */*',
+          'Accept': 'text/event-stream',
           'X-Magene-Source': 'GlossaHub'
         },
         signal: AbortSignal.timeout(90000),
         body: JSON.stringify({
           inputs,
-          response_mode: 'blocking',
+          response_mode: 'streaming',
           user: userIdStr || 'glossahub_client'
         })
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const status = data.data?.status || data.status;
-        if (status !== 'failed' && status !== 'stopped') {
-          return { ok: true, data, usedUrl: item.baseUrl };
+        // Handle streaming response to keep connection alive and avoid 504 Gateway Timeout from Nginx
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let done = false;
+        let finalData = null;
+        let streamError = null;
+        let buffer = '';
+
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          done = readerDone;
+          if (value) {
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // Keep the last incomplete line
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data: ')) {
+                try {
+                  const eventStr = trimmed.substring(6);
+                  if (eventStr === 'ping') continue;
+                  
+                  const eventData = JSON.parse(eventStr);
+                  if (eventData.event === 'workflow_finished') {
+                    finalData = eventData;
+                  } else if (eventData.event === 'error') {
+                    streamError = eventData.message || 'Stream error';
+                  }
+                } catch (e) {
+                  // ignore parsing errors on partial chunks
+                }
+              }
+            }
+          }
+        }
+
+        if (streamError) {
+          lastErrorText = streamError;
+          console.warn(`⚠️ Dify workflow stream error on ${item.baseUrl}: ${streamError}`);
+        } else if (finalData) {
+          const status = finalData.data?.status || finalData.status;
+          if (status !== 'failed' && status !== 'stopped') {
+            return { ok: true, data: { data: finalData.data }, usedUrl: item.baseUrl };
+          } else {
+            lastErrorText = finalData.data?.error || finalData.error || `Workflow status: ${status}`;
+            console.warn(`⚠️ Dify workflow status ${status} on ${item.baseUrl}: ${lastErrorText}`);
+          }
         } else {
-          lastErrorText = data.data?.error || data.error || `Workflow status: ${status}`;
-          console.warn(`⚠️ Dify workflow status ${status} on ${item.baseUrl}: ${lastErrorText}`);
+          lastErrorText = "Stream finished without workflow_finished event";
+          console.warn(`⚠️ Stream finished without workflow_finished event on ${item.baseUrl}`);
         }
       } else {
         lastStatus = response.status;
