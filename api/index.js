@@ -57,6 +57,11 @@ export default async function handler(req, res) {
     res.end(buf);
   } catch (err) {
     console.error('[vercel-proxy] upstream error:', err.message);
-    res.status(502).json({ error: '后端服务暂时不可用', detail: err.message });
+    
+    // 确保 502 错误时也返回 CORS 头，否则前端会报 Failed to fetch
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.status(502).json({ error: '后端服务暂时不可用，可能正在唤醒中，请稍后刷新重试。', detail: err.message });
   }
 }

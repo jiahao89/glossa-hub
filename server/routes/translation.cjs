@@ -81,7 +81,7 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
           'Accept': 'application/json, text/plain, */*',
           'X-Magene-Source': 'GlossaHub'
         },
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(90000),
         body: JSON.stringify({
           inputs,
           response_mode: 'blocking',
@@ -620,7 +620,7 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
         'Accept': 'application/json, text/plain, */*',
         'X-Magene-Source': 'GlossaHub'
       },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(90000),
       body: JSON.stringify({
         inputs: testInputs,
         response_mode: 'blocking',
