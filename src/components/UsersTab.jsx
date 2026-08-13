@@ -209,7 +209,7 @@ export default function UsersTab({ _projectRole }) {
         
         <button
           onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg shadow-lg shadow-primary/20 transition-all font-medium"
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-primary hover:from-purple-500 hover:to-primary/90 text-white rounded-lg shadow-lg shadow-purple-500/25 transition-all font-medium border border-purple-500/30 hover:shadow-purple-500/40"
         >
           <Plus size={20} />
           新建用户
@@ -298,25 +298,32 @@ export default function UsersTab({ _projectRole }) {
         title="新建系统用户"
         maxWidth="480px"
       >
-        <form onSubmit={handleAddUser} className="space-y-4">
+        <form onSubmit={handleAddUser} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">登录账号 (Username) <span className="text-red-400">*</span></label>
-            <input
-              type="text"
-              required
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-slate-500"
-              placeholder="请输入英文登录名"
-              value={formData.username}
-              onChange={(e) => setFormData({...formData, username: e.target.value})}
-              disabled={submitting}
-            />
+            <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-2">
+              <Shield size={16} className="text-purple-400" />
+              登录账号 (Username) <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                required
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-slate-500 shadow-inner"
+                placeholder="请输入英文登录名 (例如: zhangsan)"
+                value={formData.username}
+                onChange={(e) => setFormData({...formData, username: e.target.value})}
+                disabled={submitting}
+              />
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">真实姓名 (Name) <span className="text-red-400">*</span></label>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-2">
+              真实姓名 (Name) <span className="text-red-400">*</span>
+            </label>
             <input
               type="text"
               required
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-slate-500"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-slate-500 shadow-inner"
               placeholder="请输入显示姓名"
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
@@ -324,21 +331,25 @@ export default function UsersTab({ _projectRole }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">初始密码 (Password) <span className="text-red-400">*</span></label>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-2">
+              初始密码 (Password) <span className="text-red-400">*</span>
+            </label>
             <input
               type="password"
               required
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-slate-500"
-              placeholder="请输入初始密码"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-slate-500 shadow-inner"
+              placeholder="请输入至少6位初始密码"
               value={formData.password}
               onChange={(e) => setFormData({...formData, password: e.target.value})}
               disabled={submitting}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">系统角色 (Role) <span className="text-red-400">*</span></label>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-2">
+              系统角色 (Role) <span className="text-red-400">*</span>
+            </label>
             <select
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all shadow-inner"
               value={formData.role}
               onChange={(e) => setFormData({...formData, role: e.target.value})}
               disabled={submitting}
@@ -346,22 +357,27 @@ export default function UsersTab({ _projectRole }) {
               <option value="user">普通用户 (User)</option>
               <option value="admin">超级管理员 (Admin)</option>
             </select>
-            <p className="text-xs text-slate-500 mt-2">注：超级管理员可以管理全站项目并配置用户；普通用户权限取决于具体项目的授权。</p>
+            <div className="bg-slate-800/50 rounded-lg p-3 mt-3 border border-slate-700/50">
+              <p className="text-xs text-slate-400 flex items-start gap-2">
+                <AlertOctagon size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                <span><strong className="text-slate-300">超级管理员</strong>可以管理全站项目并配置用户；<strong className="text-slate-300">普通用户</strong>权限取决于具体项目的授权。</span>
+              </p>
+            </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-800">
+          <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-slate-800">
             <button
               type="button"
               onClick={() => setAddModalOpen(false)}
               disabled={submitting}
-              className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
+              className="px-5 py-2.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="flex items-center gap-2 px-5 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors shadow-lg shadow-primary/20 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-medium bg-gradient-to-r from-purple-600 to-primary hover:from-purple-500 hover:to-primary/90 text-white rounded-lg transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50"
             >
               {submitting ? '保存中...' : '确认新建'}
             </button>
