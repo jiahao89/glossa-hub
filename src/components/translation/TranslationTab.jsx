@@ -813,6 +813,7 @@ export default function TranslationTab({
         open={batchAddModalOpen}
         onClose={() => setBatchAddModalOpen(false)}
         selectedTableId={selectedTableId}
+        targetLanguages={TARGET_LANGUAGES}
         onAddSuccess={() => loadTableData(selectedTableId)}
       />
 

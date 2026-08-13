@@ -2,10 +2,38 @@ import React, { useState } from 'react';
 import GlossaModal from '../GlossaModal';
 import { apiFetch } from '../../utils/api';
 import { useToast } from '../Toast';
+import { Loader2, Sparkles } from 'lucide-react';
+
+function findTranslationForLang(result, targetLang) {
+  if (!result || typeof result !== 'object') return undefined;
+  if (result[targetLang] !== undefined) return result[targetLang];
+  
+  const codeMatch = targetLang.match(/^([A-Z]+)/i);
+  const code = codeMatch ? codeMatch[1].toUpperCase() : '';
+  const nameClean = targetLang.replace(/^[A-Z]+\s*[（(]?/i, '')
+                              .replace(/[）)]?$/g, '')
+                              .replace(/语|文/g, '')
+                              .trim();
+
+  for (const [k, v] of Object.entries(result)) {
+    if (v === undefined || v === null || String(v).trim() === '') continue;
+    const kUpper = k.toUpperCase().trim();
+    const kClean = k.replace(/[（()）]/g, '').replace(/语|文/g, '').trim();
+
+    if (code && (kUpper === code || kUpper.startsWith(code + '_') || kUpper.startsWith(code + '-'))) {
+      return v;
+    }
+    if (nameClean && (kClean.includes(nameClean) || nameClean.includes(kClean))) {
+      return v;
+    }
+  }
+  return undefined;
+}
 
 export default function AddTermModal({ open, onClose, selectedTableId, targetLanguages = [], onAddSuccess }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
   
   // Initialize state based on fields
   const getInitialFields = () => {
@@ -25,6 +53,55 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
 
   const handleFieldChange = (field, value) => {
     setNewFields(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAutoTranslate = async () => {
+    if (!newFields['CN（中文）']?.trim()) {
+      toast.error('请先输入中文源文本');
+      return;
+    }
+
+    setIsTranslating(true);
+    try {
+      const inputs = {
+        KW: newFields.KW || '',
+        text: newFields['CN（中文）'],
+        context: newFields['所在页面'] || '无',
+        target_languages: targetLanguages.join(',')
+      };
+
+      const res = await apiFetch(`/api/projects/proj-default/ai-translate?debug=1`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || '翻译接口调用失败');
+      }
+
+      const result = await res.json();
+      const updates = {};
+      targetLanguages.forEach(lang => {
+        const val = findTranslationForLang(result, lang);
+        if (val) {
+          updates[lang] = val;
+        }
+      });
+
+      if (Object.keys(updates).length > 0) {
+        setNewFields(prev => ({ ...prev, ...updates }));
+        toast.success('AI 翻译完成！');
+      } else {
+        toast.info('AI 未返回对应的语言翻译，请检查目标语言');
+      }
+    } catch (err) {
+      console.error('翻译失败:', err);
+      toast.error(`翻译失败: ${err.message}`);
+    } finally {
+      setIsTranslating(false);
+    }
   };
 
   const handleAddSubmit = async (e) => {
@@ -75,11 +152,11 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
       isOpen={true}
       onClose={onClose}
       title="新增翻译词条"
-      closeDisabled={loading}
+      closeDisabled={loading || isTranslating}
       footer={
         <>
-          <button onClick={onClose} className="btn btn-secondary" disabled={loading}>取消</button>
-          <button onClick={handleAddSubmit} className="btn btn-primary" disabled={loading}>
+          <button onClick={onClose} className="btn btn-secondary" disabled={loading || isTranslating}>取消</button>
+          <button onClick={handleAddSubmit} className="btn btn-primary" disabled={loading || isTranslating}>
             {loading ? '保存中...' : '保存新增'}
           </button>
         </>
@@ -96,7 +173,7 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
             onChange={(e) => handleFieldChange('KW', e.target.value)}
             className="input-text"
             style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-            disabled={loading}
+            disabled={loading || isTranslating}
             placeholder="请输入 KW..."
           />
         </div>
@@ -111,7 +188,7 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
             onChange={(e) => handleFieldChange('CN（中文）', e.target.value)}
             className="input-text"
             style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-            disabled={loading}
+            disabled={loading || isTranslating}
             placeholder="请输入中文源文本..."
           />
         </div>
@@ -126,7 +203,7 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
             onChange={(e) => handleFieldChange('所在页面', e.target.value)}
             className="input-text"
             style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-            disabled={loading}
+            disabled={loading || isTranslating}
           />
         </div>
 
@@ -140,14 +217,24 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
             onChange={(e) => handleFieldChange('字号类别', e.target.value)}
             className="input-text"
             style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-            disabled={loading}
+            disabled={loading || isTranslating}
           />
         </div>
 
-        <div style={{ gridColumn: 'span 2', marginTop: '1rem' }}>
-          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+        <div style={{ gridColumn: 'span 2', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+          <h4 style={{ fontSize: '0.9rem', marginBottom: '0', color: 'var(--text-primary)' }}>
             目标语言翻译
           </h4>
+          <button 
+            type="button"
+            onClick={handleAutoTranslate}
+            disabled={loading || isTranslating || !newFields['CN（中文）']?.trim()}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.6rem' }}
+          >
+            {isTranslating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} style={{ color: 'var(--purple)' }} />}
+            {isTranslating ? '翻译中...' : '一键 AI 翻译'}
+          </button>
         </div>
 
         {targetLanguages.map(lang => (
@@ -161,7 +248,7 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
               onChange={(e) => handleFieldChange(lang, e.target.value)}
               className="input-text"
               style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-              disabled={loading}
+              disabled={loading || isTranslating}
             />
           </div>
         ))}
