@@ -5,6 +5,14 @@ import { useToast } from './Toast';
 import EmptyState from './EmptyState';
 import GlossaModal from './GlossaModal';
 
+function formatDateTime(isoStr) {
+  if (!isoStr) return '-';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return isoStr;
+  const pad = n => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export default function LogsTab() {
   const toast = useToast();
   const [logs, setLogs] = useState([]);
@@ -338,7 +346,7 @@ export default function LogsTab() {
                 const isDiff = isJsonDetails(log.details);
                 return (
                   <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)', height: '40px', cursor: 'pointer' }} onDoubleClick={() => handleOpenDiff(log)}>
-                    <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>{log.timestamp}</td>
+                    <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>{formatDateTime(log.timestamp)}</td>
                     <td style={{ padding: '0.75rem 1rem', fontWeight: '500' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                         <User size={12} style={{ color: 'var(--text-muted)' }} />
