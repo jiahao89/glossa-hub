@@ -96,7 +96,7 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
       return;
     }
 
-    const validRows = rows.filter(r => r.KW?.trim() || r['CN（中文）']?.trim());
+    const validRows = rows.filter(r => r['CN（中文）']?.trim());
     if (validRows.length === 0) {
       toast.error('没有有效的词条可以保存 (KW或中文不能同时为空)');
       return;
@@ -118,7 +118,7 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
       return;
     }
 
-    const validRows = rows.filter(r => r.KW?.trim() || r['CN（中文）']?.trim());
+    const validRows = rows.filter(r => r['CN（中文）']?.trim());
     if (validRows.length === 0) {
       toast.error('没有有效的词条可以翻译');
       return;
@@ -200,14 +200,10 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
 
   if (!open) return null;
 
-  const validCount = rows.filter(r => r.KW?.trim() || r['CN（中文）']?.trim()).length;
+  const validCount = rows.filter(r => r['CN（中文）']?.trim()).length;
   const isBusy = loading || isTranslating;
 
-  // Calculate dynamic grid columns based on number of target languages
-  // Base columns: KW, CN, 页面, 类别, Actions
-  const numLangs = targetLanguages.length;
-  // Make inputs a bit narrower to fit more columns
-  const gridTemplateColumns = `1.5fr 1.5fr 1fr 1fr ${Array(numLangs).fill('1.5fr').join(' ')} 40px`;
+  const gridTemplateColumns = `1.5fr 2fr 1fr 1fr 1.5fr 2fr 40px`;
 
   return (
     <GlossaModal
@@ -231,7 +227,7 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
       <div style={{ padding: '0 0.5rem', maxHeight: '70vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            * 留空的行在保存时会自动被忽略。至少需要填写 KW 或 中文。
+            * 留空的行在保存时会自动被忽略。至少需要填写中文。
           </p>
           {targetLanguages.length === 0 && (
             <div className="alert-box alert-box-warning" style={{ margin: 0, padding: '0.4rem 0.8rem' }}>
@@ -265,13 +261,12 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
             gridTemplateColumns, 
             gap: '0.5rem', padding: '0.5rem 0', fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.8rem', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)', zIndex: 1 
           }}>
-            <div>KW 标识</div>
-            <div>CN（中文）</div>
+            <div>KW 标识 (选填)</div>
+            <div>CN（中文）*</div>
             <div>所在页面</div>
             <div>字号类别</div>
-            {targetLanguages.map(lang => (
-              <div key={lang}>{lang}</div>
-            ))}
+            <div>待翻译语种</div>
+            <div>AI 翻译预览</div>
             <div style={{ textAlign: 'center' }}>操作</div>
           </div>
 
@@ -315,18 +310,22 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
                 style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.85rem' }}
               />
               
-              {targetLanguages.map(lang => (
-                <input
-                  key={lang}
-                  type="text"
-                  placeholder={`${lang}...`}
-                  className="input-text"
-                  value={row[lang] || ''}
-                  onChange={(e) => updateRow(row.id, lang, e.target.value)}
-                  disabled={isBusy}
-                  style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.85rem', backgroundColor: row[lang] ? 'var(--bg-tertiary)' : 'var(--bg-secondary)' }}
-                />
-              ))}
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={targetLanguages.join(', ')}>
+                {targetLanguages.join(', ')}
+              </div>
+              <div style={{ fontSize: '0.75rem', maxHeight: '80px', overflowY: 'auto', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-secondary)' }}>
+                {targetLanguages.some(lang => row[lang]) ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    {targetLanguages.filter(lang => row[lang]).map(lang => (
+                      <div key={lang}>
+                        <span style={{ color: 'var(--accent)' }}>{lang}:</span> {row[lang]}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>等待运行...</span>
+                )}
+              </div>
 
               <button
                 onClick={() => removeRow(row.id)}
