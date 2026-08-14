@@ -378,6 +378,18 @@ export default function TranslationTab({
       }
       
       toast.success('批量翻译写入成功');
+      const newModified = { ...modifiedCells };
+      recordsToUpdate.forEach(r => {
+        const itemInPreview = batchPreviewList.find(i => i.recordId === r.id);
+        const langs = {};
+        if (itemInPreview && itemInPreview.translations) {
+          Object.keys(itemInPreview.translations).forEach(l => {
+            if (itemInPreview.translations[l]) langs[l] = true;
+          });
+        }
+        newModified[r.id] = { ...(newModified[r.id] || {}), ...langs, isModified: true };
+      });
+      setModifiedCells(newModified);
       setBatchTranslateOpen(false);
       setBatchPreviewList([]);
       loadTableData(batchTargetTableId);
@@ -578,35 +590,14 @@ export default function TranslationTab({
       const data = await res.json();
       const lockedNote = data.lockedSkipped > 0
         ? ` (跳过 ${data.lockedSkipped} 条已锁定词条)`
-  const handleConfirmBatchWrite = async (recordsToUpdate) => {
-    try {
-      setIsSavingBatch(true);
-      const res = await apiFetch('/api/terms/batch-write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ records: recordsToUpdate })
-      });
-      if (!res.ok) throw new Error('批量写入失败');
-      
-      toast.success('批量翻译写入成功');
-      const newModified = { ...modifiedCells };
-      recordsToUpdate.forEach(r => {
-        const itemInPreview = batchPreviewList.find(i => i.recordId === r.id);
-        const langs = {};
-        if (itemInPreview && itemInPreview.translations) {
-          Object.keys(itemInPreview.translations).forEach(l => {
-            if (itemInPreview.translations[l]) langs[l] = true;
-          });
-        }
-        newModified[r.id] = { ...(newModified[r.id] || {}), ...langs, isModified: true };
-      });
-      setModifiedCells(newModified);
-      setBatchTranslateOpen(false);
-      await loadTableData(batchTargetTableId);
+        : '';
+      toast.success(`${data.message || '已删除'}${lockedNote}`);
+      setSelectedRecordIds(new Set());
+      await loadTableData(selectedTableId);
     } catch (err) {
-      toast.error(err.message);
+      toast.error(err.message || '批量删除失败');
     } finally {
-      setIsSavingBatch(false);
+      setLoading(false);
     }
   };
 
@@ -670,36 +661,6 @@ export default function TranslationTab({
       if (batchCopyTargetTableId === selectedTableId) {
         await loadTableData(selectedTableId);
       }
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleBatchDelete = async () => {
-    if (selectedRecordIds.size === 0) return;
-    const count = selectedRecordIds.size;
-    if (!window.confirm(`确定要将选中的 ${count} 条词条放入回收站吗？（30天内可恢复）`)) {
-      return;
-    }
-    try {
-      setLoading(true);
-      const res = await apiFetch(`/api/terms/batch-delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          termIds: Array.from(selectedRecordIds)
-        })
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || '批量删除失败');
-      }
-      const data = await res.json();
-      toast.success(data.message || `已成功删除 ${count} 条词条`);
-      setSelectedRecordIds(new Set());
-      await loadTableData(selectedTableId);
     } catch (err) {
       toast.error(err.message);
     } finally {
