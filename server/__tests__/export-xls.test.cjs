@@ -51,14 +51,16 @@ describe('Bug-regression /api/tables/:id/export-xls + /api/dashboard/stats', () 
   it('导出表头与 constants.cjs 的规范语种一致 (Bug 1 回归)', async () => {
     const res = await request(app)
       .get(`/api/tables/${testVersionId}/export-xls`)
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Authorization', `Bearer ${adminToken}`)
+      .responseType('blob');
     expect(res.status).toBe(200);
-    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.headers['content-type']).toMatch(/application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
 
-    const lines = res.text.split('\r\n').filter(Boolean);
-    // The CSV body starts with a UTF-8 BOM so Excel treats it as UTF-8 — strip
-    // it before comparing headers.
-    const headers = lines[0].replace(/^﻿/, '').split(',');
+    const workbook = new (require('exceljs')).Workbook();
+    await workbook.xlsx.load(res.body);
+    const worksheet = workbook.worksheets[0];
+    const headerRow = worksheet.getRow(1);
+    const headers = headerRow.values.filter(Boolean);
 
     // 前 4 列为系统固定列
     expect(headers.slice(0, 4)).toEqual(['KW', 'CN（中文）', '所在页面', '字号类别']);
@@ -74,46 +76,65 @@ describe('Bug-regression /api/tables/:id/export-xls + /api/dashboard/stats', () 
   it('规范键值落在正确的列上', async () => {
     const res = await request(app)
       .get(`/api/tables/${testVersionId}/export-xls`)
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Authorization', `Bearer ${adminToken}`)
+      .responseType('blob');
     expect(res.status).toBe(200);
 
-    const lines = res.text.split('\r\n').filter(Boolean);
-    // The CSV body starts with a UTF-8 BOM so Excel treats it as UTF-8 — strip
-    // it before comparing headers.
-    const headers = lines[0].replace(/^﻿/, '').split(',');
-    const enIdx = headers.indexOf('EN（英文）');
-    const jpIdx = headers.indexOf('JP（日）');
-    const seIdx = headers.indexOf('瑞典');
-    expect(enIdx).toBeGreaterThan(3);
-    expect(jpIdx).toBeGreaterThan(3);
-    expect(seIdx).toBeGreaterThan(3);
+    const workbook = new (require('exceljs')).Workbook();
+    await workbook.xlsx.load(res.body);
+    const worksheet = workbook.worksheets[0];
+    const headers = worksheet.getRow(1).values.filter(Boolean);
+    const enIdx = headers.indexOf('EN（英文）') + 1;
+    const jpIdx = headers.indexOf('JP（日）') + 1;
+    const seIdx = headers.indexOf('瑞典') + 1;
+    expect(enIdx).toBeGreaterThan(4);
+    expect(jpIdx).toBeGreaterThan(4);
+    expect(seIdx).toBeGreaterThan(4);
 
-    const row = lines.slice(1).find(l => l.startsWith('KW_CANONICAL,'));
-    expect(row).toBeDefined();
-    const cells = row.split(',');
-    expect(cells[enIdx]).toBe('Speed');
-    expect(cells[jpIdx]).toBe('速度');
-    expect(cells[seIdx]).toBe('hastighet');
+    let targetRow = null;
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber > 1 && row.getCell(1).value === 'KW_CANONICAL') {
+        targetRow = row;
+      }
+    });
+
+    expect(targetRow).toBeDefined();
+    expect(targetRow.getCell(enIdx).value).toBe('Speed');
+    expect(targetRow.getCell(jpIdx).value).toBe('速度');
+    expect(targetRow.getCell(seIdx).value).toBe('hastighet');
   });
 
-  it('遗留别名键映射回规范列', async () => {
+  it('遗留别名键映射回规范列并支持高亮', async () => {
     const res = await request(app)
-      .get(`/api/tables/${testVersionId}/export-xls`)
-      .set('Authorization', `Bearer ${adminToken}`);
+      .post(`/api/tables/${testVersionId}/export-xls`)
+      .send({
+        highlightIds: [legacyAliasTermId],
+        modifiedCells: { [legacyAliasTermId]: { isAdded: true } }
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .responseType('blob');
     expect(res.status).toBe(200);
 
-    const lines = res.text.split('\r\n').filter(Boolean);
-    // The CSV body starts with a UTF-8 BOM so Excel treats it as UTF-8 — strip
-    // it before comparing headers.
-    const headers = lines[0].replace(/^﻿/, '').split(',');
-    const enIdx = headers.indexOf('EN（英文）');
-    const jpIdx = headers.indexOf('JP（日）');
+    const workbook = new (require('exceljs')).Workbook();
+    await workbook.xlsx.load(res.body);
+    const worksheet = workbook.worksheets[0];
+    const headers = worksheet.getRow(1).values.filter(Boolean);
+    const enIdx = headers.indexOf('EN（英文）') + 1;
+    const jpIdx = headers.indexOf('JP（日）') + 1;
 
-    const row = lines.slice(1).find(l => l.startsWith('KW_LEGACY,'));
-    expect(row).toBeDefined();
-    const cells = row.split(',');
-    expect(cells[enIdx]).toBe('Velocity');
-    expect(cells[jpIdx]).toBe('スピード');  });
+    let targetRow = null;
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber > 1 && row.getCell(1).value === 'KW_LEGACY') {
+        targetRow = row;
+      }
+    });
+
+    expect(targetRow).toBeDefined();
+    expect(targetRow.getCell(enIdx).value).toBe('Velocity');
+    expect(targetRow.getCell(jpIdx).value).toBe('スピード');
+    // Check highlight fill
+    expect(targetRow.getCell(1).fill?.fgColor?.argb).toBe('FFDCFCE7');
+  });
 
   it('Dashboard 缺失用户的日志显示 "已删除用户"，不会假托给真实管理员 (Bug 7 回归)', async () => {
     // 直接插入一条 user_id 指向不存在用户的日志条目

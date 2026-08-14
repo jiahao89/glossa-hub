@@ -578,42 +578,67 @@ export default function TranslationTab({
       const data = await res.json();
       const lockedNote = data.lockedSkipped > 0
         ? ` (跳过 ${data.lockedSkipped} 条已锁定词条)`
-        : '';
-      toast.success(`${data.message || '已删除'}${lockedNote}`);
-      setSelectedRecordIds(new Set());
-      await loadTableData(selectedTableId);
+  const handleConfirmBatchWrite = async (recordsToUpdate) => {
+    try {
+      setIsSavingBatch(true);
+      const res = await apiFetch('/api/terms/batch-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ records: recordsToUpdate })
+      });
+      if (!res.ok) throw new Error('批量写入失败');
+      
+      toast.success('批量翻译写入成功');
+      const newModified = { ...modifiedCells };
+      recordsToUpdate.forEach(r => {
+        const itemInPreview = batchPreviewList.find(i => i.recordId === r.id);
+        const langs = {};
+        if (itemInPreview && itemInPreview.translations) {
+          Object.keys(itemInPreview.translations).forEach(l => {
+            if (itemInPreview.translations[l]) langs[l] = true;
+          });
+        }
+        newModified[r.id] = { ...(newModified[r.id] || {}), ...langs, isModified: true };
+      });
+      setModifiedCells(newModified);
+      setBatchTranslateOpen(false);
+      await loadTableData(batchTargetTableId);
     } catch (err) {
-      toast.error(err.message || '批量删除失败');
+      toast.error(err.message);
     } finally {
-      setLoading(false);
+      setIsSavingBatch(false);
     }
   };
 
-  const handleBatchUpdateCategorySubmit = async () => {
+  const handleBatchCategorySubmit = async () => {
     if (selectedRecordIds.size === 0) return;
-    const termIds = Array.from(selectedRecordIds);
     try {
       setLoading(true);
-      const res = await apiFetch('/api/terms/batch-update', {
+      const updates = {};
+      if (batchUpdateFields.context) updates['所在页面'] = batchUpdateFields.context;
+      if (batchUpdateFields.owner) updates['字号类别'] = batchUpdateFields.owner;
+
+      const res = await apiFetch(`/api/terms/batch-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          termIds,
-          context: batchUpdateFields.context || undefined,
-          owner: batchUpdateFields.owner || undefined
+          termIds: Array.from(selectedRecordIds),
+          updates
         })
       });
-      if (res.ok) {
-        toast.success(`已为 ${termIds.length} 条词条成功设置属性！`);
-        setBatchUpdateOpen(false);
-        setSelectedRecordIds(new Set());
-        loadTableData(selectedTableId);
-      } else {
+
+      if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        toast.error(`设置分类失败: ${data.error || '未知错误'}`);
+        throw new Error(data.error || '批量修改分类失败');
       }
+
+      toast.success('批量更新分类成功！');
+      setBatchUpdateOpen(false);
+      setBatchUpdateFields({ context: '', owner: '' });
+      setSelectedRecordIds(new Set());
+      await loadTableData(selectedTableId);
     } catch (err) {
-      toast.error(`设置分类失败: ${err.message}`);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -621,26 +646,62 @@ export default function TranslationTab({
 
   const handleBatchCopySubmit = async () => {
     if (selectedRecordIds.size === 0 || !batchCopyTargetTableId) return;
-    const termIds = Array.from(selectedRecordIds);
     try {
       setLoading(true);
-      const res = await apiFetch('/api/terms/batch-copy', {
+      const res = await apiFetch(`/api/terms/batch-copy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          termIds,
+          termIds: Array.from(selectedRecordIds),
           targetVersionId: batchCopyTargetTableId,
           duplicateStrategy: batchCopyDuplicateStrategy
         })
       });
-      if (res.ok) {
-        const data = await res.json();
-        toast.success(data.message || `已将 ${termIds.length} 条记录复制到目标大表！`);
-        setBatchCopyOpen(false);
-        setSelectedRecordIds(new Set());
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '复制失败');
       }
-    } catch {
-      toast.error('复制失败');
+
+      const result = await res.json();
+      toast.success(result.message || '复制成功！');
+      setBatchCopyOpen(false);
+      setSelectedRecordIds(new Set());
+      if (batchCopyTargetTableId === selectedTableId) {
+        await loadTableData(selectedTableId);
+      }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedRecordIds.size === 0) return;
+    const count = selectedRecordIds.size;
+    if (!window.confirm(`确定要将选中的 ${count} 条词条放入回收站吗？（30天内可恢复）`)) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await apiFetch(`/api/terms/batch-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          termIds: Array.from(selectedRecordIds)
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '批量删除失败');
+      }
+      const data = await res.json();
+      toast.success(data.message || `已成功删除 ${count} 条词条`);
+      setSelectedRecordIds(new Set());
+      await loadTableData(selectedTableId);
+    } catch (err) {
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -654,19 +715,26 @@ export default function TranslationTab({
 
     try {
       toast.info('正在导出 Excel 文件...');
-      const res = await apiFetch(`/api/tables/${selectedTableId}/export-xls`);
+      const res = await apiFetch(`/api/tables/${selectedTableId}/export-xls`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          modifiedCells,
+          highlightIds: Object.keys(modifiedCells || {})
+        })
+      });
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         const tableName = tables.find(t => t.id === selectedTableId)?.name || selectedTableId;
-        a.download = `GlossaHub_${tableName}_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `GlossaHub_${tableName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
         document.body.appendChild(a);
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
-        toast.success('导出 Excel/CSV 文件成功！');
+        toast.success('导出 Excel 文件成功！');
       } else {
         const errData = await res.json().catch(() => ({}));
         toast.error(`导出失败: ${errData.error || '服务器响应异常'}`);
@@ -701,27 +769,23 @@ export default function TranslationTab({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
+    <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '0.8rem 1.2rem', gap: '0.8rem' }}>
       <TranslationToolbar
-        tables={tables}
-        selectedTableId={selectedTableId}
-        setSelectedTableId={setSelectedTableId}
-        totalRecords={totalRecords}
-        searchInput={searchInput}
-        setSearchInput={setSearchInput}
-        filterUntranslated={filterUntranslated}
-        setFilterUntranslated={setFilterUntranslated}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
         filterStatus={filterStatus}
         setFilterStatus={setFilterStatus}
-        colDropdownOpen={colDropdownOpen}
-        setColDropdownOpen={setColDropdownOpen}
+        filterUntranslated={filterUntranslated}
+        setFilterUntranslated={setFilterUntranslated}
         targetLanguages={TARGET_LANGUAGES}
         visibleLanguages={visibleLanguages}
         setVisibleLanguages={setVisibleLanguages}
+        tables={tables}
+        selectedTableId={selectedTableId}
+        setSelectedTableId={setSelectedTableId}
         selectedCount={selectedRecordIds.size}
         onClearSelection={() => setSelectedRecordIds(new Set())}
-        onBatchTranslate={handleOpenBatchTranslate}
-        onBatchApprove={() => setBatchApproveOpen(true)}
+        onBatchApprove={handleBatchApprove}
         onBatchCategory={() => setBatchUpdateOpen(true)}
         onBatchCopy={() => setBatchCopyOpen(true)}
         onBatchLock={() => {
@@ -732,12 +796,30 @@ export default function TranslationTab({
         }}
         onBatchDelete={handleBatchDelete}
         onExportXLS={handleExportXLS}
-                csvImportNode={
+        csvImportNode={
           <CSVImportHandler 
             selectedTableId={selectedTableId}
             currentRecords={records}
             targetLanguages={TARGET_LANGUAGES}
-            onImportComplete={() => loadTableData(selectedTableId)}
+            onImportComplete={(diff) => {
+              if (diff) {
+                setModifiedCells(prev => {
+                  const next = { ...prev };
+                  if (Array.isArray(diff.added)) {
+                    diff.added.forEach(item => {
+                      if (item.recordId) next[item.recordId] = { isAdded: true };
+                    });
+                  }
+                  if (Array.isArray(diff.updated)) {
+                    diff.updated.forEach(item => {
+                      if (item.recordId) next[item.recordId] = { isModified: true };
+                    });
+                  }
+                  return next;
+                });
+              }
+              loadTableData(selectedTableId);
+            }}
             disabled={loading}
           />
         }
@@ -745,13 +827,12 @@ export default function TranslationTab({
         onBatchAdd={() => setBatchAddModalOpen(true)}
         onInherit={() => setInheritOpen(true)}
 
-
+        onBatchTranslate={handleOpenBatchTranslate}
         onDataClean={handleDataClean}
         onClearHighlights={() => setModifiedCells({})}
         modifiedCount={Object.keys(modifiedCells).length}
         loading={loading}
         projectRole={projectRole}
-        difyConfigured={difyConfigured}
       />
 
       <TranslationTable
@@ -776,7 +857,17 @@ export default function TranslationTab({
         getRecordValueByName={getRecordValueByName}
         getRecordValue={getRecordValue}
         fieldMap={fieldMap}
-        onEditClick={(rec) => setEditModalRecord(rec)}
+        onEditClick={(rec) => {
+          setEditModalRecord(rec);
+          const recId = rec.recordId || rec.id;
+          if (recId && modifiedCells[recId]) {
+            setModifiedCells(prev => {
+              const next = { ...prev };
+              delete next[recId];
+              return next;
+            });
+          }
+        }}
       />
 
       {/* Subcomponent Modals */}
@@ -785,7 +876,15 @@ export default function TranslationTab({
         onClose={() => setAddModalOpen(false)}
         selectedTableId={selectedTableId}
         targetLanguages={TARGET_LANGUAGES}
-        onAddSuccess={() => loadTableData(selectedTableId)}
+        onAddSuccess={(addedItem) => {
+          if (addedItem && addedItem.recordId) {
+            setModifiedCells(prev => ({
+              ...prev,
+              [addedItem.recordId]: { isAdded: true }
+            }));
+          }
+          loadTableData(selectedTableId);
+        }}
       />
 
       <EditTermModal
@@ -814,7 +913,18 @@ export default function TranslationTab({
         onClose={() => setBatchAddModalOpen(false)}
         selectedTableId={selectedTableId}
         targetLanguages={TARGET_LANGUAGES}
-        onAddSuccess={() => loadTableData(selectedTableId)}
+        onAddSuccess={(addedItems) => {
+          if (Array.isArray(addedItems)) {
+            setModifiedCells(prev => {
+              const next = { ...prev };
+              addedItems.forEach(item => {
+                if (item.recordId) next[item.recordId] = { isAdded: true };
+              });
+              return next;
+            });
+          }
+          loadTableData(selectedTableId);
+        }}
       />
 
       <HistoryModal

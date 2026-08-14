@@ -194,7 +194,7 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
       setImportDiff(null);
       
       if (onImportComplete) {
-        onImportComplete();
+        onImportComplete({ added: addedForSync, updated: updatedForSync });
       }
     } catch (err) {
       toast.error(err.message);

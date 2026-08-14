@@ -132,7 +132,7 @@ describe('apiFetch', () => {
     localStorageMock.getItem.mockReturnValue(null);
     mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
 
-    await expect(apiFetch('/api/data')).rejects.toThrow('Failed to fetch');
+    await expect(apiFetch('/api/data')).rejects.toThrow('网络请求失败');
   });
 
   it('透传其他 options 参数（如 method, body）', async () => {
