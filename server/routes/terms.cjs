@@ -7,6 +7,7 @@ const { writeLimiter } = require('../middleware/rateLimiters.cjs');
 const { backupToRecycleBin } = require('../services/recycleBin.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
 const { TARGET_LANGUAGES, LEGACY_TO_NEW_LANG_MAP } = require('../config/constants.cjs');
+const ExcelJS = require('exceljs');
 
 // GET /api/tables/:tableId/records - 读取特定版本下的所有词条数据 (分页)
 router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
@@ -58,7 +59,7 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
     }
 
     const countQuery = `SELECT COUNT(*) as total FROM terms ${whereClause}`;
-    const dataQuery = `SELECT * FROM terms ${whereClause} ORDER BY kw ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    const dataQuery = `SELECT * FROM terms ${whereClause} ORDER BY updated_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     
     const countResult = await db.queryOne(countQuery, queryParams);
     const total = parseInt(countResult?.total || 0, 10);
@@ -1064,9 +1065,12 @@ router.delete('/tables/:tableId/clean-empty', authenticateToken, writeLimiter, a
   }
 });
 
-// GET /api/tables/:tableId/export-xls - 导出 Excel/CSV 表格数据
-router.get('/tables/:tableId/export-xls', authenticateToken, async (req, res) => {
+// ALL (GET/POST) /api/tables/:tableId/export-xls - 导出 Excel (.xlsx) 表格数据 (支持高亮标记)
+router.all('/tables/:tableId/export-xls', authenticateToken, async (req, res) => {
   const { tableId } = req.params;
+  const highlightIdsList = req.body?.highlightIds || (req.query?.highlightIds ? req.query.highlightIds.split(',') : []);
+  const highlightIds = new Set(highlightIdsList);
+  const modifiedCells = req.body?.modifiedCells || {};
 
   try {
     if (!(await requireVersionOwnership(req.user.id, tableId))) {
@@ -1076,31 +1080,47 @@ router.get('/tables/:tableId/export-xls', authenticateToken, async (req, res) =>
     const version = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [tableId]);
     const terms = await db.query('SELECT * FROM terms WHERE version_id = $1 ORDER BY created_at ASC', [tableId]);
 
-    // Use the canonical language list from server/config/constants.cjs — keeps
-    // the exported CSV in lockstep with the keys actually stored under
-    // `translations` and with what the importer recognises via LEGACY_TO_NEW_LANG_MAP.
-    const headers = ['KW', 'CN（中文）', '所在页面', '字号类别', ...TARGET_LANGUAGES];
-    const rows = [headers];
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'GlossaHub';
+    workbook.created = new Date();
 
-    // Build a canonical -> [legacy-aliases] map so terms saved with any older
-    // alias key (e.g. "日", "日语", "JP") still line up with the canonical column
-    // when exported. The first non-empty match wins.
+    const sheetName = (version?.version_name || tableId || 'Sheet1').slice(0, 31).replace(/[:\\\/\?\*\[\]]/g, '_');
+    const worksheet = workbook.addWorksheet(sheetName);
+
+    const headers = ['KW', 'CN（中文）', '所在页面', '字号类别', ...TARGET_LANGUAGES];
+    const headerRow = worksheet.addRow(headers);
+
+    // Header styling
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 24;
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1F2937' } // Dark gray/slate
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+      };
+    });
+
     const ALIASES_BY_CANONICAL = Object.entries(LEGACY_TO_NEW_LANG_MAP).reduce((acc, [legacy, canonical]) => {
       (acc.get(canonical) || acc.set(canonical, []).get(canonical)).push(legacy);
       return acc;
     }, new Map());
 
     for (const term of terms) {
-      // Use parseJsonField so a corrupted translations JSON is logged and the row
-      // degrades gracefully (every language column empty) instead of silently emitting
-      // an incomplete export.
       const trans = parseJsonField(term.translations);
 
-      const row = [
+      const rowValues = [
         term.kw && term.kw.startsWith('__EMPTY_KW_') ? '' : (term.kw || ''),
         term.zh_cn || '',
         term.context || '',
-        ''
+        term.owner || ''
       ];
 
       TARGET_LANGUAGES.forEach(lang => {
@@ -1118,28 +1138,83 @@ router.get('/tables/:tableId/export-xls', authenticateToken, async (req, res) =>
           }
         }
         if (val === undefined || val === null) val = '';
-        row.push(val);
+        rowValues.push(val);
       });
 
-      rows.push(row);
+      const row = worksheet.addRow(rowValues);
+      row.height = 20;
+
+      // Determine highlight status
+      const termMod = modifiedCells[term.id] || modifiedCells[term.kw];
+      const isHighlighted = highlightIds.has(term.id) || highlightIds.has(term.kw) || !!termMod;
+
+      const isAdded = termMod?.isAdded;
+
+      row.eachCell((cell, colNumber) => {
+        cell.alignment = { vertical: 'middle', wrapText: false };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+        };
+
+        if (isHighlighted) {
+          if (isAdded) {
+            // Light green highlight for newly added terms
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFDCFCE7' } // Tailwind green-100
+            };
+          } else if (termMod && typeof termMod === 'object') {
+            // Check specific language or general modification
+            if (colNumber >= 5) {
+              const lang = TARGET_LANGUAGES[colNumber - 5];
+              if (termMod[lang] || termMod.isModified) {
+                cell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb: 'FFFEF3C7' } // Tailwind amber/yellow-100
+                };
+              }
+            } else if (termMod.isModified) {
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFEF3C7' }
+              };
+            }
+          } else {
+            // General highlight
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFFEF3C7' }
+            };
+          }
+        }
+      });
     }
 
-    const csvContent = '\ufeff' + rows.map(r =>
-      r.map(cell => {
-        const str = String(cell ?? '');
-        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      }).join(',')
-    ).join('\r\n');
+    // Adjust column widths
+    worksheet.columns.forEach((column, index) => {
+      let maxLen = headers[index] ? headers[index].length * 2 : 10;
+      column.eachCell({ includeEmpty: false }, (cell) => {
+        const str = cell.value ? String(cell.value) : '';
+        const len = str.length;
+        if (len > maxLen) maxLen = len;
+      });
+      column.width = Math.min(Math.max(maxLen + 3, 12), 45);
+    });
 
-    const fileName = encodeURIComponent(`GlossaHub_${version?.version_name || tableId}_Export.csv`);
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileName = encodeURIComponent(`GlossaHub_${version?.version_name || tableId}_Export.xlsx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${fileName}`);
-    res.send(csvContent);
+    res.send(buffer);
   } catch (error) {
-    console.error('导出表格失败:', error);
+    console.error('导出 Excel 表格失败:', error);
     res.status(500).json({ error: '服务器内部错误，导出失败。' });
   }
 });
