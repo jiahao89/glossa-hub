@@ -254,8 +254,12 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
   }
 
   const termKw = inputs.kw || inputs.keyword || '';
-  const zhCn = inputs.zh_cn || inputs.chinese || inputs.text || '';
+  const zhCn = (inputs.zh_cn || inputs.chinese || inputs.text || '').trim();
   const targetLangs = inputs.target_languages || inputs.languages || '';
+
+  if (!zhCn) {
+    return res.status(400).json({ error: '缺少待翻译的文本内容' });
+  }
 
   try {
     // === START GLOSSARY INTERCEPTION ===
