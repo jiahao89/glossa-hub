@@ -119,7 +119,7 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
                   } else if (eventData.event === 'error') {
                     streamError = eventData.message || 'Stream error';
                   }
-                } catch (e) {
+                } catch {
                   // ignore parsing errors on partial chunks
                 }
               }
