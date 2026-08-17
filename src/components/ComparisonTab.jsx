@@ -1,14 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useToast } from './Toast';
 import { parseCSV, fuzzyFindIndex } from '../utils/csvHelper';
+import { DEFAULT_TARGET_LANGUAGES } from '../utils/languageHelper';
 import { Search, Loader2, ArrowLeftRight, FileInput, AlertCircle, HelpCircle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
-
-const DEFAULT_TARGET_LANGUAGES = [
-  'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
-  'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
-  'CZ(捷克)', '瑞典', '挪威', '荷兰'
-];
 
 const normalizeText = (text) => {
   if (!text) return '';

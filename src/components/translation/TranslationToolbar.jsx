@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Search, Plus, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2 } from 'lucide-react';
 
 export default function TranslationToolbar({
@@ -12,8 +12,6 @@ export default function TranslationToolbar({
   setFilterUntranslated,
   filterStatus,
   setFilterStatus,
-  colDropdownOpen,
-  setColDropdownOpen,
   targetLanguages = [],
   visibleLanguages = [],
   setVisibleLanguages,
@@ -37,6 +35,7 @@ export default function TranslationToolbar({
   projectRole = 'viewer',
   difyConfigured = false
 }) {
+  const [colDropdownOpen, setColDropdownOpen] = useState(false);
   return (
     <div className="toolbar" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '0.8rem 1rem', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
       {/* Top row: search & primary filters */}

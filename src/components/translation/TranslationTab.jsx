@@ -1,33 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { apiFetch, safeGetLocalStorage } from '../../utils/api';
+import { findTranslationForLang, DEFAULT_TARGET_LANGUAGES } from '../../utils/languageHelper';
 import { useToast } from '../Toast';
 import HistoryModal from './HistoryModal';
-
-function findTranslationForLang(result, targetLang) {
-  if (!result || typeof result !== 'object') return undefined;
-  if (result[targetLang] !== undefined) return result[targetLang];
-  
-  const codeMatch = targetLang.match(/^([A-Z]+)/i);
-  const code = codeMatch ? codeMatch[1].toUpperCase() : '';
-  const nameClean = targetLang.replace(/^[A-Z]+\s*[（(]?/i, '')
-                              .replace(/[）)]?$/g, '')
-                              .replace(/语|文/g, '')
-                              .trim();
-
-  for (const [k, v] of Object.entries(result)) {
-    if (v === undefined || v === null || String(v).trim() === '') continue;
-    const kUpper = k.toUpperCase().trim();
-    const kClean = k.replace(/[（()）]/g, '').replace(/语|文/g, '').trim();
-
-    if (code && (kUpper === code || kUpper.startsWith(code + '_') || kUpper.startsWith(code + '-'))) {
-      return v;
-    }
-    if (nameClean && (kClean.includes(nameClean) || nameClean.includes(kClean))) {
-      return v;
-    }
-  }
-  return undefined;
-}
 import { BatchCategoryModal, BatchCopyModal, BatchApproveModal } from './BatchActionsModal';
 import BatchTranslateModal from './BatchTranslateModal';
 import TranslationToolbar from './TranslationToolbar';
@@ -37,12 +12,6 @@ import BatchAddModal from './BatchAddModal';
 import EditTermModal from './EditTermModal';
 import InheritModal from './InheritModal';
 import TranslationTable from './TranslationTable';
-
-const DEFAULT_TARGET_LANGUAGES = [
-  'EN（英文）', 'FR（法）', 'DE（德）', 'ES（西班牙）', 'IT（意大利）', 'PT（葡萄牙）', 
-  'KO（韩）', 'JP（日）', 'RU（俄罗斯）', 'PL（波兰）', 'TC（繁）', 'DA（丹麦）', 
-  'CZ(捷克)', '瑞典', '挪威', '荷兰'
-];
 
 export default function TranslationTab({ 
   difyConnected = false,
@@ -57,11 +26,7 @@ export default function TranslationTab({
   const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
   const TARGET_LANGUAGES = targetLanguagesList;
 
-  const [difyConfigured, setDifyConfigured] = useState(difyConnected);
-
-  useEffect(() => {
-    setDifyConfigured(difyConnected);
-  }, [difyConnected]);
+  // difyConnected is passed from the parent and used directly in JSX below.
 
   useEffect(() => {
     const loadProjLanguages = async () => {
@@ -124,7 +89,7 @@ export default function TranslationTab({
   }, [selectedTableId, setModifiedCells]);
 
   // Column Visibility States
-  const [colDropdownOpen, setColDropdownOpen] = useState(false);
+  // Column dropdown visibility is managed internally by TranslationToolbar.
   const [visibleLanguages, setVisibleLanguages] = useState(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 1000) {
       return ['EN（英文）'];
@@ -601,7 +566,7 @@ export default function TranslationTab({
     }
   };
 
-  const handleBatchCategorySubmit = async () => {
+  const handleBatchUpdateCategorySubmit = async () => {
     if (selectedRecordIds.size === 0) return;
     try {
       setLoading(true);
@@ -732,8 +697,10 @@ export default function TranslationTab({
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '0.8rem 1.2rem', gap: '0.8rem' }}>
       <TranslationToolbar
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        totalRecords={totalRecords}
+        difyConfigured={difyConnected}
         filterStatus={filterStatus}
         setFilterStatus={setFilterStatus}
         filterUntranslated={filterUntranslated}
