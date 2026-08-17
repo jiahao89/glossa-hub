@@ -59,7 +59,7 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
     }
 
     const countQuery = `SELECT COUNT(*) as total FROM terms ${whereClause}`;
-    const dataQuery = `SELECT * FROM terms ${whereClause} ORDER BY updated_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    const dataQuery = `SELECT * FROM terms ${whereClause} ORDER BY kw ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     
     const countResult = await db.queryOne(countQuery, queryParams);
     const total = parseInt(countResult?.total || 0, 10);

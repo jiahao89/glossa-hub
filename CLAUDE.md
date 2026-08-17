@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collaborative translation term-management platform for cross-language hardware firmware apps. Vite + React frontend, Express + SQLite/PostgreSQL backend, deployable as Vercel (frontend) + Render (backend) + Supabase (database).
 
-Repository status: **v1.1** (current dev branch), v1.0 is the last release. Cloud-deployed as `glossa-hub.vercel.app` (frontend) and `glossa-hub.onrender.com` (backend).
+Repository status: **v1.2** (current dev branch), v1.0 is the last release. Cloud-deployed as `glossa-hub.vercel.app` (frontend) and `glossa-hub.onrender.com` (backend).
 
 ---
 
@@ -43,17 +43,11 @@ node --test server/__tests__/auth.test.cjs          # node test runner style —
 # OR with mocha if installed, otherwise convert paths. Most consistent invocation:
 npx vitest run server/__tests__                    # vitest handles .cjs too
 ```
-Test files: `auth`, `rbac`, `terms`, `difyGlossary`. They expect admin credentials `wangzhaoyun`/`magene123`.
+Test files: `auth`, `rbac`, `terms`, `difyGlossary`, `batch-delete`, `dify-builtin-key`, `export-xls`, `security-and-admin`. They expect admin credentials `wangzhaoyun`/`magene123`.
 
 ### Linting
 ```bash
 npm run lint             # oxlint
-```
-
-### Database utilities
-```bash
-node scripts/check_db.cjs           # inspect SQLite state
-node scripts/clone_versions_data.cjs
 ```
 
 To reset the local DB, delete `glossahub.db` (and `-shm` / `-wal` files). Restart the server — `ensureDbInit()` will recreate tables and seed default users.
@@ -86,7 +80,7 @@ Default seeded users (change via `INITIAL_ADMIN_PASSWORD` for admins):
 
 - `server.cjs` is **just a re-export shim** — real backend is `server/app.cjs` mounting modular routers.
 - `src/App.jsx` is the SPA shell — single root component hosting a tab-switching state machine. It lazy-loads each tab via `React.lazy()` so secondary tabs don't bloat initial bundle.
-- Tab components in `src/components/` are independent: `DashboardTab`, `TranslationTab`, `VersionsTab`, `ComparisonTab`, `GlossaryTab`, `LanguagesTab`, `LogsTab`, `UsersTab`, `SettingsTab`. A view called `guide` is an `<iframe>` over `/public/操作说明.html`.
+- Tab components in `src/components/` are independent: `DashboardTab`, `TranslationTab`, `VersionsTab`, `ComparisonTab`, `GlossaryTab`, `LanguagesTab`, `LogsTab`, `UsersTab`, `SettingsTab`. (`src/components/TranslationTab.jsx` is a 3-line re-export shim; the real code lives in `src/components/translation/` — see "Translation tab" below.) A view called `guide` is an `<iframe>` over `/public/操作说明.html`.
 - API entry for Vercel serverless: `api/index.js` re-exports the same `app` from `server.cjs`. `vercel.json` rewrites `/api/:path*` → `/api/index.js`.
 - DDL for Postgres lives in `db_init_pg.sql` (referenced by Supabase MCP); SQLite DDL is generated programmatically in `server/config/db.cjs` → `initSqliteTables()`.
 
@@ -145,13 +139,13 @@ Project roles: `owner` (full CRUD), `editor` (write, no destructive ops), `viewe
 
 ### Translation tab — the most complex module
 
-`src/components/TranslationTab.jsx` (~1500 lines as of v1.1) handles:
+`src/components/translation/TranslationTab.jsx` (~900 lines as of v1.2), supported by sibling components (`TranslationToolbar`, `TranslationTable`, `TranslationRow`, `EditTermModal`, `AddTermModal`, `BatchAddModal`, `BatchTranslateModal`, `BatchActionsModal`, `CSVImportHandler`, `HistoryModal`, `InheritModal`, `StatusBadge`), handles:
 - Paged grid (page/pageSize) with search + status filter + "untranslated only" filter
 - Cell-level optimistic UI with **optimistic locking**: client sends `updated_at`; server `UPDATE ... WHERE updated_at = $X` returns 409 on conflict (see `routes/terms.cjs` PUT handler).
 - `translations_meta` JSON tracks per-language provenance (`ai` vs `human`) for the Bot icon in the grid (leftmost column).
 - Inline edits via double-click, row-level dirty tracking with debounced localStorage persistence of `glossahub_modified_cells` (avoids main-thread blocking).
 - Stale-fetch guard: each `loadTableData` increments a ref-based token; late responses are discarded.
-- CSV import/export path uses `src/utils/csvHelper.js` (RFC-4180 parser + exporter).
+- CSV import/export path uses `src/utils/csvHelper.js` (RFC-4180 parser + exporter); `src/utils/languageHelper.js` fuzzy-matches AI-returned language keys ("EN", "English", "EN（英文）") to target language labels.
 - **Bulk AI translation** via Dify proxy; uses `requestsRef.current` to avoid stale closure issues noted in v1.1 review.
 
 ### Snapshots & rollback
