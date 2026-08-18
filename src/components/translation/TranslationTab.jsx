@@ -715,7 +715,7 @@ export default function TranslationTab({
         setSelectedTableId={setSelectedTableId}
         selectedCount={selectedRecordIds.size}
         onClearSelection={() => setSelectedRecordIds(new Set())}
-        onBatchApprove={handleBatchApprove}
+        onBatchApprove={() => setBatchApproveOpen(true)}
         onBatchCategory={() => setBatchUpdateOpen(true)}
         onBatchCopy={() => setBatchCopyOpen(true)}
         onBatchLock={() => {
