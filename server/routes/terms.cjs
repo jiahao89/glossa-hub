@@ -59,7 +59,7 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
     }
 
     const countQuery = `SELECT COUNT(*) as total FROM terms ${whereClause}`;
-    const dataQuery = `SELECT * FROM terms ${whereClause} ORDER BY kw ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    const dataQuery = `SELECT * FROM terms ${whereClause} ORDER BY sort_order ASC, created_at ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     
     const countResult = await db.queryOne(countQuery, queryParams);
     const total = parseInt(countResult?.total || 0, 10);
@@ -900,7 +900,7 @@ router.post('/terms/batch-approve', authenticateToken, async (req, res) => {
 // POST /api/tables/:tableId/sync - Bulk Insert/Update/Delete records for a version
 router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req, res) => {
   const { tableId } = req.params;
-  const { added = [], updated = [], deletedIds = [] } = req.body;
+  const { added = [], updated = [], deletedIds = [], reorder = [] } = req.body;
 
   try {
     const dbType = getDbType();
@@ -944,9 +944,19 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
 
         const lockedFalseVal = dbType === 'postgres' ? false : 0;
 
+        // Auto-assign sort_order: use provided value, or compute next max
+        let sortOrder = rec.sortOrder;
+        if (sortOrder === undefined || sortOrder === null) {
+          const maxRow = await tx.queryOne(
+            'SELECT COALESCE(MAX(sort_order), 0) as max_sort FROM terms WHERE version_id = $1',
+            [tableId]
+          );
+          sortOrder = (parseInt(maxRow?.max_sort || 0, 10)) + 1;
+        }
+
         await tx.query(`
-          INSERT INTO terms (id, version_id, kw, context, zh_cn, translations, translations_meta, is_locked, status, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          INSERT INTO terms (id, version_id, kw, context, zh_cn, translations, translations_meta, is_locked, status, sort_order, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         `, [
           rec.recordId,
           tableId,
@@ -957,6 +967,7 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
           translationsMetaStr,
           lockedFalseVal,
           'DRAFT',
+          sortOrder,
           nowStr,
           nowStr
         ]);
@@ -1017,9 +1028,19 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
 
         await tx.query(`
           UPDATE terms
-          SET kw = $1, context = $2, zh_cn = $3, translations = $4, translations_meta = $5, updated_at = $6
+          SET kw = $1, context = $2, zh_cn = $3, translations = $4, translations_meta = $5, updated_at = $6${rec.sortOrder !== undefined ? ', sort_order = $9' : ''}
           WHERE id = $7 AND version_id = $8 AND (is_locked IS NOT TRUE)
-        `, [
+        `, rec.sortOrder !== undefined ? [
+          kwVal,
+          contextVal,
+          zhCnVal,
+          fieldsStr,
+          translationsMetaStr,
+          nowStr,
+          rec.recordId,
+          tableId,
+          rec.sortOrder
+        ] : [
           kwVal,
           contextVal,
           zhCnVal,
@@ -1030,6 +1051,15 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
           tableId
         ]);
         successCount++;
+      }
+      // 4. Reorder (sort_order only updates for unchanged records)
+      for (const rec of reorder) {
+        if (rec.recordId && rec.sortOrder !== undefined) {
+          await tx.query(
+            'UPDATE terms SET sort_order = $1 WHERE id = $2 AND version_id = $3',
+            [rec.sortOrder, rec.recordId, tableId]
+          );
+        }
       }
     });
 
@@ -1078,7 +1108,7 @@ router.all('/tables/:tableId/export-xls', authenticateToken, async (req, res) =>
     }
 
     const version = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [tableId]);
-    const terms = await db.query('SELECT * FROM terms WHERE version_id = $1 ORDER BY created_at ASC', [tableId]);
+    const terms = await db.query('SELECT * FROM terms WHERE version_id = $1 ORDER BY sort_order ASC, created_at ASC', [tableId]);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'GlossaHub';
