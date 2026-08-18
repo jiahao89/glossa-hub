@@ -343,18 +343,20 @@ export default function TranslationTab({
       }
       
       toast.success('批量翻译写入成功');
-      const newModified = { ...modifiedCells };
-      recordsToUpdate.forEach(r => {
-        const itemInPreview = batchPreviewList.find(i => i.recordId === r.id);
-        const langs = {};
-        if (itemInPreview && itemInPreview.translations) {
-          Object.keys(itemInPreview.translations).forEach(l => {
-            if (itemInPreview.translations[l]) langs[l] = true;
-          });
-        }
-        newModified[r.id] = { ...(newModified[r.id] || {}), ...langs, isModified: true };
+      setModifiedCells(prev => {
+        const newModified = { ...prev };
+        recordsToUpdate.forEach(r => {
+          const itemInPreview = batchPreviewList.find(i => i.recordId === r.id);
+          const langs = {};
+          if (itemInPreview && itemInPreview.translations) {
+            Object.keys(itemInPreview.translations).forEach(l => {
+              if (itemInPreview.translations[l]) langs[l] = true;
+            });
+          }
+          newModified[r.id] = { ...(newModified[r.id] || {}), ...langs, isModified: true };
+        });
+        return newModified;
       });
-      setModifiedCells(newModified);
       setBatchTranslateOpen(false);
       setBatchPreviewList([]);
       loadTableData(batchTargetTableId);
@@ -713,7 +715,7 @@ export default function TranslationTab({
         setSelectedTableId={setSelectedTableId}
         selectedCount={selectedRecordIds.size}
         onClearSelection={() => setSelectedRecordIds(new Set())}
-        onBatchApprove={handleBatchApprove}
+        onBatchApprove={() => setBatchApproveOpen(true)}
         onBatchCategory={() => setBatchUpdateOpen(true)}
         onBatchCopy={() => setBatchCopyOpen(true)}
         onBatchLock={() => {

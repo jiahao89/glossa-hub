@@ -12,20 +12,28 @@
 export function findTranslationForLang(result, targetLang) {
   if (!result || typeof result !== 'object') return undefined;
   if (result[targetLang] !== undefined) return result[targetLang];
-  
-  const codeMatch = targetLang.match(/^([A-Z]+)/i);
+
+  const codeMatch = String(targetLang).match(/^([A-Za-z]+)/);
   const code = codeMatch ? codeMatch[1].toUpperCase() : '';
-  const nameClean = targetLang.replace(/^[A-Z]+\s*[（(]?/i, '')
+  const nameClean = String(targetLang).replace(/^[A-Za-z]+\s*[（(]?/i, '')
                               .replace(/[）)]?$/g, '')
                               .replace(/语|文/g, '')
                               .trim();
 
   for (const [k, v] of Object.entries(result)) {
     if (v === undefined || v === null || String(v).trim() === '') continue;
-    const kUpper = k.toUpperCase().trim();
     const kClean = k.replace(/[（()）]/g, '').replace(/语|文/g, '').trim();
 
-    if (code && (kUpper === code || kUpper.startsWith(code + '_') || kUpper.startsWith(code + '-'))) {
+    // Extract the code prefix from the key too, so "EN（英文）" matches target "EN".
+    // Only short prefixes (≤3 chars) count as codes; longer words are language names.
+    const kCodeMatch = k.match(/^([A-Za-z]+)/);
+    const kCodeRaw = kCodeMatch ? kCodeMatch[1].toUpperCase() : '';
+    const kCode = kCodeRaw.length > 0 && kCodeRaw.length <= 3 ? kCodeRaw : '';
+    // Map common English language names to codes, so "English" matches target "EN（英文）"
+    const kCodeFromName = ENGLISH_NAME_TO_CODE[kLower(kClean)] || '';
+
+    if (code && (kCode === code || kCodeFromName === code
+      || kCode.startsWith(code + '_') || kCode.startsWith(code + '-'))) {
       return v;
     }
     if (nameClean && (kClean.includes(nameClean) || nameClean.includes(kClean))) {
@@ -34,6 +42,18 @@ export function findTranslationForLang(result, targetLang) {
   }
   return undefined;
 }
+
+function kLower(s) {
+  return String(s).toLowerCase().trim();
+}
+
+/** Common English language names the AI may return, mapped to ISO-like codes. */
+const ENGLISH_NAME_TO_CODE = {
+  english: 'EN', chinese: 'CN', 'traditional chinese': 'TC', french: 'FR',
+  german: 'DE', spanish: 'ES', italian: 'IT', portuguese: 'PT',
+  korean: 'KO', japanese: 'JP', russian: 'RU', polish: 'PL',
+  danish: 'DA', czech: 'CZ', swedish: 'SE', norwegian: 'NO', dutch: 'NL',
+};
 
 /**
  * Default target language labels used as fallback when a project

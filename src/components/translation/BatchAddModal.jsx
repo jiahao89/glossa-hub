@@ -73,7 +73,7 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
 
     const validRows = rows.filter(r => r['CN（中文）']?.trim());
     if (validRows.length === 0) {
-      toast.error('没有有效的词条可以保存 (KW或中文不能同时为空)');
+      toast.error('没有有效的词条可以保存 (中文不能为空)');
       return;
     }
 
