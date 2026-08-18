@@ -86,4 +86,59 @@ describe('Pagination 分页器', () => {
     // totalPages=1 时不渲染 "· 第 X / Y 页"
     expect(screen.queryByText(/\/ 1 页/)).not.toBeInTheDocument();
   });
+
+  describe('跳转输入框行为', () => {
+    it('totalPages > 3 时渲染跳转输入框', () => {
+      // total = 200, pageSize = 50 => 4 pages
+      render(<Pagination {...defaultProps} />);
+      const input = screen.getByRole('spinbutton');
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveValue(1);
+    });
+
+    it('输入数字时不立即触发跳转，按下 Enter 时立即触发', async () => {
+      const user = userEvent.setup();
+      const onPageChange = vi.fn();
+      render(<Pagination {...defaultProps} page={1} onPageChange={onPageChange} />);
+
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '3');
+
+      // 输入后不应立即触发
+      expect(onPageChange).not.toHaveBeenCalled();
+
+      // 按下 Enter 键立即触发
+      await user.keyboard('{Enter}');
+      expect(onPageChange).toHaveBeenCalledWith(3);
+    });
+
+    it('失焦 (onBlur) 时触发跳转', async () => {
+      const user = userEvent.setup();
+      const onPageChange = vi.fn();
+      render(<Pagination {...defaultProps} page={1} onPageChange={onPageChange} />);
+
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '4');
+      expect(onPageChange).not.toHaveBeenCalled();
+
+      await user.tab(); // blur input
+      expect(onPageChange).toHaveBeenCalledWith(4);
+    });
+
+    it('输入超出范围的页码时限制在合法范围内', async () => {
+      const user = userEvent.setup();
+      const onPageChange = vi.fn();
+      render(<Pagination {...defaultProps} page={1} onPageChange={onPageChange} />);
+
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '999{Enter}');
+
+      // totalPages = 4，最大为 4
+      expect(onPageChange).toHaveBeenCalledWith(4);
+    });
+  });
 });
+

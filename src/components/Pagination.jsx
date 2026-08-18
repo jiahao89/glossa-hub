@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // ============================================================
 // 通用分页器组件（词条管理 / 专业词汇库共用，保证样式一致）
@@ -27,6 +27,66 @@ export default function Pagination({
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
+
+  const [jumpInput, setJumpInput] = useState(String(safePage));
+  const debounceTimerRef = useRef(null);
+
+  // 外部当前页码变更时，同步内部跳转输入框
+  useEffect(() => {
+    setJumpInput(String(safePage));
+  }, [safePage]);
+
+  // 组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const triggerJump = (valStr) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    const v = parseInt(valStr, 10);
+    if (!isNaN(v) && onPageChange) {
+      const target = Math.max(1, Math.min(totalPages, v));
+      setJumpInput(String(target));
+      if (target !== safePage) {
+        onPageChange(target);
+      }
+    } else {
+      setJumpInput(String(safePage));
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setJumpInput(val);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (val.trim() === '') return;
+
+    // 输入停顿 600ms 后自动触发跳转
+    debounceTimerRef.current = setTimeout(() => {
+      triggerJump(val);
+    }, 600);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      triggerJump(jumpInput);
+    }
+  };
+
+  const handleBlur = () => {
+    triggerJump(jumpInput);
+  };
 
   const btnStyle = (disabled) => ({
     height: '28px',
@@ -118,13 +178,10 @@ export default function Pagination({
               type="number"
               min={1}
               max={totalPages}
-              value={safePage}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
-                if (!isNaN(v) && onPageChange) {
-                  onPageChange(Math.max(1, Math.min(totalPages, v)));
-                }
-              }}
+              value={jumpInput}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onBlur={handleBlur}
               style={{
                 width: '52px',
                 height: '28px',
