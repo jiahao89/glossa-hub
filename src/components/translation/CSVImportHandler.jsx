@@ -122,7 +122,7 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
             if (Object.keys(changes).length > 0) {
               modified.push({ ...csvRec, existingRecord: existing, changes });
             } else {
-              unchanged.push(csvRec);
+              unchanged.push({ ...csvRec, existingRecord: existing });
             }
           }
         });
@@ -155,11 +155,20 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
     try {
       setLoading(true);
 
+      // Build sort order map from original CSV row order
+      const csvSortMap = {};
+      importDiff.csvRecords.forEach((rec, idx) => {
+        csvSortMap[rec.kw.toLowerCase()] = idx;
+      });
+      // Records not in CSV (removed) get placed after all CSV records
+      const csvMaxSort = importDiff.csvRecords.length;
+
       const addedForSync = importDiff.added.map(rec => {
         const newRecordId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         return {
           recordId: newRecordId,
-          fields: rec.fields
+          fields: rec.fields,
+          sortOrder: csvSortMap[rec.kw.toLowerCase()] ?? csvMaxSort
         };
       });
 
@@ -171,16 +180,27 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
         });
         return {
           recordId: existingRecordId,
-          fields: newFields
+          fields: newFields,
+          sortOrder: csvSortMap[rec.kw.toLowerCase()] ?? csvMaxSort
         };
       });
+
+      // Reorder unchanged records to match CSV positions
+      const reorderForSync = importDiff.unchanged.map(rec => {
+        const existingRecordId = rec.existingRecord?.id || rec.existingRecord?.recordId || rec.recordId;
+        return {
+          recordId: existingRecordId,
+          sortOrder: csvSortMap[rec.kw.toLowerCase()] ?? csvMaxSort
+        };
+      }).filter(r => r.recordId && r.sortOrder !== undefined);
 
       const res = await apiFetch(`/api/tables/${selectedTableId}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           added: addedForSync,
-          updated: updatedForSync
+          updated: updatedForSync,
+          reorder: reorderForSync
         })
       });
 

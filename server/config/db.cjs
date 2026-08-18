@@ -39,6 +39,7 @@ function ensureIndexes() {
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_versions_project_id ON versions(project_id)',
     'CREATE INDEX IF NOT EXISTS idx_terms_version_id ON terms(version_id)',
+    'CREATE INDEX IF NOT EXISTS idx_terms_version_sort ON terms(version_id, sort_order)',
     'CREATE INDEX IF NOT EXISTS idx_logs_v2_user_id ON logs_v2(user_id)',
     'CREATE INDEX IF NOT EXISTS idx_languages_project_id ON languages(project_id)',
     'CREATE INDEX IF NOT EXISTS idx_glossary_terms_table_id ON glossary_terms(table_id)'
@@ -118,6 +119,7 @@ async function initSqliteTables() {
           locked_at TEXT,
           status TEXT DEFAULT 'DRAFT',
           reject_reason TEXT,
+          sort_order INTEGER DEFAULT 0,
           UNIQUE(version_id, kw)
         )
       `);
@@ -272,6 +274,7 @@ async function initSqliteTables() {
       sqliteDb.run("ALTER TABLE terms ADD COLUMN status TEXT DEFAULT 'DRAFT'", () => {});
       sqliteDb.run("ALTER TABLE terms ADD COLUMN reject_reason TEXT", () => {});
       sqliteDb.run("ALTER TABLE terms ADD COLUMN translations_meta TEXT DEFAULT '{}'", () => {});
+      sqliteDb.run("ALTER TABLE terms ADD COLUMN sort_order INTEGER DEFAULT 0", () => {});
 
       // Languages seeding
       sqliteDb.get("SELECT COUNT(*) as count FROM languages WHERE project_id = 'proj-default'", (_countErr, row) => {
@@ -468,6 +471,7 @@ async function initDatabase() {
               locked_at TIMESTAMP WITH TIME ZONE,
               status TEXT DEFAULT 'DRAFT',
               reject_reason TEXT,
+              sort_order INTEGER DEFAULT 0,
               UNIQUE(version_id, kw)
           );
 
@@ -487,6 +491,8 @@ async function initDatabase() {
           ON CONFLICT (id) DO NOTHING;
 
           ALTER TABLE terms ADD COLUMN IF NOT EXISTS translations_meta JSONB NOT NULL DEFAULT '{}'::jsonb;
+          ALTER TABLE terms ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+          CREATE INDEX IF NOT EXISTS idx_terms_version_sort ON terms(version_id, sort_order);
         `);
         console.log('✅ 数据库同步完成: Postgres 基础表结构与属性列已就绪');
       } catch (err) {
