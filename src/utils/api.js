@@ -43,14 +43,18 @@ export async function apiFetch(url, options = {}) {
 }
 
 /**
- * 安全读取和解析 localStorage 中的 JSON 数据
+ * 安全读取和解析 localStorage 中的 JSON 或普通字符串数据
  */
 export function safeGetLocalStorage(key, defaultValue) {
   try {
     const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
-  } catch (err) {
-    console.warn(`读取/解析 localStorage 中的 [${key}] 失败，使用默认值:`, err);
+    if (item === null || item === undefined) return defaultValue;
+    try {
+      return JSON.parse(item);
+    } catch {
+      return typeof defaultValue === 'string' ? item : defaultValue;
+    }
+  } catch {
     return defaultValue;
   }
 }

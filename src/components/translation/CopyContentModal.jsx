@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import GlossaModal from '../GlossaModal';
 import { ClipboardCopy, Check, FileSpreadsheet, RotateCcw, CheckSquare, Square } from 'lucide-react';
 import { useToast } from '../Toast';
