@@ -227,8 +227,7 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
     <>
       <button 
         onClick={handleTriggerImport} 
-        className="btn btn-secondary btn-sm" 
-        style={{ height: '32px' }}
+        className="heroui-btn" 
         title="导入 CSV"
         disabled={disabled || loading}
       >
