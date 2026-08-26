@@ -1012,6 +1012,13 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
         await tx.query(`
           INSERT INTO terms (id, version_id, kw, context, zh_cn, translations, translations_meta, is_locked, status, sort_order, created_at, updated_at)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          ON CONFLICT (version_id, kw) DO UPDATE SET
+            context = EXCLUDED.context,
+            zh_cn = EXCLUDED.zh_cn,
+            translations = EXCLUDED.translations,
+            translations_meta = EXCLUDED.translations_meta,
+            sort_order = EXCLUDED.sort_order,
+            updated_at = EXCLUDED.updated_at
         `, [
           rec.recordId,
           tableId,
