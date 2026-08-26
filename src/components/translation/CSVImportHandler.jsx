@@ -111,7 +111,7 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
           } else {
             usedKws.add(csvKw);
             const changes = {};
-            const allFields = ['所在页面', '字号类别', 'KW', 'CN（中文）', ...targetLanguages];
+            const allFields = ['KW', 'CN（中文）', ...targetLanguages];
             allFields.forEach(field => {
               const csvVal = (csvRec.fields[field] || '').trim();
               const curVal = (existing.fields[field] || '').trim();

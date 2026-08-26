@@ -50,6 +50,7 @@ export default function TranslationTable({
   onToggleSelectRow,
   targetLanguages = [],
   visibleLanguages = [],
+  hiddenBaseColumns = new Set(),
   modifiedCells = {},
   lockLoadingId = '',
   onToggleRowLock,
@@ -125,20 +126,24 @@ export default function TranslationTable({
                 onSort={onToggleSort}
                 className="sticky-col-2"
               />
-              <SortHeader
-                field="所在页面"
-                label="所在页面"
-                currentField={sortField}
-                currentDir={sortDirection}
-                onSort={onToggleSort}
-              />
-              <SortHeader
-                field="字号类别"
-                label="字号/负责人"
-                currentField={sortField}
-                currentDir={sortDirection}
-                onSort={onToggleSort}
-              />
+              {!hiddenBaseColumns.has('所在页面') && (
+                <SortHeader
+                  field="所在页面"
+                  label="所在页面"
+                  currentField={sortField}
+                  currentDir={sortDirection}
+                  onSort={onToggleSort}
+                />
+              )}
+              {!hiddenBaseColumns.has('字号类别') && (
+                <SortHeader
+                  field="字号类别"
+                  label="字号/负责人"
+                  currentField={sortField}
+                  currentDir={sortDirection}
+                  onSort={onToggleSort}
+                />
+              )}
               <SortHeader
                 field="progress"
                 label="翻译进度"
@@ -195,6 +200,7 @@ export default function TranslationTable({
                   rowModified={rowModified}
                   targetLanguages={targetLanguages}
                   visibleLanguages={visibleLanguages}
+                  hiddenBaseColumns={hiddenBaseColumns}
                   getRecordValueByName={getRecordValueByName}
                   onEditClick={onEditClick}
                 />

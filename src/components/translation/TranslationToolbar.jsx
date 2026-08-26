@@ -37,7 +37,10 @@ export default function TranslationToolbar({
   onClearHighlights,
   modifiedCount = 0,
   projectRole = 'viewer',
-  difyConfigured = false
+  difyConfigured = false,
+  baseOptionalColumns = [],
+  hiddenBaseColumns = new Set(),
+  setHiddenBaseColumns = () => {}
 }) {
   const [colDropdownOpen, setColDropdownOpen] = useState(false);
 
@@ -133,7 +136,7 @@ export default function TranslationToolbar({
               onClick={() => setColDropdownOpen(!colDropdownOpen)}
             >
               <Settings size={14} />
-              <span>显示列 ({visibleLanguages.length}/{targetLanguages.length})</span>
+              <span>显示列 ({(baseOptionalColumns.length - hiddenBaseColumns.size) + visibleLanguages.length}/{baseOptionalColumns.length + targetLanguages.length})</span>
             </button>
 
             {colDropdownOpen && (
@@ -154,13 +157,13 @@ export default function TranslationToolbar({
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', paddingBottom: '0.4rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.82rem', fontWeight: 600 }}>
-                  <span>选择显示语种列</span>
+                  <span>选择显示列</span>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
                       type="button"
                       className="btn-text"
                       style={{ fontSize: '0.75rem', color: 'var(--accent)' }}
-                      onClick={() => setVisibleLanguages([...targetLanguages])}
+                      onClick={() => { setHiddenBaseColumns(new Set()); setVisibleLanguages([...targetLanguages]); }}
                     >
                       全选
                     </button>
@@ -168,14 +171,42 @@ export default function TranslationToolbar({
                       type="button"
                       className="btn-text"
                       style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}
-                      onClick={() => setVisibleLanguages([])}
+                      onClick={() => { setHiddenBaseColumns(new Set(baseOptionalColumns.map(c => c.key))); setVisibleLanguages([]); }}
                     >
                       清空
                     </button>
                   </div>
                 </div>
 
+                {/* Base optional columns */}
+                {baseOptionalColumns.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginBottom: '0.5rem', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border-color)' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>基础字段</span>
+                    {baseOptionalColumns.map(col => (
+                      <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px' }}>
+                        <input
+                          type="checkbox"
+                          checked={!hiddenBaseColumns.has(col.key)}
+                          onChange={(e) => {
+                            const next = new Set(hiddenBaseColumns);
+                            if (e.target.checked) {
+                              next.delete(col.key);
+                            } else {
+                              next.add(col.key);
+                            }
+                            setHiddenBaseColumns(next);
+                          }}
+                          style={{ accentColor: 'var(--accent)' }}
+                        />
+                        <span>{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {/* Language columns */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>语种列</span>
                   {targetLanguages.map(lang => (
                     <label key={lang} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px' }}>
                       <input

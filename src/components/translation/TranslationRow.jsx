@@ -22,6 +22,7 @@ const TranslationRow = memo(function TranslationRow({
   rowModified = {},
   targetLanguages = [],
   visibleLanguages = [],
+  hiddenBaseColumns = new Set(),
   getRecordValueByName,
   onEditClick
 }) {
@@ -133,8 +134,12 @@ const TranslationRow = memo(function TranslationRow({
 
       <td className={`sticky-col-1 mono ${rowModified.isAdded ? 'cell-added' : ''}`} title={kw}>{kw}</td>
       <td className={`sticky-col-2 ${rowModified.isAdded ? 'cell-added' : ''}`} title={zh} style={{ fontWeight: '500' }}>{zh}</td>
-      <td className={rowModified.isAdded ? 'cell-added' : ''} title={page}>{page || <span className="cell-empty">未填</span>}</td>
-      <td className={rowModified.isAdded ? 'cell-added' : ''} title={owner}>{owner || <span className="cell-empty">未填</span>}</td>
+      {!hiddenBaseColumns.has('所在页面') && (
+        <td className={rowModified.isAdded ? 'cell-added' : ''} title={page}>{page || <span className="cell-empty">未填</span>}</td>
+      )}
+      {!hiddenBaseColumns.has('字号类别') && (
+        <td className={rowModified.isAdded ? 'cell-added' : ''} title={owner}>{owner || <span className="cell-empty">未填</span>}</td>
+      )}
 
       {/* Progress Bar Mini Indicator */}
       {(() => {
