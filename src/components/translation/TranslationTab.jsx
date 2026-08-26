@@ -117,7 +117,7 @@ export default function TranslationTab({
   const [filterUntranslated, setFilterUntranslated] = useState(false);
   const [filterStatus, setFilterStatus] = useState('');
   const [sortBy, setSortBy] = useState('default');
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortOrder, _setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 

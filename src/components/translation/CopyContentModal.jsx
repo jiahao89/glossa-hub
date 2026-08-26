@@ -50,7 +50,7 @@ export default function CopyContentModal({
   }, [open]);
 
   // Extract cell value helper
-  const getColValue = (rec, colKey) => {
+  const getColValue = useCallback((rec, colKey) => {
     if (!rec) return '';
     if (colKey === 'status') {
       return rec.status || 'DRAFT';
@@ -68,10 +68,10 @@ export default function CopyContentModal({
       return (getRecordValueByName && (getRecordValueByName(rec, '字号类别') || getRecordValueByName(rec, '负责人'))) || rec.fields?.['字号类别'] || rec.fields?.['负责人'] || '';
     }
     return (getRecordValueByName && getRecordValueByName(rec, colKey)) || rec.fields?.[colKey] || '';
-  };
+  }, [getRecordValueByName]);
 
   // Escape formatting
-  const escapeCell = (val, fmt) => {
+  const escapeCell = useCallback((val, fmt) => {
     if (val === null || val === undefined) return '';
     const str = String(val);
     if (fmt === 'tsv') {
@@ -87,7 +87,7 @@ export default function CopyContentModal({
       }
       return str;
     }
-  };
+  }, []);
 
   // Generate output text
   const activeCols = useMemo(() => {
@@ -116,7 +116,7 @@ export default function CopyContentModal({
     });
 
     return lines.join('\n');
-  }, [activeCols, selectedRecords, format, includeHeader]);
+  }, [activeCols, selectedRecords, format, includeHeader, getColValue, escapeCell]);
 
   // Actions
   const handleSelectAll = () => {

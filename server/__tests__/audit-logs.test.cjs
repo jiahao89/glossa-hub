@@ -1,6 +1,6 @@
 const request = require('supertest');
 const app = require('../app.cjs');
-const { ensureDbInit, db, getDbType } = require('../config/db.cjs');
+const { ensureDbInit, db } = require('../config/db.cjs');
 
 describe('Audit Logging Verification (/api/logs, /api/terms, /api/tables/sync)', () => {
   let adminToken = '';
