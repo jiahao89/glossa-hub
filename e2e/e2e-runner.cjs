@@ -1,7 +1,6 @@
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const path = require('path');
-const fs = require('fs');
 
 async function waitForServer(url, timeoutMs = 20000) {
   const start = Date.now();

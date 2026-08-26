@@ -5,7 +5,7 @@ import { findTranslationForLang } from '../../utils/languageHelper';
 import { useToast } from '../Toast';
 import { Loader2, Sparkles } from 'lucide-react';
 
-export default function AddTermModal({ open, onClose, selectedTableId, targetLanguages = [], onAddSuccess }) {
+export default function AddTermModal({ open, onClose, selectedTableId, targetLanguages = [], excludedTranslateLangs = new Set(), onAddSuccess }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -36,13 +36,19 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
       return;
     }
 
+    const activeTargetLangs = targetLanguages.filter(l => !excludedTranslateLangs.has(l));
+    if (activeTargetLangs.length === 0) {
+      toast.info('所有目标语种均已被排除');
+      return;
+    }
+
     setIsTranslating(true);
     try {
       const inputs = {
         KW: newFields.KW || '',
         text: newFields['CN（中文）'],
         context: newFields['所在页面'] || '无',
-        target_languages: targetLanguages.join(',')
+        target_languages: activeTargetLangs.join(',')
       };
 
       const res = await apiFetch(`/api/projects/proj-default/ai-translate?debug=1`, {
@@ -58,7 +64,7 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
 
       const result = await res.json();
       const updates = {};
-      targetLanguages.forEach(lang => {
+      activeTargetLangs.forEach(lang => {
         const val = findTranslationForLang(result, lang);
         if (val) {
           updates[lang] = val;
