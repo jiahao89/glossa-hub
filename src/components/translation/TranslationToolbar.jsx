@@ -126,9 +126,9 @@ export default function TranslationToolbar({
       </div>
 
       {/* Tier 2: View Tools, File Export/Import & Action Operations */}
-      <div className="heroui-row" style={{ paddingTop: '0.4rem', borderTop: '1px solid var(--border-color)' }}>
+      <div className="heroui-row" style={{ paddingTop: '0.45rem', borderTop: '1px solid var(--border-color)', gap: '0.6rem' }}>
         {/* Left: Columns Selector & Export/Import Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0, flexWrap: 'nowrap' }}>
           {/* Columns Selector Dropdown */}
           <div style={{ position: 'relative' }}>
             <button
@@ -229,7 +229,7 @@ export default function TranslationToolbar({
             )}
           </div>
 
-          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 0.15rem' }} />
+          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 0.1rem' }} />
 
           <button className="heroui-btn" onClick={onExportXLS} title="导出当前表数据为 Excel (.xlsx)">
             <FileOutput size={14} />
@@ -245,23 +245,39 @@ export default function TranslationToolbar({
         </div>
 
         {/* Right: Selected Row Actions OR Management Tools + Primary CTA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0, flexWrap: 'nowrap' }}>
           {selectedCount > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'var(--bg-primary)', padding: '3px 6px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', padding: '0 0.35rem' }}>
-                已选 <strong style={{ color: 'var(--accent)' }}>{selectedCount}</strong> 项
+            <div className="heroui-selection-bar">
+              <span className="heroui-selection-badge">
+                已选 <strong>{selectedCount}</strong> 项
               </span>
               
-              <button type="button" className="btn-text" style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '0 4px' }} onClick={onClearSelection}>
+              <button
+                type="button"
+                className="btn-text"
+                style={{ fontSize: '0.76rem', color: 'var(--text-muted)', padding: '0 4px', whiteSpace: 'nowrap' }}
+                onClick={onClearSelection}
+              >
                 取消
               </button>
 
-              <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 0.1rem' }} />
+              <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 0.15rem' }} />
 
-              {/* 复制表格内容 */}
+              {/* ⭐ 1. 批量 AI 翻译所选 (N) */}
+              {difyConfigured && projectRole !== 'viewer' && (
+                <button
+                  className="heroui-btn heroui-btn-sm heroui-btn-ai"
+                  onClick={onBatchTranslate}
+                  title={`调用 Dify 翻译选中的 ${selectedCount} 个词条`}
+                >
+                  <Bot size={13} />
+                  <span>AI 翻译所选 ({selectedCount})</span>
+                </button>
+              )}
+
+              {/* ⭐ 2. 复制表格内容 */}
               <button
-                className="heroui-btn heroui-btn-accent"
-                style={{ height: '30px', fontSize: '0.78rem' }}
+                className="heroui-btn heroui-btn-sm heroui-btn-accent"
                 onClick={onCopyContent}
                 title="自定义复制选中行到剪贴板，支持选择复制列、反选，方便直接粘贴至 CSV / XLS / 表格中"
               >
@@ -271,34 +287,33 @@ export default function TranslationToolbar({
 
               {projectRole !== 'viewer' && (
                 <>
-                  <button className="heroui-btn" style={{ height: '30px', fontSize: '0.78rem' }} onClick={onBatchApprove}>
+                  <button className="heroui-btn heroui-btn-sm" onClick={onBatchApprove}>
                     <CheckCircle size={13} style={{ color: 'var(--green)' }} />
                     <span>批量审核</span>
                   </button>
 
-                  <button className="heroui-btn" style={{ height: '30px', fontSize: '0.78rem' }} onClick={onBatchCategory}>
+                  <button className="heroui-btn heroui-btn-sm" onClick={onBatchCategory}>
                     <Layers size={13} />
                     <span>分类</span>
                   </button>
 
-                  <button className="heroui-btn" style={{ height: '30px', fontSize: '0.78rem' }} onClick={onBatchCopy}>
+                  <button className="heroui-btn heroui-btn-sm" onClick={onBatchCopy}>
                     <Copy size={13} />
                     <span>复制到表</span>
                   </button>
 
-                  <button className="heroui-btn" style={{ height: '30px', fontSize: '0.78rem' }} onClick={onBatchLock} title="锁定选中的词条只读">
+                  <button className="heroui-btn heroui-btn-sm" onClick={onBatchLock} title="锁定选中的词条只读">
                     <Lock size={13} style={{ color: 'var(--red)' }} />
                     <span>锁定</span>
                   </button>
 
-                  <button className="heroui-btn" style={{ height: '30px', fontSize: '0.78rem' }} onClick={onBatchUnlock} title="解锁选中的词条">
+                  <button className="heroui-btn heroui-btn-sm" onClick={onBatchUnlock} title="解锁选中的词条">
                     <Unlock size={13} />
                     <span>解锁</span>
                   </button>
 
                   <button
-                    className="heroui-btn heroui-btn-danger"
-                    style={{ height: '30px', fontSize: '0.78rem' }}
+                    className="heroui-btn heroui-btn-sm heroui-btn-danger"
                     onClick={onBatchDelete}
                     title="将选中的词条送入回收站 (30 天内可恢复)"
                   >
