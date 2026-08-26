@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './Toast';
-import { Plus, Trash2, AlertOctagon, Edit2, Shield } from 'lucide-react';
+import { Plus, Trash2, Edit2, Shield, User, Key, UserCheck, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
 import EmptyState from './EmptyState';
+import { formatDateTime } from '../utils/dateTime';
 
 export default function UsersTab({ _projectRole }) {
   const toast = useToast();
@@ -27,10 +28,12 @@ export default function UsersTab({ _projectRole }) {
 
   const fetchUsers = async () => {
     try {
+      setLoading(true);
       const res = await apiFetch('/api/admin/users');
       if (!res.ok) throw new Error('加载用户列表失败');
       const data = await res.json();
       setUsers(data);
+      setError(null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -131,7 +134,7 @@ export default function UsersTab({ _projectRole }) {
   const handleDeleteUser = async (user, e) => {
     e.stopPropagation();
     const confirmDelete = window.confirm(
-      `🚨警告：\n您正在准备永久删除系统用户 [${user.name} (${user.username})]。\n这可能会影响该用户创建或修改的日志引用。\n\n确实要删除此用户吗？`
+      `⚠️ 警告：\n您正在准备永久删除系统用户 [${user.name} (${user.username})]。\n\n确实要删除此用户吗？`
     );
     if (!confirmDelete) return;
 
@@ -152,41 +155,21 @@ export default function UsersTab({ _projectRole }) {
     }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      <div className="flex-center" style={{ height: '70vh' }}>
+        <span>正在加载用户数据...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col h-full items-center justify-center text-red-500">
-        <AlertOctagon size={48} className="mb-4" />
-        <p className="text-xl font-medium">出错了</p>
-        <p className="text-sm mt-2">{error}</p>
-        <button 
-          onClick={fetchUsers}
-          className="mt-4 px-4 py-2 bg-slate-800 rounded-lg text-white hover:bg-slate-700"
-        >
+      <div className="flex-center" style={{ height: '70vh', flexDirection: 'column', gap: '0.75rem' }}>
+        <AlertTriangle size={36} style={{ color: 'var(--red)' }} />
+        <span style={{ color: 'var(--red)', fontSize: '0.95rem', fontWeight: 600 }}>加载用户列表失败</span>
+        <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{error}</span>
+        <button onClick={fetchUsers} className="btn btn-secondary" style={{ marginTop: '0.5rem' }}>
           重试
         </button>
       </div>
@@ -194,101 +177,113 @@ export default function UsersTab({ _projectRole }) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-900/50 p-6 overflow-hidden">
+    <div className="users-container" style={{ padding: '1.5rem', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="tab-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0 }}>
         <div>
-          <h2 className="text-2xl font-semibold text-slate-100 flex items-center gap-2">
-            <Shield className="text-purple-400" size={28} />
-            用户管理
+          <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Shield size={22} style={{ color: 'var(--accent)' }} />
+            <span>系统用户管理</span>
           </h2>
-          <p className="text-slate-400 text-sm mt-1">
-            系统级用户管理（超级管理员专属）
+          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            管理系统协作成员账号、初始密码与权限角色（超级管理员专属）
           </p>
         </div>
         
         <button
           onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-primary hover:from-purple-500 hover:to-primary/90 text-white rounded-lg shadow-lg shadow-purple-500/25 transition-all font-medium border border-purple-500/30 hover:shadow-purple-500/40"
+          className="btn btn-primary"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', height: '36px' }}
         >
-          <Plus size={20} />
-          新建用户
+          <Plus size={16} />
+          <span>新建用户</span>
         </button>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-hidden bg-slate-900 border border-slate-800 rounded-xl flex flex-col shadow-xl">
-        <div className="flex-1 overflow-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="sticky top-0 bg-slate-800/90 backdrop-blur-sm shadow-md z-10">
+      {/* Main Table */}
+      <div className="table-wrapper" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+          <thead>
+            <tr style={{ background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', height: '40px' }}>
+              <th style={{ padding: '0.75rem 1rem', width: '22%' }}>登录用户名 (Username)</th>
+              <th style={{ padding: '0.75rem 1rem', width: '22%' }}>真实姓名 (Name)</th>
+              <th style={{ padding: '0.75rem 1rem', width: '18%' }}>系统角色</th>
+              <th style={{ padding: '0.75rem 1rem', width: '22%' }}>创建时间</th>
+              <th style={{ padding: '0.75rem 1rem', width: '16%', textAlign: 'center' }}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.length === 0 ? (
               <tr>
-                <th className="p-4 text-sm font-semibold text-slate-300 w-1/4">用户名</th>
-                <th className="p-4 text-sm font-semibold text-slate-300 w-1/4">姓名</th>
-                <th className="p-4 text-sm font-semibold text-slate-300 w-1/6">系统角色</th>
-                <th className="p-4 text-sm font-semibold text-slate-300 w-1/4">创建时间</th>
-                <th className="p-4 text-sm font-semibold text-slate-300 w-[100px] text-right">操作</th>
+                <td colSpan={5} style={{ padding: '0' }}>
+                  <EmptyState
+                    icon={User}
+                    title="暂无用户数据"
+                    description="点击右上角「新建用户」添加第一位协作者。"
+                  />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {users.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>
-                    <EmptyState
-                      title="暂无用户数据"
-                      description="点击右上角「新建用户」添加第一位协作者。"
-                    />
+            ) : (
+              users.map(user => (
+                <tr 
+                  key={user.id} 
+                  style={{ borderBottom: '1px solid var(--border-color)', height: '48px', transition: 'background 0.15s' }}
+                >
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <User size={14} style={{ color: 'var(--text-muted)' }} />
+                      <code style={{ background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '4px', color: 'var(--accent)', fontWeight: '600', fontSize: '0.82rem' }}>
+                        {user.username}
+                      </code>
+                    </div>
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', fontWeight: '500', color: 'var(--text-primary)' }}>
+                    {user.name}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    {user.role === 'admin' ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
+                        <Shield size={11} />
+                        超级管理员
+                      </span>
+                    ) : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                        <UserCheck size={11} />
+                        普通用户
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                    {formatDateTime(user.created_at)}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', alignItems: 'center' }}>
+                      <button
+                        onClick={() => handleOpenEdit(user)}
+                        className="btn btn-secondary"
+                        style={{ height: '28px', padding: '0 0.6rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                        title="编辑用户信息"
+                      >
+                        <Edit2 size={12} />
+                        <span>编辑</span>
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteUser(user, e)}
+                        className="btn btn-secondary"
+                        style={{ height: '28px', padding: '0 0.6rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: 'var(--red)', borderColor: 'rgba(239, 68, 68, 0.25)' }}
+                        title="删除系统用户"
+                      >
+                        <Trash2 size={12} />
+                        <span>删除</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ) : (
-                users.map(user => (
-                  <tr 
-                    key={user.id} 
-                    className="border-b border-slate-800/50 hover:bg-slate-800/40 transition-colors group"
-                  >
-                    <td className="p-4 align-middle">
-                      <div className="font-medium text-slate-200">{user.username}</div>
-                    </td>
-                    <td className="p-4 align-middle text-slate-300">
-                      {user.name}
-                    </td>
-                    <td className="p-4 align-middle">
-                      {user.role === 'admin' ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                          超级管理员
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
-                          普通用户
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 align-middle text-slate-400 text-sm">
-                      {formatDate(user.created_at)}
-                    </td>
-                    <td className="p-4 align-middle text-right">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => handleOpenEdit(user)}
-                          className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-md transition-colors tooltip-trigger"
-                          title="编辑用户信息"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteUser(user, e)}
-                          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors tooltip-trigger"
-                          title="删除系统用户"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Add User Modal */}
@@ -296,60 +291,94 @@ export default function UsersTab({ _projectRole }) {
         isOpen={addModalOpen}
         onClose={() => !submitting && setAddModalOpen(false)}
         title="新建系统用户"
-        maxWidth="480px"
-      >
-        <form onSubmit={handleAddUser} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-2">
-              <Shield size={16} className="text-purple-400" />
-              登录账号 (Username) <span className="text-red-400">*</span>
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                required
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-slate-500 shadow-inner"
-                placeholder="请输入英文登录名 (例如: zhangsan)"
-                value={formData.username}
-                onChange={(e) => setFormData({...formData, username: e.target.value})}
-                disabled={submitting}
-              />
-            </div>
+        maxWidth="500px"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', width: '100%' }}>
+            <button
+              type="button"
+              onClick={() => setAddModalOpen(false)}
+              disabled={submitting}
+              className="btn btn-secondary"
+              style={{ width: '90px' }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleAddUser}
+              disabled={submitting}
+              className="btn btn-primary"
+              style={{ minWidth: '100px' }}
+            >
+              {submitting ? '保存中...' : '确认新建'}
+            </button>
           </div>
+        }
+      >
+        <form onSubmit={handleAddUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem 0' }}>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-2">
-              真实姓名 (Name) <span className="text-red-400">*</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              <User size={14} style={{ color: 'var(--accent)' }} />
+              <span>登录账号 (Username)</span>
+              <span style={{ color: 'var(--red)' }}>*</span>
             </label>
             <input
               type="text"
               required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-slate-500 shadow-inner"
+              className="text-input"
+              style={{ width: '100%', height: '36px', fontSize: '0.85rem' }}
+              placeholder="请输入英文登录名 (例如: zhangsan)"
+              value={formData.username}
+              onChange={(e) => setFormData({...formData, username: e.target.value})}
+              disabled={submitting}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              <UserCheck size={14} style={{ color: 'var(--accent)' }} />
+              <span>真实姓名 (Name)</span>
+              <span style={{ color: 'var(--red)' }}>*</span>
+            </label>
+            <input
+              type="text"
+              required
+              className="text-input"
+              style={{ width: '100%', height: '36px', fontSize: '0.85rem' }}
               placeholder="请输入显示姓名"
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
               disabled={submitting}
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-2">
-              初始密码 (Password) <span className="text-red-400">*</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              <Key size={14} style={{ color: 'var(--accent)' }} />
+              <span>初始密码 (Password)</span>
+              <span style={{ color: 'var(--red)' }}>*</span>
             </label>
             <input
               type="password"
               required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-slate-500 shadow-inner"
-              placeholder="请输入至少6位初始密码"
+              className="text-input"
+              style={{ width: '100%', height: '36px', fontSize: '0.85rem' }}
+              placeholder="请输入至少 6 位初始密码"
               value={formData.password}
               onChange={(e) => setFormData({...formData, password: e.target.value})}
               disabled={submitting}
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5 flex items-center gap-2">
-              系统角色 (Role) <span className="text-red-400">*</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              <Shield size={14} style={{ color: 'var(--accent)' }} />
+              <span>系统角色 (Role)</span>
+              <span style={{ color: 'var(--red)' }}>*</span>
             </label>
             <select
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all shadow-inner"
+              className="select-input"
+              style={{ width: '100%', height: '36px', fontSize: '0.85rem' }}
               value={formData.role}
               onChange={(e) => setFormData({...formData, role: e.target.value})}
               disabled={submitting}
@@ -357,30 +386,11 @@ export default function UsersTab({ _projectRole }) {
               <option value="user">普通用户 (User)</option>
               <option value="admin">超级管理员 (Admin)</option>
             </select>
-            <div className="bg-slate-800/50 rounded-lg p-3 mt-3 border border-slate-700/50">
-              <p className="text-xs text-slate-400 flex items-start gap-2">
-                <AlertOctagon size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                <span><strong className="text-slate-300">超级管理员</strong>可以管理全站项目并配置用户；<strong className="text-slate-300">普通用户</strong>权限取决于具体项目的授权。</span>
-              </p>
-            </div>
-          </div>
 
-          <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setAddModalOpen(false)}
-              disabled={submitting}
-              className="px-5 py-2.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-medium bg-gradient-to-r from-purple-600 to-primary hover:from-purple-500 hover:to-primary/90 text-white rounded-lg transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50"
-            >
-              {submitting ? '保存中...' : '确认新建'}
-            </button>
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem', marginTop: '0.6rem', fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', gap: '0.4rem', alignItems: 'flex-start' }}>
+              <Shield size={14} style={{ color: 'var(--yellow)', flexShrink: 0, marginTop: '2px' }} />
+              <span><strong>超级管理员</strong>可以管理全站项目并配置用户；<strong>普通用户</strong>权限取决于具体项目内的授权角色（所有者/译员/只读审核）。</span>
+            </div>
           </div>
         </form>
       </GlossaModal>
@@ -390,35 +400,70 @@ export default function UsersTab({ _projectRole }) {
         isOpen={editModalOpen}
         onClose={() => !submitting && setEditModalOpen(false)}
         title="编辑用户信息"
-        maxWidth="480px"
+        maxWidth="500px"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', width: '100%' }}>
+            <button
+              type="button"
+              onClick={() => setEditModalOpen(false)}
+              disabled={submitting}
+              className="btn btn-secondary"
+              style={{ width: '90px' }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleEditUser}
+              disabled={submitting}
+              className="btn btn-primary"
+              style={{ minWidth: '100px' }}
+            >
+              {submitting ? '保存中...' : '保存更改'}
+            </button>
+          </div>
+        }
       >
-        <form onSubmit={handleEditUser} className="space-y-4">
+        <form onSubmit={handleEditUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem 0' }}>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">登录账号</label>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              登录账号 (Username)
+            </label>
             <input
               type="text"
               disabled
-              className="w-full bg-slate-800/50 border border-slate-800 rounded-lg px-4 py-2.5 text-slate-400 cursor-not-allowed"
+              className="text-input"
+              style={{ width: '100%', height: '36px', fontSize: '0.85rem', opacity: 0.6, cursor: 'not-allowed', background: 'var(--bg-tertiary)' }}
               value={formData.username}
             />
-            <p className="text-xs text-slate-500 mt-1">登录账号不可更改。</p>
+            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>登录账号为唯一标识，不可更改。</p>
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">真实姓名 (Name) <span className="text-red-400">*</span></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              <span>真实姓名 (Name)</span>
+              <span style={{ color: 'var(--red)' }}>*</span>
+            </label>
             <input
               type="text"
               required
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-slate-500"
+              className="text-input"
+              style={{ width: '100%', height: '36px', fontSize: '0.85rem' }}
               placeholder="请输入显示姓名"
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
               disabled={submitting}
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">系统角色 (Role) <span className="text-red-400">*</span></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              <span>系统角色 (Role)</span>
+              <span style={{ color: 'var(--red)' }}>*</span>
+            </label>
             <select
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all"
+              className="select-input"
+              style={{ width: '100%', height: '36px', fontSize: '0.85rem' }}
               value={formData.role}
               onChange={(e) => setFormData({...formData, role: e.target.value})}
               disabled={submitting}
@@ -427,35 +472,21 @@ export default function UsersTab({ _projectRole }) {
               <option value="admin">超级管理员 (Admin)</option>
             </select>
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">重置密码 (可选)</label>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              重置密码 (可选)
+            </label>
             <input
               type="password"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-slate-500"
-              placeholder="不修改请留空"
+              className="text-input"
+              style={{ width: '100%', height: '36px', fontSize: '0.85rem' }}
+              placeholder="不修改密码请留空"
               value={formData.password}
               onChange={(e) => setFormData({...formData, password: e.target.value})}
               disabled={submitting}
             />
-            <p className="text-xs text-slate-500 mt-1">如需重置密码，请输入新密码；如果不想修改，请留空。</p>
-          </div>
-
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setEditModalOpen(false)}
-              disabled={submitting}
-              className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-2 px-5 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors shadow-lg shadow-blue-500/20 disabled:opacity-50"
-            >
-              {submitting ? '保存中...' : '保存更改'}
-            </button>
+            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>如需修改该用户密码，请输入新密码；留空则保持原密码不变。</p>
           </div>
         </form>
       </GlossaModal>
