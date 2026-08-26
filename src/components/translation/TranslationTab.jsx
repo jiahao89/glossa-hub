@@ -170,18 +170,54 @@ export default function TranslationTab({
 
   const currentUser = useMemo(() => safeGetLocalStorage('user', null), []);
 
+  // Excluded target languages for translation (remembered per-table + global fallback)
+  const [excludedTranslateLangs, setExcludedTranslateLangs] = useState(() => {
+    return new Set(safeGetLocalStorage('glossa_excluded_translate_langs', []));
+  });
+
+  useEffect(() => {
+    if (selectedTableId) {
+      const tableSaved = safeGetLocalStorage(`glossa_excluded_translate_langs_${selectedTableId}`, null);
+      if (tableSaved && Array.isArray(tableSaved)) {
+        setExcludedTranslateLangs(new Set(tableSaved));
+      }
+    }
+  }, [selectedTableId]);
+
+  const handleSetExcludedTranslateLangs = useCallback((newSet) => {
+    setExcludedTranslateLangs(newSet);
+    if (selectedTableId) {
+      try {
+        localStorage.setItem(`glossa_excluded_translate_langs_${selectedTableId}`, JSON.stringify(Array.from(newSet)));
+        localStorage.setItem('glossa_excluded_translate_langs', JSON.stringify(Array.from(newSet)));
+      } catch {}
+    }
+  }, [selectedTableId]);
+
+  const handleToggleExcludeLang = useCallback((lang) => {
+    const next = new Set(excludedTranslateLangs);
+    if (next.has(lang)) {
+      next.delete(lang);
+    } else {
+      next.add(lang);
+    }
+    handleSetExcludedTranslateLangs(next);
+  }, [excludedTranslateLangs, handleSetExcludedTranslateLangs]);
+
   const handleOpenBatchTranslate = async () => {
     let targetRecords = records;
     if (selectedRecordIds.size > 0) {
       targetRecords = records.filter(r => selectedRecordIds.has(r.recordId || r.id));
     }
 
+    const activeTargetLangs = TARGET_LANGUAGES.filter(lang => !excludedTranslateLangs.has(lang));
+
     const itemsToTranslate = targetRecords.map(r => {
       const fields = r.fields || {};
       const zhCn = (fields['CN（中文）'] || '').trim();
       if (!zhCn) return null; // Skip terms without Chinese source text
       
-      const missingLangs = TARGET_LANGUAGES.filter(lang => !fields[lang] || String(fields[lang]).trim() === '');
+      const missingLangs = activeTargetLangs.filter(lang => !fields[lang] || String(fields[lang]).trim() === '');
       if (missingLangs.length === 0) return null;
       
       return {
@@ -189,6 +225,7 @@ export default function TranslationTab({
         KW: fields['KW'] || '',
         '中文': zhCn,
         '所在页面': fields['所在页面'] || '',
+        existingFields: fields,
         missingLangs,
         translations: {}
       };
@@ -196,14 +233,13 @@ export default function TranslationTab({
 
     if (itemsToTranslate.length === 0) {
       if (selectedRecordIds.size > 0) {
-        // 区分两种原因: 选中但过滤后为空 → 跨表选中的脏数据; 真没待翻译条目
         if (targetRecords.length === 0) {
           toast.info('选中的记录不在当前表中, 请重新勾选');
         } else {
-          toast.info('选中的词条包含空中文或都已完成翻译');
+          toast.info('选中的词条在当前翻译语种范围内均已完成翻译');
         }
       } else {
-        toast.info('当前表格中没有待翻译的词条');
+        toast.info('当前表格中在选定语种范围内没有待翻译的词条');
       }
       return;
     }
@@ -215,6 +251,21 @@ export default function TranslationTab({
     setSelectedBatchItemIds(new Set(itemsToTranslate.map(i => i.recordId)));
   };
 
+  // Dynamically update missing languages when excludedTranslateLangs changes while modal is open
+  useEffect(() => {
+    if (batchTranslateOpen && batchPreviewList.length > 0) {
+      const activeTargetLangs = TARGET_LANGUAGES.filter(lang => !excludedTranslateLangs.has(lang));
+      setBatchPreviewList(prev => prev.map(item => {
+        const fields = item.existingFields || {};
+        const missingLangs = activeTargetLangs.filter(lang => !fields[lang] || String(fields[lang]).trim() === '');
+        return {
+          ...item,
+          missingLangs
+        };
+      }));
+    }
+  }, [excludedTranslateLangs, batchTranslateOpen, TARGET_LANGUAGES, batchPreviewList.length]);
+
   const handleStartBatchTranslate = async () => {
     setIsTranslatingBatch(true);
     const updatedList = [...batchPreviewList];
@@ -222,10 +273,15 @@ export default function TranslationTab({
     let successCount = 0;
     let errorCount = 0;
 
+    const activeTargetLangs = TARGET_LANGUAGES.filter(lang => !excludedTranslateLangs.has(lang));
+
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
       if (!selectedBatchItemIds.has(item.recordId)) continue;
       
+      const effectiveMissingLangs = (item.missingLangs || []).filter(l => activeTargetLangs.includes(l));
+      if (effectiveMissingLangs.length === 0) continue;
+
       translatedCount++;
       setBatchProgress({
         total: selectedBatchItemIds.size,
@@ -234,9 +290,7 @@ export default function TranslationTab({
       });
 
       try {
-        const targetLangsReq = (item.missingLangs && item.missingLangs.length > 0) 
-          ? item.missingLangs.join(',') 
-          : TARGET_LANGUAGES.join(',');
+        const targetLangsReq = effectiveMissingLangs.join(',');
 
         const inputs = {
           KW: item.KW,
@@ -253,7 +307,6 @@ export default function TranslationTab({
 
         if (!res.ok) {
            const error = await res.json();
-           // ⭐ 调试模式:把 Dify 真实响应 + 试过的 URL 一起抛出去
            const debugInfo = error.debug
              ? ` | [debug] status=${error.debug.difyStatus} | tried=${error.debug.triedUrls?.join(' → ')} | raw=${error.debug.difyRaw?.slice(0, 200)}`
              : '';
@@ -264,7 +317,7 @@ export default function TranslationTab({
         const result = await res.json();
         
         const trans = {};
-        item.missingLangs.forEach(lang => {
+        effectiveMissingLangs.forEach(lang => {
           const val = findTranslationForLang(result, lang);
           if (val) trans[lang] = val;
         });
@@ -938,6 +991,7 @@ export default function TranslationTab({
         onClose={() => setAddModalOpen(false)}
         selectedTableId={selectedTableId}
         targetLanguages={TARGET_LANGUAGES}
+        excludedTranslateLangs={excludedTranslateLangs}
         onAddSuccess={(addedItem) => {
           if (addedItem && addedItem.recordId) {
             setModifiedCells(prev => ({
@@ -1048,6 +1102,10 @@ export default function TranslationTab({
         isSavingBatch={isSavingBatch}
         onStartBatchTranslate={handleStartBatchTranslate}
         onConfirmBatchWrite={handleConfirmBatchWrite}
+        targetLanguages={TARGET_LANGUAGES}
+        excludedTranslateLangs={excludedTranslateLangs}
+        onToggleExcludeLang={handleToggleExcludeLang}
+        onSetExcludedLangs={handleSetExcludedTranslateLangs}
       />
 
       <CopyContentModal

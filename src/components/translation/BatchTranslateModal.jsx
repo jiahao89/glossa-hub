@@ -15,16 +15,39 @@ export default function BatchTranslateModal({
   isTranslatingBatch,
   isSavingBatch,
   onStartBatchTranslate,
-  onConfirmBatchWrite
+  onConfirmBatchWrite,
+  targetLanguages = [],
+  excludedTranslateLangs = new Set(),
+  onToggleExcludeLang = () => {},
+  onSetExcludedLangs = () => {}
 }) {
   if (!open) return null;
+
+  const hasThai = targetLanguages.some(l => l.includes('泰') || l.toUpperCase().includes('TH'));
+  const isThaiExcluded = Array.from(excludedTranslateLangs).some(l => l.includes('泰') || l.toUpperCase().includes('TH'));
+
+  const handleToggleThai = () => {
+    const thaiLang = targetLanguages.find(l => l.includes('泰') || l.toUpperCase().includes('TH'));
+    if (!thaiLang) return;
+    const next = new Set(excludedTranslateLangs);
+    if (next.has(thaiLang)) {
+      next.delete(thaiLang);
+    } else {
+      next.add(thaiLang);
+    }
+    onSetExcludedLangs(next);
+  };
+
+  const handleIncludeAll = () => {
+    onSetExcludedLangs(new Set());
+  };
 
   return (
     <GlossaModal
       isOpen={open}
       onClose={onClose}
       title={`Dify 批量智能翻译工作流 (已选 ${selectedBatchItemIds.size} / 共 ${batchPreviewList.length} 条待翻译)`}
-      maxWidth="900px"
+      maxWidth="920px"
       closeDisabled={isTranslatingBatch}
       footer={
         <>
@@ -64,7 +87,7 @@ export default function BatchTranslateModal({
         </>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
         {/* Target Table Selector & Selection Controls */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.8rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
@@ -83,6 +106,93 @@ export default function BatchTranslateModal({
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             已勾选 <strong style={{ color: 'var(--accent)' }}>{selectedBatchItemIds.size}</strong> / {batchPreviewList.length} 项
+          </div>
+        </div>
+
+        {/* Excluded Languages Filter Panel */}
+        <div style={{
+          backgroundColor: 'var(--bg-secondary)',
+          border: '1px solid var(--border-color)',
+          borderRadius: 'var(--radius-md)',
+          padding: '0.65rem 0.85rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              <span>🌐 翻译语种范围</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>
+                (点击标签可排除不需要翻译的语种，排除后不会调用 Dify 翻译该语言)
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              {hasThai && (
+                <button
+                  type="button"
+                  onClick={handleToggleThai}
+                  disabled={isTranslatingBatch}
+                  className="btn btn-xs"
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                    border: isThaiExcluded ? '1px solid var(--accent)' : '1px solid var(--border-color)',
+                    backgroundColor: isThaiExcluded ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                    color: isThaiExcluded ? 'var(--accent)' : 'var(--text-secondary)'
+                  }}
+                >
+                  {isThaiExcluded ? '✓ 恢复包含泰语' : '✕ 排除泰语'}
+                </button>
+              )}
+              {excludedTranslateLangs.size > 0 && (
+                <button
+                  type="button"
+                  onClick={handleIncludeAll}
+                  disabled={isTranslatingBatch}
+                  className="btn btn-xs btn-text"
+                  style={{ fontSize: '0.72rem', color: 'var(--accent)', padding: '2px 6px' }}
+                >
+                  全部包含 ({targetLanguages.length})
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+            {targetLanguages.map(lang => {
+              const isExcluded = excludedTranslateLangs.has(lang);
+              return (
+                <button
+                  key={lang}
+                  type="button"
+                  disabled={isTranslatingBatch}
+                  onClick={() => onToggleExcludeLang(lang)}
+                  title={isExcluded ? `已排除 ${lang}，点击恢复` : `正在翻译 ${lang}，点击排除`}
+                  style={{
+                    fontSize: '0.75rem',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    border: isExcluded ? '1px dashed var(--border-color)' : '1px solid var(--accent)',
+                    backgroundColor: isExcluded ? 'var(--bg-tertiary)' : 'rgba(59, 130, 246, 0.12)',
+                    color: isExcluded ? 'var(--text-muted)' : 'var(--accent)',
+                    cursor: isTranslatingBatch ? 'not-allowed' : 'pointer',
+                    textDecoration: isExcluded ? 'line-through' : 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span>{lang}</span>
+                  {isExcluded ? (
+                    <span style={{ fontSize: '0.65rem', textDecoration: 'none', color: 'var(--text-muted)', opacity: 0.8 }}>[排除]</span>
+                  ) : (
+                    <span style={{ fontSize: '0.65rem', color: 'var(--accent)' }}>✓</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
