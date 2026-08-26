@@ -12,6 +12,8 @@ export default function TranslationToolbar({
   setFilterUntranslated,
   filterStatus,
   setFilterStatus,
+  sortBy = 'default',
+  setSortBy = () => {},
   targetLanguages = [],
   visibleLanguages = [],
   setVisibleLanguages,
@@ -61,7 +63,7 @@ export default function TranslationToolbar({
           </span>
         </div>
 
-        {/* Search & Status Filter */}
+        {/* Search & Status & Sort Filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1, minWidth: '280px', flexWrap: 'wrap' }}>
           {/* Search Input */}
           <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
@@ -87,6 +89,20 @@ export default function TranslationToolbar({
             <option value="APPROVED">已审核 (APPROVED)</option>
             <option value="PUBLISHED">已发布 (PUBLISHED)</option>
             <option value="REJECTED">已驳回 (REJECTED)</option>
+          </select>
+
+          <select
+            className="select-input"
+            style={{ height: '32px', fontSize: '0.82rem', minWidth: '160px' }}
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            title="选择词条排序与查看方式（支持按更新时间、新增时间或默认顺序）"
+          >
+            <option value="default">默认顺序 (原有顺序)</option>
+            <option value="updated_at">🕒 按更新时间 (最新变动)</option>
+            <option value="created_at">✨ 按新增时间 (最新录入)</option>
+            <option value="kw">🔤 按 KW 键名 (A-Z)</option>
+            <option value="zh_cn">🔤 按 中文源词 (A-Z)</option>
           </select>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>

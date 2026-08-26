@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { Lock, Unlock, Edit2, Bot, Check, Loader2 } from 'lucide-react';
 import StatusBadge from './StatusBadge';
+import { formatDateTime } from '../../utils/dateTime';
 
 const TranslationRow = memo(function TranslationRow({
   rec,
@@ -76,7 +77,10 @@ const TranslationRow = memo(function TranslationRow({
         />
       </td>
 
-      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', width: '45px' }}>
+      <td
+        style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', width: '45px' }}
+        title={rec.updatedAt ? `最近更新时间: ${formatDateTime(rec.updatedAt)}${rec.createdAt ? `\n创建录入时间: ${formatDateTime(rec.createdAt)}` : ''}` : undefined}
+      >
         {(safePage - 1) * pageSize + index + 1}
       </td>
 

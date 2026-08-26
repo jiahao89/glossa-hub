@@ -6,7 +6,7 @@ describe('Audit Logging Verification (/api/logs, /api/terms, /api/tables/sync)',
   let adminToken = '';
   const testVersionId = 'ver-audit-test-' + Date.now();
   const testTermId = 'term-audit-test-' + Date.now();
-  const testVersionName = '审计测试版本大表';
+  const testVersionName = '审计测试版本大表_' + Date.now();
 
   beforeAll(async () => {
     await ensureDbInit();
@@ -24,8 +24,8 @@ describe('Audit Logging Verification (/api/logs, /api/terms, /api/tables/sync)',
 
     // Create test term
     await db.run(
-      `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_at, is_locked, status)
-       VALUES ($1, $2, 'KW_AUDIT_LOG_TEST', '设置页', '标题', '审计测试原词', '{"EN（英文）":"Initial English"}', '{}', datetime('now'), 0, 'DRAFT')`,
+      `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+       VALUES ($1, $2, 'KW_AUDIT_LOG_TEST', '设置页', '标题', '审计测试原词', '{"EN（英文）":"Initial English"}', '{}', datetime('now'), datetime('now'), 0, 'DRAFT')`,
       [testTermId, testVersionId]
     );
   });
