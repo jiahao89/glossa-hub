@@ -1,8 +1,40 @@
 import React from 'react';
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import TranslationRow from './TranslationRow';
 import EmptyState from '../EmptyState';
 import { SkeletonTable } from '../Skeleton';
 import Pagination from '../Pagination';
+
+function SortHeader({ field, label, currentField, currentDir, onSort, className, style }) {
+  const isActive = currentField === field;
+  return (
+    <th
+      className={className}
+      style={{ cursor: 'pointer', userSelect: 'none', ...style }}
+      onClick={() => onSort(field)}
+      title={
+        isActive
+          ? (currentDir === 'asc' ? '当前：升序 (点击切换为降序)' : '当前：降序 (点击恢复默认排序)')
+          : `点击按 ${label} 排序`
+      }
+    >
+      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: style?.textAlign === 'center' ? 'center' : 'flex-start', gap: '4px', width: '100%' }}>
+        <span>{label}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+          {isActive ? (
+            currentDir === 'asc' ? (
+              <ArrowUp size={12} style={{ color: 'var(--accent)' }} />
+            ) : (
+              <ArrowDown size={12} style={{ color: 'var(--accent)' }} />
+            )
+          ) : (
+            <ArrowUpDown size={11} style={{ opacity: 0.35 }} />
+          )}
+        </span>
+      </div>
+    </th>
+  );
+}
 
 export default function TranslationTable({
   loading,
@@ -26,7 +58,10 @@ export default function TranslationTable({
   getRecordValueByName,
   getRecordValue,
   fieldMap = {},
-  onEditClick
+  onEditClick,
+  sortField = null,
+  sortDirection = null,
+  onToggleSort = () => {}
 }) {
   if (loading) {
     return <SkeletonTable rows={10} cols={6} />;
@@ -58,16 +93,72 @@ export default function TranslationTable({
                   onChange={(e) => onSelectAll(e.target.checked)}
                 />
               </th>
-              <th style={{ width: '45px', textAlign: 'center' }}>#</th>
-              <th style={{ width: '70px', textAlign: 'center' }}>状态</th>
-              <th className="sticky-col-1">KW (键名)</th>
-              <th className="sticky-col-2">CN (中文)</th>
-              <th>所在页面</th>
-              <th>字号/负责人</th>
-              <th style={{ textAlign: 'center', width: '90px' }}>翻译进度</th>
+              <SortHeader
+                field="index"
+                label="#"
+                currentField={sortField}
+                currentDir={sortDirection}
+                onSort={onToggleSort}
+                style={{ width: '50px', textAlign: 'center' }}
+              />
+              <SortHeader
+                field="status"
+                label="状态"
+                currentField={sortField}
+                currentDir={sortDirection}
+                onSort={onToggleSort}
+                style={{ width: '80px', textAlign: 'center' }}
+              />
+              <SortHeader
+                field="KW"
+                label="KW (键名)"
+                currentField={sortField}
+                currentDir={sortDirection}
+                onSort={onToggleSort}
+                className="sticky-col-1"
+              />
+              <SortHeader
+                field="CN（中文）"
+                label="CN (中文)"
+                currentField={sortField}
+                currentDir={sortDirection}
+                onSort={onToggleSort}
+                className="sticky-col-2"
+              />
+              <SortHeader
+                field="所在页面"
+                label="所在页面"
+                currentField={sortField}
+                currentDir={sortDirection}
+                onSort={onToggleSort}
+              />
+              <SortHeader
+                field="字号类别"
+                label="字号/负责人"
+                currentField={sortField}
+                currentDir={sortDirection}
+                onSort={onToggleSort}
+              />
+              <SortHeader
+                field="progress"
+                label="翻译进度"
+                currentField={sortField}
+                currentDir={sortDirection}
+                onSort={onToggleSort}
+                style={{ textAlign: 'center', width: '95px' }}
+              />
               {targetLanguages.map(lang => {
                 if (!visibleLanguages.includes(lang)) return null;
-                return <th key={lang}>{lang}</th>;
+                return (
+                  <SortHeader
+                    key={lang}
+                    field={lang}
+                    label={lang}
+                    currentField={sortField}
+                    currentDir={sortDirection}
+                    onSort={onToggleSort}
+                  />
+                );
               })}
               <th style={{ width: '50px', textAlign: 'center' }}>操作</th>
             </tr>
@@ -120,9 +211,18 @@ export default function TranslationTable({
         pageSize={pageSize}
         onPageChange={setCurrentPage}
         onPageSizeChange={setPageSize}
-        extra={selectedRecordIds.size > 0 ? (
-          <> · 已选 <strong style={{ color: 'var(--accent)' }}>{selectedRecordIds.size}</strong> 条</>
-        ) : null}
+        extra={
+          <>
+            {selectedRecordIds.size > 0 && (
+              <> · 已选 <strong style={{ color: 'var(--accent)' }}>{selectedRecordIds.size}</strong> 条</>
+            )}
+            {sortField && (
+              <span style={{ marginLeft: '8px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                · 按 <strong style={{ color: 'var(--accent)' }}>{sortField}</strong> {sortDirection === 'asc' ? '升序' : '降序'}排序中 (仅浏览生效)
+              </span>
+            )}
+          </>
+        }
       />
     </div>
   );

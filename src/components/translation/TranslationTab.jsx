@@ -118,6 +118,10 @@ export default function TranslationTab({
   const [fieldMap, setFieldMap] = useState({});
   const [_revFieldMap, setRevFieldMap] = useState({});
 
+  // Sorting State (only affects online browsing, does not affect export)
+  const [sortField, setSortField] = useState(null);
+  const [sortDirection, setSortDirection] = useState(null); // 'asc' | 'desc' | null
+
   // Modal States
   const [editModalRecord, setEditModalRecord] = useState(null);
   const [_addModalOpen, setAddModalOpen] = useState(false);
@@ -459,10 +463,60 @@ export default function TranslationTab({
     return rec?.fields ? rec.fields[fieldName] || '' : '';
   }, [fieldMap, getRecordValue]);
 
-  // We removed client-side filtering because it's now handled by the server.
-  // `paginatedRecords` is just an alias kept for use in `handleSelectPage`-style
-  // batch-selection helpers and the JSX prop below.
-  const paginatedRecords = records;
+  const handleToggleSort = useCallback((field) => {
+    if (sortField !== field) {
+      setSortField(field);
+      setSortDirection('asc');
+    } else if (sortDirection === 'asc') {
+      setSortDirection('desc');
+    } else {
+      setSortField(null);
+      setSortDirection(null);
+    }
+  }, [sortField, sortDirection]);
+
+  // Online browser sorting (does not affect DB export)
+  const sortedRecords = useMemo(() => {
+    if (!sortField || !sortDirection) {
+      return records;
+    }
+
+    return [...records].sort((a, b) => {
+      if (sortField === '#index' || sortField === 'index') {
+        const ordA = a.sortOrder ?? a.sort_order ?? 0;
+        const ordB = b.sortOrder ?? b.sort_order ?? 0;
+        return sortDirection === 'asc' ? ordA - ordB : ordB - ordA;
+      }
+
+      if (sortField === 'status') {
+        const stA = a.status || 'DRAFT';
+        const stB = b.status || 'DRAFT';
+        const cmp = stA.localeCompare(stB);
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
+
+      if (sortField === 'progress') {
+        const getProgressCount = (rec) => {
+          let filled = 0;
+          TARGET_LANGUAGES.forEach(lang => {
+            const val = getRecordValueByName(rec, lang);
+            if (val && String(val).trim()) filled++;
+          });
+          return filled;
+        };
+        const pA = getProgressCount(a);
+        const pB = getProgressCount(b);
+        return sortDirection === 'asc' ? pA - pB : pB - pA;
+      }
+
+      const valA = String(getRecordValueByName(a, sortField) || '');
+      const valB = String(getRecordValueByName(b, sortField) || '');
+      const cmp = valA.localeCompare(valB, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }, [records, sortField, sortDirection, getRecordValueByName, TARGET_LANGUAGES]);
+
+  const paginatedRecords = sortedRecords;
 
   // Handlers
   const handleToggleRowLock = async (recId, currentLockState) => {
@@ -675,6 +729,37 @@ export default function TranslationTab({
     }
   };
 
+  const handleExportCSV = async () => {
+    if (!selectedTableId) {
+      toast.error('请选择需要导出的数据表！');
+      return;
+    }
+
+    try {
+      toast.info('正在导出 CSV 文件...');
+      const res = await apiFetch(`/api/tables/${selectedTableId}/export-csv`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const tableName = tables.find(t => t.id === selectedTableId)?.name || selectedTableId;
+        a.download = `GlossaHub_${tableName}_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        toast.success('导出 CSV 文件成功！');
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(`导出 CSV 失败: ${errData.error || '服务器响应异常'}`);
+      }
+    } catch (err) {
+      console.error('导出 CSV 异常:', err);
+      toast.error(`导出 CSV 失败: ${err.message}`);
+    }
+  };
+
   const handleDataClean = async () => {
     if (!window.confirm('确定要清理当前数据表中的空词条（无KW或无中文）吗？这无法撤销！')) {
       return;
@@ -729,6 +814,7 @@ export default function TranslationTab({
         }}
         onBatchDelete={handleBatchDelete}
         onExportXLS={handleExportXLS}
+        onExportCSV={handleExportCSV}
         csvImportNode={
           <CSVImportHandler 
             selectedTableId={selectedTableId}
@@ -790,6 +876,9 @@ export default function TranslationTab({
         getRecordValueByName={getRecordValueByName}
         getRecordValue={getRecordValue}
         fieldMap={fieldMap}
+        sortField={sortField}
+        sortDirection={sortDirection}
+        onToggleSort={handleToggleSort}
         onEditClick={(rec) => {
           setEditModalRecord(rec);
           const recId = rec.recordId || rec.id;
