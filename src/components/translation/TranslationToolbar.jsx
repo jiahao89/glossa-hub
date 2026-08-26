@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2 } from 'lucide-react';
+import { Search, Plus, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2, ClipboardCopy } from 'lucide-react';
 
 export default function TranslationToolbar({
   tables = [],
@@ -17,6 +17,7 @@ export default function TranslationToolbar({
   setVisibleLanguages,
   selectedCount = 0,
   onClearSelection,
+  onCopyContent,
   onBatchTranslate,
   onBatchApprove,
   onBatchCategory,
@@ -188,49 +189,28 @@ export default function TranslationToolbar({
             <span>导出 XLS</span>
           </button>
 
-          {projectRole !== 'viewer' && (
-            <>
-              <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onDataClean} title="清除无 KW 或无中文的空记录">
-                <Trash2 size={14} />
-                <span>数据清理</span>
+          {/* Selection-specific inline actions (available for both single/batch selection) */}
+          {selectedCount > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border-color)', paddingLeft: '0.8rem', marginLeft: '0.4rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>已选 <strong style={{ color: 'var(--accent)' }}>{selectedCount}</strong> 项</span>
+              
+              <button className="btn-text btn-sm" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }} onClick={onClearSelection}>
+                取消
               </button>
 
-              {csvImportNode}
-
-              <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchAdd} title="手动批量新增词条">
-                <Layers size={14} />
-                <span>批量新增</span>
+              {/* 复制表格内容 (支持自由选择列/反选/复制到 CSV/Excel) */}
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ height: '32px', borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                onClick={onCopyContent}
+                title="自定义复制选中行到剪贴板，支持选择复制列、反选，方便直接粘贴至 CSV / XLS / 表格中"
+              >
+                <ClipboardCopy size={14} />
+                <span>复制内容</span>
               </button>
 
-              {/* 从其他大表继承翻译 — v1.2 重构后丢失, 现在恢复 */}
-              {onInherit && tables.length > 1 && (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  style={{ height: '32px' }}
-                  onClick={onInherit}
-                  title="从其他大表继承补全未翻译的 cell (跳过已锁定词条)"
-                >
-                  <Layers size={14} style={{ color: 'var(--accent)' }} />
-                  <span>继承翻译</span>
-                </button>
-              )}
-
-              {difyConfigured && (
-                <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchTranslate} title="调用 Dify 批量翻译 (无选中时扫描全部)">
-                  <Bot size={14} style={{ color: 'var(--purple)' }} />
-                  <span>批量 AI 翻译</span>
-                </button>
-              )}
-
-              {/* Selection-specific inline actions */}
-              {selectedCount > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border-color)', paddingLeft: '0.8rem', marginLeft: '0.4rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>已选 <strong style={{ color: 'var(--accent)' }}>{selectedCount}</strong> 项</span>
-                  
-                  <button className="btn-text btn-sm" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }} onClick={onClearSelection}>
-                    取消
-                  </button>
-
+              {projectRole !== 'viewer' && (
+                <>
                   <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchApprove}>
                     <CheckCircle size={14} style={{ color: 'var(--green)' }} />
                     <span>批量审核</span>
@@ -266,7 +246,43 @@ export default function TranslationToolbar({
                     <Trash2 size={14} />
                     <span>删除</span>
                   </button>
-                </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {projectRole !== 'viewer' && (
+            <>
+              <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onDataClean} title="清除无 KW 或无中文的空记录">
+                <Trash2 size={14} />
+                <span>数据清理</span>
+              </button>
+
+              {csvImportNode}
+
+              <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchAdd} title="手动批量新增词条">
+                <Layers size={14} />
+                <span>批量新增</span>
+              </button>
+
+              {/* 从其他大表继承翻译 — v1.2 重构后丢失, 现在恢复 */}
+              {onInherit && tables.length > 1 && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ height: '32px' }}
+                  onClick={onInherit}
+                  title="从其他大表继承补全未翻译的 cell (跳过已锁定词条)"
+                >
+                  <Layers size={14} style={{ color: 'var(--accent)' }} />
+                  <span>继承翻译</span>
+                </button>
+              )}
+
+              {difyConfigured && (
+                <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onBatchTranslate} title="调用 Dify 批量翻译 (无选中时扫描全部)">
+                  <Bot size={14} style={{ color: 'var(--purple)' }} />
+                  <span>批量 AI 翻译</span>
+                </button>
               )}
 
               <button className="btn btn-primary btn-sm" style={{ height: '32px' }} onClick={onAddTerm}>

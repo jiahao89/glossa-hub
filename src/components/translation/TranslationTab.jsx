@@ -12,6 +12,7 @@ import BatchAddModal from './BatchAddModal';
 import EditTermModal from './EditTermModal';
 import InheritModal from './InheritModal';
 import TranslationTable from './TranslationTable';
+import CopyContentModal from './CopyContentModal';
 
 export default function TranslationTab({ 
   difyConnected = false,
@@ -121,6 +122,7 @@ export default function TranslationTab({
   const [editModalRecord, setEditModalRecord] = useState(null);
   const [_addModalOpen, setAddModalOpen] = useState(false);
   const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
+  const [copyContentOpen, setCopyContentOpen] = useState(false);
   const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
 
   const [batchTargetTableId, setBatchTargetTableId] = useState('');
@@ -715,6 +717,7 @@ export default function TranslationTab({
         setSelectedTableId={setSelectedTableId}
         selectedCount={selectedRecordIds.size}
         onClearSelection={() => setSelectedRecordIds(new Set())}
+        onCopyContent={() => setCopyContentOpen(true)}
         onBatchApprove={() => setBatchApproveOpen(true)}
         onBatchCategory={() => setBatchUpdateOpen(true)}
         onBatchCopy={() => setBatchCopyOpen(true)}
@@ -916,6 +919,14 @@ export default function TranslationTab({
         isSavingBatch={isSavingBatch}
         onStartBatchTranslate={handleStartBatchTranslate}
         onConfirmBatchWrite={handleConfirmBatchWrite}
+      />
+
+      <CopyContentModal
+        open={copyContentOpen}
+        onClose={() => setCopyContentOpen(false)}
+        selectedRecords={records.filter(r => selectedRecordIds.has(r.recordId || r.id))}
+        targetLanguages={TARGET_LANGUAGES}
+        getRecordValueByName={getRecordValueByName}
       />
     </div>
   );
