@@ -35,6 +35,7 @@ import DifySwitcher from './components/DifySwitcher';
 import { useToast } from './components/Toast';
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedTableId, setSelectedTableId] = useState(() => {
     return safeGetLocalStorage('glossa_last_selected_table_id', '');
   });
