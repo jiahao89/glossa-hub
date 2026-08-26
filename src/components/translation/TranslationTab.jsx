@@ -102,6 +102,15 @@ export default function TranslationTab({
     return TARGET_LANGUAGES;
   });
 
+  // Base columns that can be hidden (所在页面, 字号/负责人). Default: both hidden.
+  const BASE_OPTIONAL_COLUMNS = [
+    { key: '所在页面', label: '所在页面' },
+    { key: '字号类别', label: '字号/负责人' },
+  ];
+  const [hiddenBaseColumns, setHiddenBaseColumns] = useState(() => {
+    return new Set(['所在页面', '字号类别']);
+  });
+
   // Filter/Search State
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -824,6 +833,9 @@ export default function TranslationTab({
         targetLanguages={TARGET_LANGUAGES}
         visibleLanguages={visibleLanguages}
         setVisibleLanguages={setVisibleLanguages}
+        baseOptionalColumns={BASE_OPTIONAL_COLUMNS}
+        hiddenBaseColumns={hiddenBaseColumns}
+        setHiddenBaseColumns={setHiddenBaseColumns}
         tables={tables}
         selectedTableId={selectedTableId}
         setSelectedTableId={setSelectedTableId}
@@ -895,6 +907,7 @@ export default function TranslationTab({
         onToggleSelectRow={handleToggleSelectRow}
         targetLanguages={TARGET_LANGUAGES}
         visibleLanguages={visibleLanguages}
+        hiddenBaseColumns={hiddenBaseColumns}
         modifiedCells={modifiedCells}
         lockLoadingId={lockLoadingId}
         onToggleRowLock={handleToggleRowLock}
