@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken, requireProjectMember, requireRole } = require('../middleware/auth.cjs');
+const { createAuditLog } = require('../services/auditLogger.cjs');
 
 // GET /api/projects/:projectId/recycle-bin - 获取回收站数据列表
 router.get('/projects/:projectId/recycle-bin', authenticateToken, requireProjectMember, requireRole(['owner']), async (_req, res) => {
@@ -169,6 +170,14 @@ router.post('/recycle-bin/:id/restore', authenticateToken, async (req, res) => {
       }
 
       await tx.run('DELETE FROM recycle_bin WHERE id = $1', [id]);
+
+      await createAuditLog({
+        action: '回收站恢复',
+        details: `从回收站恢复了 [${item.entity_name}] (${item.entity_type})`,
+        versionName: item.entity_type === 'version' ? item.entity_name : '',
+        userId: req.user.id,
+        tx
+      });
     });
 
     res.json({ message: '数据已成功一键恢复！' });

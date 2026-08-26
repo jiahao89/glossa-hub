@@ -7,6 +7,7 @@ const { writeLimiter } = require('../middleware/rateLimiters.cjs');
 const { backupToRecycleBin } = require('../services/recycleBin.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
 const { TARGET_LANGUAGES, LEGACY_TO_NEW_LANG_MAP } = require('../config/constants.cjs');
+const { createAuditLog } = require('../services/auditLogger.cjs');
 const ExcelJS = require('exceljs');
 
 // GET /api/tables/:tableId/records - 读取特定版本下的所有词条数据 (分页)
@@ -271,6 +272,44 @@ router.put('/terms/:termId', authenticateToken, async (req, res) => {
     }
 
     const newTerm = await db.queryOne('SELECT * FROM terms WHERE id = $1', [termId]);
+
+    // 记录审计修改日志
+    try {
+      const ver = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [term.version_id]);
+      const oldTrans = parseJsonField(term.translations);
+      const newTrans = parseJsonField(newTerm.translations);
+      const changedLangs = Object.keys({ ...oldTrans, ...newTrans }).filter(k => (oldTrans[k] || '') !== (newTrans[k] || ''));
+
+      let detailsStr = '';
+      if (changedLangs.length === 1) {
+        const lang = changedLangs[0];
+        detailsStr = JSON.stringify({
+          field: lang,
+          oldVal: oldTrans[lang] || '',
+          newVal: newTrans[lang] || ''
+        });
+      } else if (changedLangs.length > 1) {
+        detailsStr = `修改了 ${changedLangs.length} 个语种译文 (${changedLangs.join(', ')})`;
+      } else if (isZhChanged) {
+        detailsStr = `修改中文源文: [${term.zh_cn}] -> [${finalZhCn}]`;
+      } else if (isKwChanged) {
+        detailsStr = `修改 KW: [${term.kw}] -> [${finalKw}]`;
+      } else {
+        detailsStr = `修改词条属性 (页面: ${finalContext}, 负责人: ${finalOwner})`;
+      }
+
+      await createAuditLog({
+        kw: finalKw,
+        chinese: finalZhCn,
+        action: '修改词条',
+        details: detailsStr,
+        versionName: ver?.version_name || '',
+        userId: req.user.id
+      });
+    } catch (logErr) {
+      console.error('[terms.put] 记录修改日志异常:', logErr);
+    }
+
     res.json(newTerm);
   } catch (err) {
     console.error('修改词条失败:', err);
@@ -1061,6 +1100,80 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
           );
         }
       }
+
+      // 5. 记录同步审计日志
+      try {
+        const ver = await tx.queryOne('SELECT version_name FROM versions WHERE id = $1', [tableId]);
+        const verName = ver ? ver.version_name : '';
+
+        if (added.length === 1) {
+          const a = added[0];
+          const aKw = a.fields?.['KW'] || a.kw || '';
+          const aZh = a.fields?.['CN（中文）'] || a.zh_cn || '';
+          await createAuditLog({
+            kw: aKw,
+            chinese: aZh,
+            action: '新增词条',
+            details: `新增词条 [${aKw}] (${aZh})`,
+            versionName: verName,
+            userId: req.user.id,
+            tx
+          });
+        } else if (added.length > 1) {
+          const firstFew = added.slice(0, 5).map(i => (i.fields?.['KW'] || i.kw)).filter(Boolean).join(', ');
+          await createAuditLog({
+            action: '批量新增',
+            details: `批量新增了 ${added.length} 条词条${firstFew ? ` (${firstFew} 等)` : ''}`,
+            versionName: verName,
+            userId: req.user.id,
+            tx
+          });
+        }
+
+        if (updated.length === 1) {
+          const u = updated[0];
+          const uKw = u.fields?.['KW'] || u.kw || '';
+          const uZh = u.fields?.['CN（中文）'] || u.zh_cn || '';
+          await createAuditLog({
+            kw: uKw,
+            chinese: uZh,
+            action: '修改词条',
+            details: `同步更新词条 [${uKw}] 译文`,
+            versionName: verName,
+            userId: req.user.id,
+            tx
+          });
+        } else if (updated.length > 1) {
+          const isAi = updated.some(u => {
+            const m = u.translationsMeta || {};
+            return Object.values(m).some(v => v === 'ai');
+          });
+          const isTm = updated.some(u => {
+            const m = u.translationsMeta || {};
+            return Object.values(m).some(v => v === 'tm');
+          });
+          const actionName = isAi ? 'AI批量翻译' : (isTm ? '翻译继承' : '批量更新');
+          await createAuditLog({
+            action: actionName,
+            details: `${actionName}更新了 ${updated.length} 条词条数据`,
+            versionName: verName,
+            userId: req.user.id,
+            tx
+          });
+        }
+
+        if (deletedIds.length > 0) {
+          await createAuditLog({
+            action: '批量删除',
+            details: `同步删除了 ${deletedIds.length} 条词条`,
+            versionName: verName,
+            userId: req.user.id,
+            tx
+          });
+        }
+      } catch (logErr) {
+        console.error('[sync] 记录审计日志异常:', logErr);
+      }
     });
 
     res.json({ message: '同步成功', updatedRecords: successCount });
@@ -1087,6 +1200,20 @@ router.delete('/tables/:tableId/clean-empty', authenticateToken, writeLimiter, a
     `, [tableId]);
 
     const deletedCount = result.changes || 0;
+
+    if (deletedCount > 0) {
+      try {
+        const ver = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [tableId]);
+        await createAuditLog({
+          action: '数据清理',
+          details: `清理了数据表中的 ${deletedCount} 条空词条 (无 KW 或无中文)`,
+          versionName: ver ? ver.version_name : '',
+          userId: req.user.id
+        });
+      } catch (logErr) {
+        console.error('[clean-empty] 记录日志异常:', logErr);
+      }
+    }
 
     res.json({ message: `清理完毕，共删除 ${deletedCount} 条空词条`, deletedCount });
   } catch (error) {

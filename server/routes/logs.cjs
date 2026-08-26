@@ -62,15 +62,17 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     if (startDate) {
-      whereClause += ` AND l.timestamp >= $${pi}`;
-      params.push(startDate);
-      pi++;
+      const startVal = startDate.includes('T') || startDate.includes(' ') ? startDate : `${startDate} 00:00:00`;
+      whereClause += ` AND (l.timestamp >= $${pi} OR l.timestamp >= $${pi + 1})`;
+      params.push(startVal, `${startDate}T00:00:00`);
+      pi += 2;
     }
 
     if (endDate) {
-      whereClause += ` AND l.timestamp <= $${pi}`;
-      params.push(endDate + 'T23:59:59');
-      pi++;
+      const endVal = endDate.includes('T') || endDate.includes(' ') ? endDate : `${endDate} 23:59:59`;
+      whereClause += ` AND (l.timestamp <= $${pi} OR l.timestamp <= $${pi + 1})`;
+      params.push(endVal, `${endDate}T23:59:59.999Z`);
+      pi += 2;
     }
 
     // Paginated query
@@ -111,7 +113,7 @@ router.get('/', authenticateToken, async (req, res) => {
       action: r.action,
       details: r.details,
       version: r.version_name,
-      operator: r.operator_name || '王赵云'
+      operator: r.operator_name || '系统'
     }));
 
     res.json({
