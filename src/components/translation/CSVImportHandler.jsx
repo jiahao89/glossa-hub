@@ -90,11 +90,30 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
           return;
         }
 
+        // --- Fetch Full Database Records for Accurate Diffing ---
+        let allCurrentRecords = currentRecords || [];
+        if (selectedTableId) {
+          try {
+            const fetchRes = await apiFetch(`/api/tables/${selectedTableId}/records?pageSize=100000`);
+            if (fetchRes.ok) {
+              const fullData = await fetchRes.json();
+              if (fullData && Array.isArray(fullData.records)) {
+                allCurrentRecords = fullData.records;
+              }
+            }
+          } catch (fetchErr) {
+            console.warn('全量拉取数据表词条失败，降级使用当前页数据比对:', fetchErr);
+          }
+        }
+
         // --- Diffing against Current Records ---
         const currentByKw = {};
-        currentRecords.forEach(rec => {
-          const kw = (rec.fields['KW'] || '').trim();
+        const currentByZh = {};
+        allCurrentRecords.forEach(rec => {
+          const kw = (rec.fields?.['KW'] || rec.kw || '').trim();
+          const zh = (rec.fields?.['CN（中文）'] || rec.zh_cn || '').trim();
           if (kw) currentByKw[kw.toLowerCase()] = rec;
+          if (zh) currentByZh[zh] = rec;
         });
 
         const added = [];
@@ -103,18 +122,26 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
         const usedKws = new Set();
 
         csvRecords.forEach(csvRec => {
-          const csvKw = csvRec.kw.toLowerCase();
-          const existing = currentByKw[csvKw];
+          const csvKw = (csvRec.kw || '').toLowerCase();
+          const csvZh = (csvRec.fields?.['CN（中文）'] || '').trim();
+          let existing = csvKw ? currentByKw[csvKw] : null;
+          if (!existing && csvZh) {
+            existing = currentByZh[csvZh];
+          }
+
           if (!existing) {
             added.push(csvRec);
-            usedKws.add(csvKw);
+            if (csvKw) usedKws.add(csvKw);
           } else {
-            usedKws.add(csvKw);
+            const existingKw = (existing.fields?.['KW'] || existing.kw || '').trim().toLowerCase();
+            if (existingKw) usedKws.add(existingKw);
+            if (csvKw) usedKws.add(csvKw);
+
             const changes = {};
             const allFields = ['KW', 'CN（中文）', ...targetLanguages];
             allFields.forEach(field => {
               const csvVal = (csvRec.fields[field] || '').trim();
-              const curVal = (existing.fields[field] || '').trim();
+              const curVal = (existing.fields?.[field] || '').trim();
               if (csvVal !== curVal) {
                 changes[field] = { old: curVal, new: csvVal };
               }
@@ -127,8 +154,8 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
           }
         });
 
-        const removed = currentRecords.filter(rec => {
-          const kw = (rec.fields['KW'] || '').trim().toLowerCase();
+        const removed = allCurrentRecords.filter(rec => {
+          const kw = (rec.fields?.['KW'] || rec.kw || '').trim().toLowerCase();
           return kw && !usedKws.has(kw);
         });
 
