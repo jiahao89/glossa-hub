@@ -1249,4 +1249,79 @@ router.all('/tables/:tableId/export-xls', authenticateToken, async (req, res) =>
   }
 });
 
+// ALL (GET/POST) /api/tables/:tableId/export-csv - 导出 CSV 表格数据 (删除“所在页面”和“字号类别”列)
+router.all('/tables/:tableId/export-csv', authenticateToken, async (req, res) => {
+  const { tableId } = req.params;
+
+  try {
+    if (!(await requireVersionOwnership(req.user.id, tableId))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权导出此数据表。' });
+    }
+
+    const version = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [tableId]);
+    const terms = await db.query('SELECT * FROM terms WHERE version_id = $1 ORDER BY sort_order ASC, created_at ASC', [tableId]);
+
+    // CSV 表头：删除“所在页面”和“字号类别”列，其他字段和顺序不变
+    const headers = ['KW', 'CN（中文）', ...TARGET_LANGUAGES];
+
+    const ALIASES_BY_CANONICAL = Object.entries(LEGACY_TO_NEW_LANG_MAP).reduce((acc, [legacy, canonical]) => {
+      (acc.get(canonical) || acc.set(canonical, []).get(canonical)).push(legacy);
+      return acc;
+    }, new Map());
+
+    const escapeCsvCell = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('\n') || str.includes('\r') || str.includes('"')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const lines = [];
+    lines.push(headers.map(escapeCsvCell).join(','));
+
+    for (const term of terms) {
+      const trans = parseJsonField(term.translations);
+      const rowValues = [
+        term.kw && term.kw.startsWith('__EMPTY_KW_') ? '' : (term.kw || ''),
+        term.zh_cn || ''
+      ];
+
+      TARGET_LANGUAGES.forEach(lang => {
+        let val = trans[lang];
+        if (val === undefined || val === null || String(val).trim() === '') {
+          const aliases = ALIASES_BY_CANONICAL.get(lang);
+          if (aliases) {
+            for (const alias of aliases) {
+              const candidate = trans[alias];
+              if (candidate !== undefined && candidate !== null && String(candidate).trim() !== '') {
+                val = candidate;
+                break;
+              }
+            }
+          }
+        }
+        if (val === undefined || val === null) val = '';
+        rowValues.push(val);
+      });
+
+      lines.push(rowValues.map(escapeCsvCell).join(','));
+    }
+
+    // UTF-8 BOM (\uFEFF) for Excel compatibility
+    const csvContent = '\uFEFF' + lines.join('\r\n');
+    const rawFileName = `GlossaHub_${version?.version_name || tableId}_Export.csv`;
+    const fileName = encodeURIComponent(rawFileName);
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${fileName}`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('导出 CSV 表格失败:', error);
+    res.status(500).json({ error: '服务器内部错误，导出 CSV 失败。' });
+  }
+});
+
 module.exports = router;
+

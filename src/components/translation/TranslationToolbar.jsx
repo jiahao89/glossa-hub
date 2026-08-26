@@ -26,6 +26,7 @@ export default function TranslationToolbar({
   onBatchUnlock,
   onBatchDelete,
   onExportXLS,
+  onExportCSV,
   csvImportNode,
   onAddTerm,
   onBatchAdd,
@@ -187,6 +188,11 @@ export default function TranslationToolbar({
           <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onExportXLS} title="导出当前表数据为 Excel (.xlsx)">
             <FileOutput size={14} />
             <span>导出 XLS</span>
+          </button>
+
+          <button className="btn btn-secondary btn-sm" style={{ height: '32px' }} onClick={onExportCSV} title="导出当前表数据为 CSV 文件（不含所在页面与字号类别）">
+            <FileOutput size={14} />
+            <span>导出 CSV</span>
           </button>
 
           {/* Selection-specific inline actions (available for both single/batch selection) */}
