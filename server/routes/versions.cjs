@@ -4,6 +4,7 @@ const router = express.Router();
 const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken, requireProjectMember, requireRole } = require('../middleware/auth.cjs');
 const { backupToRecycleBin } = require('../services/recycleBin.cjs');
+const { createAuditLog } = require('../services/auditLogger.cjs');
 
 // GET /api/tables - 获取所有固件版本表
 router.get('/tables', authenticateToken, async (_req, res) => {
@@ -80,6 +81,13 @@ router.post('/projects/:projectId/versions', authenticateToken, requireProjectMe
       );
       totalTerms = parseInt(countRes?.count || 0, 10);
     }
+
+    await createAuditLog({
+      action: '创建版本',
+      details: `新建固件大表版本 [${versionName}]${baseVersionId ? ` (继承自已有版本 ${totalTerms} 条词条)` : ''}`,
+      versionName,
+      userId: req.user.id
+    });
 
     res.status(201).json({ id: versionId, versionName, totalTerms });
   } catch (err) {
@@ -188,6 +196,14 @@ router.delete('/projects/:projectId/versions/:versionId', authenticateToken, req
 
     await backupToRecycleBin('version', versionId, ver.version_name, req.user.id);
     await db.run('DELETE FROM versions WHERE id = $1', [versionId]);
+
+    await createAuditLog({
+      action: '删除版本',
+      details: `删除固件大表 [${ver.version_name}] 并移入回收站`,
+      versionName: ver.version_name,
+      userId: req.user.id
+    });
+
     res.json({ message: `固件数据表 [${ver.version_name}] 已成功移入回收站。` });
   } catch (err) {
     console.error('删除固件版本失败:', err);
@@ -218,6 +234,13 @@ router.put('/projects/:projectId/versions/:versionId', authenticateToken, requir
       'UPDATE versions SET version_name = $1 WHERE id = $2 AND project_id = $3',
       [newName, versionId, projectId]
     );
+
+    await createAuditLog({
+      action: '重命名版本',
+      details: `将固件大表重命名为 [${newName}]`,
+      versionName: newName,
+      userId: req.user.id
+    });
 
     res.json({ message: '数据表名称更新成功', name: newName });
   } catch (err) {
