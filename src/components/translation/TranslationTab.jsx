@@ -62,9 +62,14 @@ export default function TranslationTab({
 
   // Bitable State
   const [tables, setTables] = useState([]);
-  const [internalSelectedTableId, setInternalSelectedTableId] = useState('');
+  const [internalSelectedTableId, setInternalSelectedTableId] = useState(() => {
+    return safeGetLocalStorage('glossa_last_selected_table_id', '');
+  });
   const selectedTableId = (propSelectedTableId !== undefined && propSelectedTableId !== '') ? propSelectedTableId : internalSelectedTableId;
   const setSelectedTableId = useCallback((val) => {
+    if (val) {
+      localStorage.setItem('glossa_last_selected_table_id', val);
+    }
     if (propSetSelectedTableId) {
       propSetSelectedTableId(val);
     } else {
@@ -111,6 +116,8 @@ export default function TranslationTab({
 
   const [filterUntranslated, setFilterUntranslated] = useState(false);
   const [filterStatus, setFilterStatus] = useState('');
+  const [sortBy, setSortBy] = useState('default');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
@@ -380,8 +387,14 @@ export default function TranslationTab({
       if (res.ok) {
         const data = await res.json();
         setTables(data);
-        if (data.length > 0 && !selectedTableId) {
-          setSelectedTableId(data[0].id);
+        if (data.length > 0) {
+          const savedTableId = safeGetLocalStorage('glossa_last_selected_table_id', '');
+          const matched = data.find(t => t.id === (selectedTableId || savedTableId));
+          if (matched) {
+            setSelectedTableId(matched.id);
+          } else if (!selectedTableId) {
+            setSelectedTableId(data[0].id);
+          }
         }
       }
     } catch (err) {
@@ -403,7 +416,9 @@ export default function TranslationTab({
         pageSize,
         search: debouncedSearchQuery,
         status: filterStatus,
-        untranslated: filterUntranslated ? 'true' : 'false'
+        untranslated: filterUntranslated ? 'true' : 'false',
+        sortBy,
+        sortOrder
       });
 
       const res = await apiFetch(`/api/tables/${tableId}/records?${queryParams.toString()}`);
@@ -440,7 +455,7 @@ export default function TranslationTab({
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated, toast, TARGET_LANGUAGES]);
+  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated, sortBy, sortOrder, toast, TARGET_LANGUAGES]);
 
   useEffect(() => {
     loadTables();
@@ -791,9 +806,22 @@ export default function TranslationTab({
         totalRecords={totalRecords}
         difyConfigured={difyConnected}
         filterStatus={filterStatus}
-        setFilterStatus={setFilterStatus}
+        setFilterStatus={(val) => {
+          setFilterStatus(val);
+          setCurrentPage(1);
+        }}
+        sortBy={sortBy}
+        setSortBy={(val) => {
+          setSortBy(val);
+          setSortField(null);
+          setSortDirection(null);
+          setCurrentPage(1);
+        }}
         filterUntranslated={filterUntranslated}
-        setFilterUntranslated={setFilterUntranslated}
+        setFilterUntranslated={(val) => {
+          setFilterUntranslated(val);
+          setCurrentPage(1);
+        }}
         targetLanguages={TARGET_LANGUAGES}
         visibleLanguages={visibleLanguages}
         setVisibleLanguages={setVisibleLanguages}

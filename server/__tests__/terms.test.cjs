@@ -6,6 +6,7 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
   let adminToken = '';
   const testVersionId = 'ver-unit-test-' + Date.now();
   const testTermId = 'term-unit-test-' + Date.now();
+  const testVersionName = '单元测试表_' + Date.now();
 
   beforeAll(async () => {
     await ensureDbInit();
@@ -17,13 +18,13 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
 
     // Create a dummy version and term in the test DB
     await db.run(
-      "INSERT OR IGNORE INTO versions (id, project_id, version_name, created_at) VALUES ($1, 'proj-default', '单元测试表', datetime('now'))",
-      [testVersionId]
+      "INSERT OR IGNORE INTO versions (id, project_id, version_name, created_at) VALUES ($1, 'proj-default', $2, datetime('now'))",
+      [testVersionId, testVersionName]
     );
 
     await db.run(
-      `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, updated_at, is_locked, status)
-       VALUES ($1, $2, 'KW_TEST_TERM', '测试页面', '标题', '测试词条中文', '{"EN（英文）":"Test Term"}', '{}', datetime('now'), 0, 'APPROVED')`,
+      `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+       VALUES ($1, $2, 'KW_TEST_TERM', '测试页面', '标题', '测试词条中文', '{"EN（英文）":"Test Term"}', '{}', datetime('now'), datetime('now'), 0, 'APPROVED')`,
       [testTermId, testVersionId]
     );
   });
@@ -108,5 +109,29 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
     expect(editRes.status).toBe(200);
     expect(editRes.body.context).toBe('');
     expect(editRes.body.owner).toBe('');
+  });
+
+  it('should support sorting records by updated_at and created_at', async () => {
+    // Add another term with different timestamp
+    const term2Id = 'term-sort-test-' + Date.now();
+    await db.run(
+      `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+       VALUES ($1, $2, 'KW_LATEST_UPDATED', '页面2', '副标题', '最新更新词条', '{}', '{}', '2026-01-01 10:00:00', '2026-12-31 23:59:59', 0, 'APPROVED')`,
+      [term2Id, testVersionId]
+    );
+
+    // Test sortBy=updated_at
+    const resUpdate = await request(app)
+      .get(`/api/tables/${testVersionId}/records?sortBy=updated_at&sortOrder=desc`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(resUpdate.status).toBe(200);
+    expect(resUpdate.body.records[0].recordId).toBe(term2Id);
+
+    // Test sortBy=created_at (ascending)
+    const resCreate = await request(app)
+      .get(`/api/tables/${testVersionId}/records?sortBy=created_at&sortOrder=asc`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(resCreate.status).toBe(200);
+    expect(resCreate.body.records[0].recordId).toBe(term2Id); // 2026-01-01 is earlier than Date.now()
   });
 });

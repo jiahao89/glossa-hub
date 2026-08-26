@@ -35,8 +35,9 @@ import DifySwitcher from './components/DifySwitcher';
 import { useToast } from './components/Toast';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedTableId, setSelectedTableId] = useState('');
+  const [selectedTableId, setSelectedTableId] = useState(() => {
+    return safeGetLocalStorage('glossa_last_selected_table_id', '');
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return safeGetLocalStorage('glossahub_sidebar_collapsed', 'false') === 'true';
   });
@@ -59,19 +60,11 @@ export default function App() {
     localStorage.setItem('glossahub_sidebar_collapsed', sidebarCollapsed);
   }, [sidebarCollapsed]);
 
-  // Clear selectedTableId when switching away from translate tab
-  useEffect(() => {
-    if (activeTab !== 'translate') {
-      setSelectedTableId('');
-    }
-  }, [activeTab]);
-
   const handleNavigate = (tab, targetTableId = '') => {
     setActiveTab(tab);
-    if (tab !== 'translate') {
-      setSelectedTableId('');
-    } else if (targetTableId) {
+    if (targetTableId) {
       setSelectedTableId(targetTableId);
+      localStorage.setItem('glossa_last_selected_table_id', targetTableId);
     }
   };
   

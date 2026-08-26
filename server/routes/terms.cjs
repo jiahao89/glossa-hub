@@ -59,8 +59,24 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
       }
     }
 
+    const sortBy = req.query.sortBy || 'default';
+    const sortOrder = (req.query.sortOrder || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+    let orderByClause = 'ORDER BY sort_order ASC, created_at ASC, id ASC';
+    if (sortBy === 'updated_at' || sortBy === 'updatedAt') {
+      orderByClause = `ORDER BY COALESCE(updated_at, created_at, '') ${sortOrder}, id ${sortOrder}`;
+    } else if (sortBy === 'created_at' || sortBy === 'createdAt') {
+      orderByClause = `ORDER BY COALESCE(created_at, updated_at, '') ${sortOrder}, id ${sortOrder}`;
+    } else if (sortBy === 'kw' || sortBy === 'KW') {
+      orderByClause = `ORDER BY kw ${sortOrder}, id ${sortOrder}`;
+    } else if (sortBy === 'zh_cn' || sortBy === 'zhCn') {
+      orderByClause = `ORDER BY zh_cn ${sortOrder}, id ${sortOrder}`;
+    } else if (sortBy === 'status') {
+      orderByClause = `ORDER BY status ${sortOrder}, id ${sortOrder}`;
+    }
+
     const countQuery = `SELECT COUNT(*) as total FROM terms ${whereClause}`;
-    const dataQuery = `SELECT * FROM terms ${whereClause} ORDER BY sort_order ASC, created_at ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    const dataQuery = `SELECT * FROM terms ${whereClause} ${orderByClause} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     
     const countResult = await db.queryOne(countQuery, queryParams);
     const total = parseInt(countResult?.total || 0, 10);
