@@ -26,8 +26,7 @@ export default function TranslationTab({
 
   const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
   const TARGET_LANGUAGES = targetLanguagesList;
-
-  // difyConnected is passed from the parent and used directly in JSX below.
+  const [difyConfigured, setDifyConfigured] = useState(false);
 
   useEffect(() => {
     const loadProjLanguages = async () => {
@@ -804,7 +803,7 @@ export default function TranslationTab({
         searchInput={searchInput}
         setSearchInput={setSearchInput}
         totalRecords={totalRecords}
-        difyConfigured={difyConnected}
+        difyConfigured={difyConfigured || difyConnected}
         filterStatus={filterStatus}
         setFilterStatus={(val) => {
           setFilterStatus(val);
