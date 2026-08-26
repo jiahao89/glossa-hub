@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2, ClipboardCopy, Filter, Sparkles, Check } from 'lucide-react';
+import { Search, Plus, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2, ClipboardCopy, Filter, Sparkles } from 'lucide-react';
 
 export default function TranslationToolbar({
   tables = [],

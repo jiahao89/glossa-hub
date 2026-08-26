@@ -1257,7 +1257,7 @@ router.all('/tables/:tableId/export-xls', authenticateToken, async (req, res) =>
     workbook.creator = 'GlossaHub';
     workbook.created = new Date();
 
-    const sheetName = (version?.version_name || tableId || 'Sheet1').slice(0, 31).replace(/[:\\/?*\[\]]/g, '_');
+    const sheetName = (version?.version_name || tableId || 'Sheet1').slice(0, 31).replace(/[:\\/?*[\]]/g, '_');
     const worksheet = workbook.addWorksheet(sheetName);
 
     const headers = ['KW', 'CN（中文）', '所在页面', '字号类别', ...TARGET_LANGUAGES];

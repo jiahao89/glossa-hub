@@ -23,8 +23,6 @@ export default function Pagination({
   pageSizeOptions = [20, 50, 100, 200],
   extra = null,
 }) {
-  if (total === 0) return null;
-
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
 
@@ -44,6 +42,8 @@ export default function Pagination({
       }
     };
   }, []);
+
+  if (total === 0) return null;
 
   const triggerJump = (valStr) => {
     if (debounceTimerRef.current) {
