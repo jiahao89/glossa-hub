@@ -606,17 +606,30 @@ textarea:focus:not(:focus-visible) {
   white-space: nowrap;
 }
 
-.heroui-selection-bar {
+.heroui-selection-row {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: space-between;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.4rem 0.65rem;
   background-color: var(--bg-primary);
-  padding: 4px 6px;
+  border: 1px solid rgba(59, 130, 246, 0.25);
   border-radius: 12px;
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
-  flex-wrap: wrap;
-  max-width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  animation: herouiFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes herouiFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .heroui-selection-badge {
@@ -636,8 +649,8 @@ textarea:focus:not(:focus-visible) {
 }
 
 .heroui-btn-sm {
-  height: 30px;
-  padding: 0 0.65rem;
+  height: 32px;
+  padding: 0 0.75rem;
   font-size: 0.78rem;
   border-radius: 8px;
   gap: 0.35rem;
