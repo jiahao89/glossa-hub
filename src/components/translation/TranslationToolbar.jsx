@@ -1,5 +1,23 @@
-import React, { useState } from 'react';
-import { Search, Plus, FileOutput, Layers, Lock, Unlock, CheckCircle, Bot, Eraser, Settings, Copy, Trash2, ClipboardCopy, Filter, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Search,
+  Plus,
+  FileOutput,
+  Layers,
+  Lock,
+  Unlock,
+  CheckCircle,
+  Bot,
+  Eraser,
+  Settings,
+  Copy,
+  Trash2,
+  ClipboardCopy,
+  Filter,
+  Sparkles,
+  ChevronDown,
+  Wrench
+} from 'lucide-react';
 
 export default function TranslationToolbar({
   tables = [],
@@ -43,6 +61,29 @@ export default function TranslationToolbar({
   setHiddenBaseColumns = () => {}
 }) {
   const [colDropdownOpen, setColDropdownOpen] = useState(false);
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const [toolsDropdownOpen, setToolsDropdownOpen] = useState(false);
+
+  const colDropdownRef = useRef(null);
+  const exportDropdownRef = useRef(null);
+  const toolsDropdownRef = useRef(null);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (colDropdownRef.current && !colDropdownRef.current.contains(e.target)) {
+        setColDropdownOpen(false);
+      }
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target)) {
+        setExportDropdownOpen(false);
+      }
+      if (toolsDropdownRef.current && !toolsDropdownRef.current.contains(e.target)) {
+        setToolsDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <div className="heroui-toolbar-container">
@@ -215,9 +256,9 @@ export default function TranslationToolbar({
       ) : (
         <div className="heroui-row" style={{ paddingTop: '0.45rem', borderTop: '1px solid var(--border-color)', gap: '0.6rem' }}>
           {/* Left Functional Group: Columns Selector & Export/Import Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'nowrap' }}>
             {/* Columns Selector Dropdown */}
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative' }} ref={colDropdownRef}>
               <button
                 className="heroui-btn"
                 onClick={() => setColDropdownOpen(!colDropdownOpen)}
@@ -318,68 +359,144 @@ export default function TranslationToolbar({
 
             <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 0.1rem' }} />
 
-            <button className="heroui-btn" onClick={onExportXLS} title="导出当前表数据为 Excel (.xlsx)">
-              <FileOutput size={14} />
-              <span>导出 XLS</span>
-            </button>
+            {/* Consolidated Export Dropdown */}
+            <div style={{ position: 'relative' }} ref={exportDropdownRef}>
+              <button
+                className="heroui-btn"
+                onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                title="导出数据为 Excel 或 CSV"
+              >
+                <FileOutput size={14} />
+                <span>导出数据</span>
+                <ChevronDown size={12} style={{ opacity: 0.7 }} />
+              </button>
 
-            <button className="heroui-btn" onClick={onExportCSV} title="导出当前表数据为 CSV 文件（不含所在页面与字号类别）">
-              <FileOutput size={14} />
-              <span>导出 CSV</span>
-            </button>
+              {exportDropdownOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: '40px',
+                    zIndex: 100,
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-lg)',
+                    boxShadow: 'var(--shadow-lg)',
+                    padding: '0.4rem',
+                    minWidth: '170px'
+                  }}
+                >
+                  <button
+                    className="dropdown-item"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.82rem', textAlign: 'left', border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}
+                    onClick={() => { setExportDropdownOpen(false); onExportXLS(); }}
+                  >
+                    <span>📊</span>
+                    <span>导出 Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    className="dropdown-item"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.82rem', textAlign: 'left', border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}
+                    onClick={() => { setExportDropdownOpen(false); onExportCSV(); }}
+                  >
+                    <span>📄</span>
+                    <span>导出 CSV (.csv)</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {projectRole !== 'viewer' && csvImportNode}
           </div>
 
-          {/* Right Functional Group: Management Tools + Primary CTA */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
-            {modifiedCount > 0 && (
-              <button
-                className="heroui-btn"
-                style={{ color: 'var(--yellow)' }}
-                onClick={onClearHighlights}
-                title="清除页面改动标记高亮"
-              >
-                <Eraser size={14} />
-                <span>清除标记 ({modifiedCount})</span>
+          {/* Right Functional Group: Tools Dropdown + Primary AI & Create CTAs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'nowrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
+            {projectRole !== 'viewer' && (
+              <div style={{ position: 'relative' }} ref={toolsDropdownRef}>
+                <button
+                  className="heroui-btn"
+                  onClick={() => setToolsDropdownOpen(!toolsDropdownOpen)}
+                  title="更多数据维护与快捷工具"
+                >
+                  <Wrench size={14} />
+                  <span>更多工具</span>
+                  {modifiedCount > 0 && (
+                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--yellow)', marginLeft: '-2px' }} />
+                  )}
+                  <ChevronDown size={12} style={{ opacity: 0.7 }} />
+                </button>
+
+                {toolsDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: '40px',
+                      zIndex: 100,
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-lg)',
+                      boxShadow: 'var(--shadow-lg)',
+                      padding: '0.4rem',
+                      minWidth: '180px'
+                    }}
+                  >
+                    {onInherit && tables.length > 1 && (
+                      <button
+                        className="dropdown-item"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.82rem', textAlign: 'left', border: 'none', background: 'transparent', color: 'var(--accent)', cursor: 'pointer' }}
+                        onClick={() => { setToolsDropdownOpen(false); onInherit(); }}
+                      >
+                        <Sparkles size={14} />
+                        <span>继承翻译 (补全未译)</span>
+                      </button>
+                    )}
+
+                    <button
+                      className="dropdown-item"
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.82rem', textAlign: 'left', border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}
+                      onClick={() => { setToolsDropdownOpen(false); onBatchAdd(); }}
+                    >
+                      <Layers size={14} />
+                      <span>批量新增词条</span>
+                    </button>
+
+                    <button
+                      className="dropdown-item"
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.82rem', textAlign: 'left', border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}
+                      onClick={() => { setToolsDropdownOpen(false); onDataClean(); }}
+                    >
+                      <Trash2 size={14} />
+                      <span>数据清理 (空行扫描)</span>
+                    </button>
+
+                    {modifiedCount > 0 && (
+                      <button
+                        className="dropdown-item"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.82rem', textAlign: 'left', border: 'none', background: 'transparent', color: 'var(--yellow)', cursor: 'pointer', borderTop: '1px solid var(--border-color)', marginTop: '4px', paddingTop: '6px' }}
+                        onClick={() => { setToolsDropdownOpen(false); onClearHighlights(); }}
+                      >
+                        <Eraser size={14} />
+                        <span>清除页面标记 ({modifiedCount})</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {difyConfigured && (
+              <button className="heroui-btn heroui-btn-ai" onClick={onBatchTranslate} title="调用 Dify 批量翻译 (扫描未翻译词条)">
+                <Bot size={14} />
+                <span>批量 AI 翻译</span>
               </button>
             )}
 
             {projectRole !== 'viewer' && (
-              <>
-                <button className="heroui-btn" onClick={onDataClean} title="清除无 KW 或无中文的空记录">
-                  <Trash2 size={14} />
-                  <span>数据清理</span>
-                </button>
-
-                <button className="heroui-btn" onClick={onBatchAdd} title="手动批量新增词条">
-                  <Layers size={14} />
-                  <span>批量新增</span>
-                </button>
-
-                {onInherit && tables.length > 1 && (
-                  <button
-                    className="heroui-btn heroui-btn-accent"
-                    onClick={onInherit}
-                    title="从其他大表继承补全未翻译的 cell (跳过已锁定词条)"
-                  >
-                    <Sparkles size={14} />
-                    <span>继承翻译</span>
-                  </button>
-                )}
-
-                {difyConfigured && (
-                  <button className="heroui-btn heroui-btn-ai" onClick={onBatchTranslate} title="调用 Dify 批量翻译 (无选中时扫描全部)">
-                    <Bot size={14} />
-                    <span>批量 AI 翻译</span>
-                  </button>
-                )}
-
-                <button className="heroui-btn heroui-btn-primary" onClick={onAddTerm}>
-                  <Plus size={15} />
-                  <span>新增词条</span>
-                </button>
-              </>
+              <button className="heroui-btn heroui-btn-primary" onClick={onAddTerm}>
+                <Plus size={15} />
+                <span>新增词条</span>
+              </button>
             )}
           </div>
         </div>
