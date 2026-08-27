@@ -127,8 +127,8 @@ export default function TranslationToolbar({
 
       {/* Tier 2: View Tools, File Export/Import & Action Operations */}
       <div className="heroui-row" style={{ paddingTop: '0.45rem', borderTop: '1px solid var(--border-color)', gap: '0.6rem' }}>
-        {/* Left: Columns Selector & Export/Import Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0, flexWrap: 'nowrap' }}>
+        {/* Left Functional Group: Columns Selector & Export/Import Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
           {/* Columns Selector Dropdown */}
           <div style={{ position: 'relative' }}>
             <button
@@ -244,22 +244,25 @@ export default function TranslationToolbar({
           {projectRole !== 'viewer' && csvImportNode}
         </div>
 
-        {/* Right: Selected Row Actions OR Management Tools + Primary CTA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0, flexWrap: 'nowrap' }}>
+        {/* Right Functional Group: Selected Row Actions OR Management Tools + Primary CTA */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
           {selectedCount > 0 ? (
             <div className="heroui-selection-bar">
-              <span className="heroui-selection-badge">
-                已选 <strong>{selectedCount}</strong> 项
-              </span>
-              
-              <button
-                type="button"
-                className="btn-text"
-                style={{ fontSize: '0.76rem', color: 'var(--text-muted)', padding: '0 4px', whiteSpace: 'nowrap' }}
-                onClick={onClearSelection}
-              >
-                取消
-              </button>
+              {/* Selection Info Chip */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
+                <span className="heroui-selection-badge">
+                  已选 <strong>{selectedCount}</strong> 项
+                </span>
+                
+                <button
+                  type="button"
+                  className="btn-text"
+                  style={{ fontSize: '0.76rem', color: 'var(--text-muted)', padding: '0 4px', whiteSpace: 'nowrap' }}
+                  onClick={onClearSelection}
+                >
+                  取消
+                </button>
+              </div>
 
               <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 0.15rem' }} />
 
