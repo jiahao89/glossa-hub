@@ -423,8 +423,22 @@ export default function TranslationToolbar({
             {projectRole !== 'viewer' && csvImportNode}
           </div>
 
-          {/* Right Functional Group: Tools Dropdown + Primary AI & Create CTAs */}
+          {/* Right Functional Group: Primary Actions + Tools Dropdown at the far right */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'nowrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
+            {difyConfigured && (
+              <button className="heroui-btn heroui-btn-ai" onClick={onBatchTranslate} title="调用 Dify 批量翻译 (扫描未翻译词条)">
+                <Bot size={14} />
+                <span>批量 AI 翻译</span>
+              </button>
+            )}
+
+            {projectRole !== 'viewer' && (
+              <button className="heroui-btn heroui-btn-primary" onClick={onAddTerm}>
+                <Plus size={15} />
+                <span>新增词条</span>
+              </button>
+            )}
+
             {projectRole !== 'viewer' && (
               <div style={{ position: 'relative' }} ref={toolsDropdownRef}>
                 <button
@@ -508,20 +522,6 @@ export default function TranslationToolbar({
                   </div>
                 )}
               </div>
-            )}
-
-            {difyConfigured && (
-              <button className="heroui-btn heroui-btn-ai" onClick={onBatchTranslate} title="调用 Dify 批量翻译 (扫描未翻译词条)">
-                <Bot size={14} />
-                <span>批量 AI 翻译</span>
-              </button>
-            )}
-
-            {projectRole !== 'viewer' && (
-              <button className="heroui-btn heroui-btn-primary" onClick={onAddTerm}>
-                <Plus size={15} />
-                <span>新增词条</span>
-              </button>
             )}
           </div>
         </div>
