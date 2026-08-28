@@ -13,6 +13,7 @@ import EditTermModal from './EditTermModal';
 import InheritModal from './InheritModal';
 import TranslationTable from './TranslationTable';
 import CopyContentModal from './CopyContentModal';
+import BatchGenerateKwModal from './BatchGenerateKwModal';
 
 export default function TranslationTab({ 
   difyConnected = false,
@@ -143,6 +144,7 @@ export default function TranslationTab({
   const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
   const [copyContentOpen, setCopyContentOpen] = useState(false);
   const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
+  const [batchGenerateKwOpen, setBatchGenerateKwOpen] = useState(false);
 
   const [batchTargetTableId, setBatchTargetTableId] = useState('');
   const [selectedBatchItemIds, setSelectedBatchItemIds] = useState(new Set());
@@ -937,6 +939,7 @@ export default function TranslationTab({
         onAddTerm={() => setAddModalOpen(true)}
         onBatchAdd={() => setBatchAddModalOpen(true)}
         onInherit={() => setInheritOpen(true)}
+        onBatchGenerateKw={() => setBatchGenerateKwOpen(true)}
 
         onBatchTranslate={handleOpenBatchTranslate}
         onDataClean={handleDataClean}
@@ -1114,6 +1117,16 @@ export default function TranslationTab({
         selectedRecords={records.filter(r => selectedRecordIds.has(r.recordId || r.id))}
         targetLanguages={TARGET_LANGUAGES}
         getRecordValueByName={getRecordValueByName}
+      />
+
+      <BatchGenerateKwModal
+        open={batchGenerateKwOpen}
+        onClose={() => setBatchGenerateKwOpen(false)}
+        selectedTableId={selectedTableId}
+        tableName={tables.find(t => t.id === selectedTableId)?.name || ''}
+        selectedTerms={records.filter(r => selectedRecordIds.has(r.recordId || r.id))}
+        allRecords={records}
+        onSuccess={() => loadTableData(selectedTableId)}
       />
     </div>
   );

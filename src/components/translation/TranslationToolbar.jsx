@@ -16,7 +16,8 @@ import {
   Filter,
   Sparkles,
   ChevronDown,
-  Wrench
+  Wrench,
+  Zap
 } from 'lucide-react';
 
 export default function TranslationToolbar({
@@ -39,6 +40,7 @@ export default function TranslationToolbar({
   onClearSelection,
   onCopyContent,
   onBatchTranslate,
+  onBatchGenerateKw,
   onBatchApprove,
   onBatchCategory,
   onBatchCopy,
@@ -208,6 +210,18 @@ export default function TranslationToolbar({
               <ClipboardCopy size={13} />
               <span>复制内容</span>
             </button>
+
+            {/* ⭐ 3. 批量生成 KW */}
+            {projectRole !== 'viewer' && onBatchGenerateKw && (
+              <button
+                className="heroui-btn heroui-btn-sm"
+                onClick={onBatchGenerateKw}
+                title="智能生成选中词条的 KW 键名标识"
+              >
+                <Zap size={13} style={{ color: 'var(--yellow)' }} />
+                <span>生成 KW</span>
+              </button>
+            )}
 
             {projectRole !== 'viewer' && (
               <>
@@ -460,6 +474,17 @@ export default function TranslationToolbar({
                       <Layers size={14} />
                       <span>批量新增词条</span>
                     </button>
+
+                    {onBatchGenerateKw && (
+                      <button
+                        className="dropdown-item"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.82rem', textAlign: 'left', border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}
+                        onClick={() => { setToolsDropdownOpen(false); onBatchGenerateKw(); }}
+                      >
+                        <Zap size={14} style={{ color: 'var(--yellow)' }} />
+                        <span>批量生成 KW (补全空缺)</span>
+                      </button>
+                    )}
 
                     <button
                       className="dropdown-item"

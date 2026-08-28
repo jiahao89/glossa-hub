@@ -605,21 +605,51 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
   }
 });
 
-// POST /api/projects/:projectId/generate-kw - 根据中文源词生成 KW 标识
+// POST /api/projects/:projectId/generate-kw - 根据中文源词与参考英文生成 KW 标识
 router.post('/projects/:projectId/generate-kw', authenticateToken, requireProjectMember, async (req, res) => {
   const { projectId } = req.params;
-  const { text } = req.body;
+  const { text, enText, context } = req.body;
 
-  if (!text || !text.trim()) {
-    return res.status(400).json({ error: '中文源词 (text) 不能为空' });
+  if ((!text || !text.trim()) && (!enText || !enText.trim())) {
+    return res.status(400).json({ error: '中文源词 (text) 或参考英文 (enText) 不能为空' });
   }
 
   try {
-    const generated = await generateKwHelper(projectId, text);
+    const generated = await generateKwHelper(projectId, text, enText, context);
     res.json({ kw: generated });
   } catch (err) {
     console.error('生成 KW 失败:', err);
     res.status(500).json({ error: '生成 KW 失败，请重试。' });
+  }
+});
+
+// POST /api/projects/:projectId/batch-generate-kw - 批量预览生成 KW
+router.post('/projects/:projectId/batch-generate-kw', authenticateToken, requireProjectMember, async (req, res) => {
+  const { projectId } = req.params;
+  const { items = [] } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: '待生成词条列表 (items) 不能为空' });
+  }
+
+  try {
+    const results = [];
+    for (const item of items) {
+      const text = item.text || item.zh_cn || '';
+      const enText = item.enText || item.en || '';
+      const context = item.context || '';
+      const kw = await generateKwHelper(projectId, text, enText, context);
+      results.push({
+        id: item.id || item.recordId,
+        text,
+        enText,
+        kw
+      });
+    }
+    res.json({ results });
+  } catch (err) {
+    console.error('批量生成 KW 失败:', err);
+    res.status(500).json({ error: '批量生成 KW 失败' });
   }
 });
 

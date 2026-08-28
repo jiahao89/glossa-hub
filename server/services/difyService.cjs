@@ -5,6 +5,176 @@ const DEFAULT_DIFY_CONFIG = {
   apiKey: process.env.DIFY_API_KEY || 'app-zV0Lo78Bi5WjhplWDL7OwsWR'
 };
 
+const BUILTIN_DIFY_APPS = {
+  'night.magene.cn': 'app-zV0Lo78Bi5WjhplWDL7OwsWR',
+  'api.dify.ai': 'app-aochEehgytnJciYeI3L1pqfj'
+};
+
+// 预置固件、码表、IoT与常用交互界面高频中英对照词典
+const FIRMWARE_UI_DICT = {
+  // 基础操作与通用交互
+  '重试': 'RETRY',
+  '确定': 'CONFIRM',
+  '确认': 'CONFIRM',
+  '取消': 'CANCEL',
+  '保存': 'SAVE',
+  '删除': 'DELETE',
+  '编辑': 'EDIT',
+  '完成': 'DONE',
+  '返回': 'BACK',
+  '关闭': 'CLOSE',
+  '退出': 'EXIT',
+  '设置': 'SETTINGS',
+  '下一步': 'NEXT',
+  '上一步': 'PREV',
+  '跳过': 'SKIP',
+  '重置': 'RESET',
+  '搜索': 'SEARCH',
+  '刷新': 'REFRESH',
+  '同步': 'SYNC',
+  '开始': 'START',
+  '暂停': 'PAUSE',
+  '继续': 'RESUME',
+  '停止': 'STOP',
+  '结束': 'END',
+  '复制': 'COPY',
+  '导入': 'IMPORT',
+  '导出': 'EXPORT',
+  '全选': 'SELECT_ALL',
+  '清空': 'CLEAR',
+  '查看': 'VIEW',
+  '详情': 'DETAILS',
+  '帮助': 'HELP',
+  '关于': 'ABOUT',
+
+  // 连接、配对与设备交互
+  '配对': 'PAIRING',
+  '配对成功': 'PAIRING_SUCCESSFUL',
+  '配对失败': 'PAIRING_FAILED',
+  '正在配对': 'PAIRING',
+  '核对数字': 'VERIFY_NUMBERS',
+  '正在建立安全连接': 'ESTABLISHING_SECURE_CONNECTION',
+  '请在手机端确认': 'PLEASE_CONFIRM_ON_PHONE',
+  '请在手机端继续完成设置': 'PLEASE_CONTINUE_SETUP_ON_PHONE',
+  '连接': 'CONNECT',
+  '连接成功': 'CONNECTED',
+  '已连接': 'CONNECTED',
+  '连接失败': 'CONNECT_FAILED',
+  '未连接': 'DISCONNECTED',
+  '断开连接': 'DISCONNECTED',
+  '正在连接': 'CONNECTING',
+  '蓝牙': 'BLUETOOTH',
+  '传感器': 'SENSOR',
+  '搜索设备': 'SEARCH_DEVICE',
+  '设备已连接': 'DEVICE_CONNECTED',
+  '设备已断开': 'DEVICE_DISCONNECTED',
+
+  // 骑行、运动与传感器数据
+  '速度': 'SPEED',
+  '速度计': 'SPEED_SENSOR',
+  '平均速度': 'AVG_SPEED',
+  '最大速度': 'MAX_SPEED',
+  '心率': 'HEART_RATE',
+  '心率带': 'HEART_RATE_MONITOR',
+  '平均心率': 'AVG_HEART_RATE',
+  '最大心率': 'MAX_HEART_RATE',
+  '踏频': 'CADENCE',
+  '踏频计': 'CADENCE_SENSOR',
+  '平均踏频': 'AVG_CADENCE',
+  '最大踏频': 'MAX_CADENCE',
+  '功率': 'POWER',
+  '功率计': 'POWER_METER',
+  '平均功率': 'AVG_POWER',
+  '最大功率': 'MAX_POWER',
+  '距离': 'DISTANCE',
+  '总距离': 'TOTAL_DISTANCE',
+  '时间': 'TIME',
+  '骑行时间': 'RIDE_TIME',
+  '运动时间': 'ELAPSED_TIME',
+  '卡路里': 'CALORIES',
+  '海拔': 'ALTITUDE',
+  '累计爬升': 'TOTAL_ASCENT',
+  '累计下降': 'TOTAL_DESCENT',
+  '坡度': 'GRADE',
+  '温度': 'TEMPERATURE',
+  '气压': 'PRESSURE',
+  '开始骑行': 'START_RIDE',
+  '骑行记录': 'RIDE_HISTORY',
+  '历史记录': 'HISTORY',
+  '路线': 'ROUTE',
+  '导航': 'NAVIGATION',
+  '地图': 'MAP',
+
+  // 系统与硬件状态
+  '电量': 'BATTERY',
+  '电池': 'BATTERY',
+  '低电量': 'LOW_BATTERY',
+  '充电中': 'CHARGING',
+  '充满': 'FULL_BATTERY',
+  '亮度': 'BRIGHTNESS',
+  '背光': 'BACKLIGHT',
+  '音量': 'VOLUME',
+  '提示音': 'BEEP',
+  '自动关机': 'AUTO_POWER_OFF',
+  '自动休眠': 'AUTO_SLEEP',
+  '自动暂停': 'AUTO_PAUSE',
+  '自动背光': 'AUTO_BACKLIGHT',
+  '语言': 'LANGUAGE',
+  '公制': 'METRIC',
+  '英制': 'IMPERIAL',
+  '固件升级': 'FIRMWARE_UPDATE',
+  'OTA升级': 'OTA_UPDATE',
+  '正在升级': 'UPDATING',
+  '升级成功': 'UPDATE_SUCCESSFUL',
+  '升级失败': 'UPDATE_FAILED',
+  '恢复出厂设置': 'FACTORY_RESET',
+  '存储空间': 'STORAGE',
+  '内存不足': 'OUT_OF_MEMORY',
+  'GPS信号': 'GPS_SIGNAL',
+  '校准': 'CALIBRATION',
+  '校准成功': 'CALIBRATION_SUCCESSFUL',
+  '校准失败': 'CALIBRATION_FAILED',
+
+  // 状态与判定
+  '成功': 'SUCCESS',
+  '失败': 'FAILED',
+  '警告': 'WARNING',
+  '错误': 'ERROR',
+  '提示': 'TIPS',
+  '是': 'YES',
+  '否': 'NO',
+  '开': 'ON',
+  '关': 'OFF',
+  '开启': 'ENABLE',
+  '关闭': 'DISABLE',
+  '自动': 'AUTO',
+  '手动': 'MANUAL',
+  '正常': 'NORMAL',
+  '异常': 'ABNORMAL'
+};
+
+/**
+ * 格式化 KW 规范大写标识
+ * 示例: "Retry" -> "KW_RETRY", "Please confirm on phone" -> "KW_PLEASE_CONFIRM_ON_PHONE"
+ */
+function formatKw(str) {
+  if (!str || typeof str !== 'string') return '';
+  let clean = str
+    .replace(/[^\w\s-]/g, ' ')
+    .trim()
+    .replace(/[\s-_]+/g, '_')
+    .toUpperCase();
+
+  if (!clean) return '';
+  if (clean.length > 50) {
+    clean = clean.slice(0, 50).replace(/_$/, '');
+  }
+  if (!clean.startsWith('KW_')) {
+    clean = 'KW_' + clean;
+  }
+  return clean;
+}
+
 async function getEffectiveDifyConfig(projectId) {
   try {
     const project = await db.queryOne('SELECT dify_config FROM projects WHERE id = $1', [projectId]);
@@ -17,7 +187,6 @@ async function getEffectiveDifyConfig(projectId) {
       }
       if (cfg.baseUrl) {
         let apiKey = cfg.apiKey;
-        // Auto-correct if URL is night.magene.cn but key is empty or old invalid key
         if (cfg.baseUrl.includes('night.magene.cn')) {
           if (!apiKey || apiKey === 'app-aochEehgytnJciYeI3L1pqfj') {
             apiKey = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
@@ -34,31 +203,99 @@ async function getEffectiveDifyConfig(projectId) {
   return { ...DEFAULT_DIFY_CONFIG, isCustom: false };
 }
 
-async function generateKwHelper(projectId, text) {
-  if (!text || !text.trim()) return '';
+/**
+ * 5层智能瀑布流 KW 生成器
+ * @param {string} projectId 项目 ID
+ * @param {string} text 中文源文本
+ * @param {string} [enText] 现有英文翻译 (如有则优先直接格式化)
+ * @param {string} [context] 所在页面 / 模块上下文
+ */
+async function generateKwHelper(projectId, text, enText = '', context = '') {
+  const trimmedText = (text || '').trim();
+  const trimmedEn = (enText || '').trim();
 
-  let englishText = '';
+  // 1. 已有英文译文优先直转 (0 延迟、100% 精确)
+  if (trimmedEn) {
+    const formatted = formatKw(trimmedEn);
+    if (formatted && formatted !== 'KW_') {
+      return formatted;
+    }
+  }
 
-  // 1. Try Dify first if config has apiKey
+  if (!trimmedText) return '';
+
+  // 2. 源文本本身为英文/ASCII 则直接转换
+  if (/^[a-zA-Z0-9_\-\s.]+$/.test(trimmedText)) {
+    const formatted = formatKw(trimmedText);
+    if (formatted && formatted !== 'KW_') {
+      return formatted;
+    }
+  }
+
+  // 3. 高频固件 & UI 词典精确匹配
+  if (FIRMWARE_UI_DICT[trimmedText]) {
+    return formatKw(FIRMWARE_UI_DICT[trimmedText]);
+  }
+
+  // 4. 查询数据库专业词汇库 (Glossary) 或已有同名中文的词条英文
   try {
-    const config = await getEffectiveDifyConfig(projectId);
-    if (config.apiKey) {
-      const cleanBaseUrl = config.baseUrl.replace(/\/$/, '');
+    const glossaryTerm = await db.queryOne(
+      'SELECT translations FROM glossary_terms WHERE term_name = $1 LIMIT 1',
+      [trimmedText]
+    );
+    if (glossaryTerm && glossaryTerm.translations) {
+      const parsed = typeof glossaryTerm.translations === 'object' ? glossaryTerm.translations : JSON.parse(glossaryTerm.translations);
+      const en = parsed['EN（英文）'] || parsed['EN'] || parsed['en'];
+      if (en) {
+        return formatKw(en);
+      }
+    }
+
+    const existingTerm = await db.queryOne(
+      'SELECT translations FROM terms WHERE zh_cn = $1 AND translations IS NOT NULL AND translations != \'{}\' LIMIT 1',
+      [trimmedText]
+    );
+    if (existingTerm && existingTerm.translations) {
+      const parsed = typeof existingTerm.translations === 'object' ? existingTerm.translations : JSON.parse(existingTerm.translations);
+      const en = parsed['EN（英文）'] || parsed['EN'] || parsed['en'];
+      if (en) {
+        return formatKw(en);
+      }
+    }
+  } catch {
+    // ignore query failure
+  }
+
+  // 5. 调用 Dify AI 翻译引擎 (具备候选引擎故障切换)
+  let difyResult = '';
+  const primaryConfig = await getEffectiveDifyConfig(projectId);
+  const candidates = [
+    primaryConfig,
+    ...Object.entries(BUILTIN_DIFY_APPS).map(([host, key]) => ({
+      baseUrl: `https://${host}/v1`,
+      apiKey: key
+    }))
+  ];
+
+  for (const cfg of candidates) {
+    if (!cfg.baseUrl || !cfg.apiKey) continue;
+    try {
+      const cleanBaseUrl = cfg.baseUrl.replace(/\/$/, '');
       const url = `${cleanBaseUrl}/workflows/run`;
 
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
+          'Authorization': `Bearer ${cfg.apiKey}`,
           'X-Magene-Source': 'GlossaHub'
         },
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify({
           inputs: {
-            KW: 'KW_GENERATE_TEMP',
-            text: text.trim(),
-            context: '自动生成键名',
+            KW: 'KW_GEN',
+            text: trimmedText,
+            context: context || 'UI界面按键与提示',
             target_languages: 'EN（英文）'
           },
           response_mode: 'blocking',
@@ -67,63 +304,81 @@ async function generateKwHelper(projectId, text) {
       });
 
       if (response.ok) {
-        const data = await response.ok ? await response.json() : null;
+        const data = await response.json();
         if (data && data.status !== 'failed' && data.data?.outputs) {
           const outputs = data.data.outputs;
           const resultStr = outputs.result || outputs.translations;
-          if (resultStr) {
+          if (typeof resultStr === 'string') {
             try {
               const parsed = JSON.parse(resultStr);
               const keys = Object.keys(parsed);
               const enKey = keys.find(k => k.toLowerCase().includes('en') || k.toLowerCase().includes('英') || k.toLowerCase().includes('english'));
               if (enKey && parsed[enKey]) {
-                englishText = parsed[enKey];
+                difyResult = parsed[enKey];
+                break;
               }
             } catch {
-              // ignore parse error
+              // Not pure JSON string, check if it is clean English text
+              if (/^[a-zA-Z0-9_\-\s.,'!]+$/.test(resultStr.trim())) {
+                difyResult = resultStr.trim();
+                break;
+              }
+            }
+          } else if (typeof resultStr === 'object' && resultStr !== null) {
+            const keys = Object.keys(resultStr);
+            const enKey = keys.find(k => k.toLowerCase().includes('en') || k.toLowerCase().includes('英') || k.toLowerCase().includes('english'));
+            if (enKey && resultStr[enKey]) {
+              difyResult = resultStr[enKey];
+              break;
             }
           }
         }
       }
-    }
-  } catch (err) {
-    console.error('Dify KW generation failed, falling back to Google Translate:', err.message);
-  }
-
-  // 2. Fallback to Google Translate if Dify didn't work or returned empty
-  if (!englishText) {
-    try {
-      const googleUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=${encodeURIComponent(text.trim())}`;
-      const response = await fetch(googleUrl);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data[0] && data[0][0] && data[0][0][0]) {
-          englishText = data[0][0][0];
-        }
-      }
-    } catch (err) {
-      console.error('Google Translate fallback failed:', err.message);
+    } catch {
+      // try next candidate
     }
   }
 
-  if (!englishText) {
-    englishText = 'AUTO_GEN_' + Date.now();
+  if (difyResult) {
+    const formatted = formatKw(difyResult);
+    if (formatted && formatted !== 'KW_') {
+      return formatted;
+    }
   }
 
-  let clean = englishText
-    .replace(/[^a-zA-Z0-9\s-_]/g, '')
-    .trim()
-    .replace(/[\s-_]+/g, '_')
-    .toUpperCase();
+  // 6. 拼音/英文字符规范保底兜底 (杜绝毫无意义的随机数字时间戳)
+  let pinyinFallback = '';
+  // 简易单字拼音音节转换表 (覆盖高频汉字)
+  const PINYIN_TABLE = {
+    '重': 'CHONG', '试': 'SHI', '确': 'QUE', '认': 'REN', '定': 'DING', '消': 'XIAO', '取': 'QU',
+    '配': 'PEI', '对': 'DUI', '成': 'CHENG', '功': 'GONG', '败': 'BAI', '失': 'SHI', '立': 'LI',
+    '连': 'LIAN', '接': 'JIE', '安': 'AN', '全': 'QUAN', '核': 'HE', '数': 'SHU', '字': 'ZI',
+    '请': 'QING', '在': 'ZAI', '手': 'SHOU', '机': 'JI', '端': 'DUAN', '继': 'JI', '完': 'WAN',
+    '速': 'SU', '度': 'DU', '心': 'XIN', '率': 'LV', '踏': 'TA', '频': 'PIN',
+    '设': 'SHE', '置': 'ZHI', '开': 'KAI', '关': 'GUAN', '是': 'SHI', '否': 'FOU', '蓝': 'LAN',
+    '牙': 'YA', '电': 'DIAN', '池': 'CHI', '量': 'LIANG', '高': 'GAO', '低': 'DI', '更': 'GENG'
+  };
 
-  if (!clean.startsWith('KW_')) {
-    clean = 'KW_' + clean;
+  for (const char of trimmedText) {
+    if (PINYIN_TABLE[char]) {
+      pinyinFallback += (pinyinFallback ? '_' : '') + PINYIN_TABLE[char];
+    } else if (/[a-zA-Z0-9]/.test(char)) {
+      pinyinFallback += char.toUpperCase();
+    }
   }
-  return clean;
+
+  if (pinyinFallback) {
+    return 'KW_' + pinyinFallback;
+  }
+
+  // 最后的语义保底
+  return 'KW_ITEM_' + (trimmedText.length);
 }
 
 module.exports = {
   DEFAULT_DIFY_CONFIG,
+  FIRMWARE_UI_DICT,
+  formatKw,
   getEffectiveDifyConfig,
   generateKwHelper
 };
