@@ -788,14 +788,20 @@ router.post('/terms/batch-copy', authenticateToken, async (req, res) => {
     await db.transaction(async (tx) => {
       const placeholders = termIds.map((_, i) => `$${i + 1}`).join(',');
       const sourceTerms = await tx.query(
-        `SELECT kw, context, owner, zh_cn, translations FROM terms WHERE id IN (${placeholders})`,
+        `SELECT kw, context, owner, zh_cn, translations, translations_meta FROM terms WHERE id IN (${placeholders})`,
         termIds
       );
 
       const existingTerms = await tx.query(
-        'SELECT id, kw, is_locked, translations FROM terms WHERE version_id = $1',
+        'SELECT id, kw, is_locked, translations, sort_order FROM terms WHERE version_id = $1',
         [targetVersionId]
       );
+
+      const maxSortRow = await tx.queryOne(
+        'SELECT COALESCE(MAX(sort_order), 0) as max_sort FROM terms WHERE version_id = $1',
+        [targetVersionId]
+      );
+      let currentSortOrder = parseInt(maxSortRow?.max_sort || 0, 10);
 
       const existingMap = {};
       existingTerms.forEach(t => {
@@ -807,6 +813,7 @@ router.post('/terms/batch-copy', authenticateToken, async (req, res) => {
         const newId = crypto.randomUUID();
 
         let transStr = JSON.stringify(parseJsonField(term.translations));
+        let metaStr = JSON.stringify(parseJsonField(term.translations_meta));
 
         if (exist) {
           if (duplicateStrategy === 'skip') {
@@ -818,35 +825,38 @@ router.post('/terms/batch-copy', authenticateToken, async (req, res) => {
               continue;
             }
 
+            const targetSortOrder = exist.sort_order && exist.sort_order > 0 ? exist.sort_order : ++currentSortOrder;
+
             await tx.run('DELETE FROM terms WHERE id = $1', [exist.id]);
 
             if (dbType === 'postgres') {
               await tx.run(
-                `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), FALSE)`,
-                [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr]
+                `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, sort_order, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW(), FALSE, $9, 'DRAFT')`,
+                [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr, metaStr, targetSortOrder]
               );
             } else {
               await tx.run(
-                `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, datetime('now'), datetime('now'), 0)`,
-                [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr]
+                `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, sort_order, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'), datetime('now'), 0, $9, 'DRAFT')`,
+                [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr, metaStr, targetSortOrder]
               );
             }
             overwriteCount++;
           }
         } else {
+          currentSortOrder++;
           if (dbType === 'postgres') {
             await tx.run(
-              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
-               VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW(), FALSE)`,
-              [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr]
+              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, sort_order, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW(), NOW(), FALSE, $9, 'DRAFT')`,
+              [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr, metaStr, currentSortOrder]
             );
           } else {
             await tx.run(
-              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, created_at, updated_at, is_locked)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, datetime('now'), datetime('now'), 0)`,
-              [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr]
+              `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, sort_order, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'), datetime('now'), 0, $9, 'DRAFT')`,
+              [newId, targetVersionId, term.kw, term.context, term.owner, term.zh_cn, transStr, metaStr, currentSortOrder]
             );
           }
           copyCount++;

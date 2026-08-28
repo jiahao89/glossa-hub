@@ -31,7 +31,7 @@ if (gitCommit === 'unknown') {
 console.log(`🚀 GlossaHub backend starting | commit=${gitCommit} | port=${PORT} | node=${process.version}`);
 
 // CORS 配置：支持跨域白名单（从环境变量读取，默认开发与 vercel.app 动态匹配）
-const defaultOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+const defaultOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5178', 'http://127.0.0.1:5178'];
 const envOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
   : [];
@@ -40,7 +40,12 @@ const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    if (
+      allowedOrigins.includes(origin) || 
+      origin.endsWith('.vercel.app') || 
+      /^http:\/\/localhost:\d+$/.test(origin) || 
+      /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)
+    ) {
       return callback(null, true);
     }
     return callback(new Error('CORS 策略已拦截未授权的来源: ' + origin));
