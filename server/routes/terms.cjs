@@ -8,6 +8,7 @@ const { backupToRecycleBin } = require('../services/recycleBin.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
 const { TARGET_LANGUAGES, LEGACY_TO_NEW_LANG_MAP } = require('../config/constants.cjs');
 const { createAuditLog } = require('../services/auditLogger.cjs');
+const { generateKwHelper } = require('../services/difyService.cjs');
 const ExcelJS = require('exceljs');
 
 // GET /api/tables/:tableId/records - 读取特定版本下的所有词条数据 (分页)
@@ -893,6 +894,129 @@ router.post('/terms/batch-copy', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('批量复制到其他版本失败:', err);
     res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
+// POST /api/tables/:tableId/batch-generate-kw - 批量生成并更新词条 KW
+router.post('/tables/:tableId/batch-generate-kw', authenticateToken, async (req, res) => {
+  const { tableId } = req.params;
+  const { termIds, overwrite = false, updates = [] } = req.body;
+  const dbType = getDbType();
+
+  try {
+    const version = await db.queryOne('SELECT id, version_name, project_id FROM versions WHERE id = $1', [tableId]);
+    if (!version) {
+      return res.status(404).json({ error: '数据表版本不存在' });
+    }
+
+    const projectId = version.project_id || 'proj-default';
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const modifiedTerms = [];
+
+    await db.transaction(async (tx) => {
+      // 若前端已提供批量生成后的 updates 映射列表: [{ id, kw }]
+      if (Array.isArray(updates) && updates.length > 0) {
+        for (const item of updates) {
+          if (!item.id || !item.kw) continue;
+          if (dbType === 'postgres') {
+            await tx.run(
+              'UPDATE terms SET kw = $1, updated_at = NOW() WHERE id = $2 AND version_id = $3',
+              [item.kw, item.id, tableId]
+            );
+          } else {
+            await tx.run(
+              "UPDATE terms SET kw = $1, updated_at = datetime('now') WHERE id = $2 AND version_id = $3",
+              [item.kw, item.id, tableId]
+            );
+          }
+          updatedCount++;
+          modifiedTerms.push({ id: item.id, kw: item.kw });
+        }
+      } else {
+        // 后端直接查询候选词条并执行生成
+        let candidates = [];
+        if (Array.isArray(termIds) && termIds.length > 0) {
+          const placeholders = termIds.map((_, i) => `$${i + 2}`).join(',');
+          candidates = await tx.query(
+            `SELECT id, kw, zh_cn, translations, context, is_locked FROM terms WHERE version_id = $1 AND id IN (${placeholders})`,
+            [tableId, ...termIds]
+          );
+        } else {
+          // 全表扫描
+          candidates = await tx.query(
+            'SELECT id, kw, zh_cn, translations, context, is_locked FROM terms WHERE version_id = $1',
+            [tableId]
+          );
+        }
+
+        for (const term of candidates) {
+          if (term.is_locked === 1 || term.is_locked === true) {
+            skippedCount++;
+            continue;
+          }
+          const isKwEmpty = !term.kw || !term.kw.trim() || term.kw.startsWith('__EMPTY_KW_');
+          if (!isKwEmpty && !overwrite) {
+            skippedCount++;
+            continue;
+          }
+
+          let enText = '';
+          if (term.translations) {
+            const parsed = parseJsonField(term.translations);
+            enText = parsed['EN（英文）'] || parsed['EN'] || parsed['en'] || '';
+          }
+
+          const generatedKw = await generateKwHelper(projectId, term.zh_cn, enText, term.context);
+          if (generatedKw) {
+            if (dbType === 'postgres') {
+              await tx.run(
+                'UPDATE terms SET kw = $1, updated_at = NOW() WHERE id = $2',
+                [generatedKw, term.id]
+              );
+            } else {
+              await tx.run(
+                "UPDATE terms SET kw = $1, updated_at = datetime('now') WHERE id = $2",
+                [generatedKw, term.id]
+              );
+            }
+            updatedCount++;
+            modifiedTerms.push({ id: term.id, kw: generatedKw, zh_cn: term.zh_cn });
+          } else {
+            skippedCount++;
+          }
+        }
+      }
+
+      if (updatedCount > 0) {
+        const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
+        const details = `批量自动生成 KW 键名：成功更新 ${updatedCount} 条词条${skippedCount > 0 ? `，跳过 ${skippedCount} 条` : ''}。`;
+
+        if (dbType === 'postgres') {
+          await tx.run(
+            `INSERT INTO ${logsTable} (timestamp, action, details, version_name, user_id)
+             VALUES (NOW(), '批量生成KW', $1, $2, $3)`,
+            [details, version.version_name, req.user.id]
+          );
+        } else {
+          await tx.run(
+            `INSERT INTO ${logsTable} (timestamp, action, details, version_name, user_id)
+             VALUES (datetime('now'), '批量生成KW', $1, $2, $3)`,
+            [details, version.version_name, req.user.id]
+          );
+        }
+      }
+    });
+
+    res.json({
+      message: `成功为 ${updatedCount} 条词条生成并更新 KW 键名！`,
+      updatedCount,
+      skippedCount,
+      modifiedTerms
+    });
+  } catch (err) {
+    console.error('批量生成 KW 失败:', err);
+    res.status(500).json({ error: '批量生成 KW 失败: ' + err.message });
   }
 });
 

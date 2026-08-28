@@ -130,7 +130,7 @@ describe('EditTermModal', () => {
         expect.stringContaining('/api/projects/proj-default/generate-kw'),
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ text: '现有中文' }),
+          body: JSON.stringify({ text: '现有中文', enText: '', context: '主页' }),
         })
       );
     });

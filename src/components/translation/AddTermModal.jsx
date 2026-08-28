@@ -25,9 +25,43 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
   };
 
   const [newFields, setNewFields] = useState(getInitialFields());
+  const [generatingKw, setGeneratingKw] = useState(false);
 
   const handleFieldChange = (field, value) => {
     setNewFields(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleGenerateKw = async () => {
+    const cn = (newFields['CN（中文）'] || '').trim();
+    const en = (newFields['EN（英文）'] || newFields['EN'] || '').trim();
+    const context = (newFields['所在页面'] || '').trim();
+    if (!cn && !en) {
+      toast.error('请先填写 CN（中文）源文本或参考英文');
+      return;
+    }
+    setGeneratingKw(true);
+    try {
+      const res = await apiFetch(`/api/projects/proj-default/generate-kw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cn, enText: en, context }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'KW 生成失败');
+      }
+      const data = await res.json();
+      if (data.kw) {
+        setNewFields(prev => ({ ...prev, KW: data.kw }));
+        toast.success(`KW 自动生成成功: ${data.kw}`);
+      } else {
+        toast.error('生成结果为空，请手动填写');
+      }
+    } catch (err) {
+      toast.error(err.message || '生成 KW 失败');
+    } finally {
+      setGeneratingKw(false);
+    }
   };
 
   const handleAutoTranslate = async () => {
@@ -145,9 +179,32 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
     >
       <div className="edit-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', padding: '0.5rem 0' }}>
         <div className="form-group" style={{ gridColumn: 'span 2' }}>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-muted)' }}>
-            KW 标识 (例如: KW_AVG_CADENCE)
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-muted)' }}>
+              KW 标识 (例如: KW_AVG_CADENCE)
+            </label>
+            <button
+              type="button"
+              onClick={handleGenerateKw}
+              disabled={generatingKw || loading || isTranslating}
+              className="btn-text"
+              style={{
+                fontSize: '0.78rem',
+                color: 'var(--accent)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '2px 6px',
+                cursor: 'pointer'
+              }}
+            >
+              {generatingKw ? (
+                <><Loader2 size={12} className="animate-spin" /> 生成中...</>
+              ) : (
+                <><Sparkles size={12} /> 自动生成 KW</>
+              )}
+            </button>
+          </div>
           <input 
             type="text" 
             value={newFields['KW']} 
@@ -155,7 +212,7 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
             className="input-text"
             style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}
             disabled={loading || isTranslating}
-            placeholder="请输入 KW..."
+            placeholder="请输入 KW 或点击右上角'自动生成'..."
           />
         </div>
         

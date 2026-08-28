@@ -100,8 +100,10 @@ export default function EditTermModal({
 
   const handleGenerateKw = async () => {
     const cn = (fields['CN（中文）'] || '').trim();
-    if (!cn) {
-      toast.error('请先填写 CN（中文）源文本');
+    const en = (fields['EN（英文）'] || fields['EN'] || '').trim();
+    const context = (fields['所在页面'] || '').trim();
+    if (!cn && !en) {
+      toast.error('请先填写 CN（中文）源文本或参考英文');
       return;
     }
     setGeneratingKw(true);
@@ -109,7 +111,7 @@ export default function EditTermModal({
       const res = await apiFetch(`/api/projects/${projectId}/generate-kw`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cn }),
+        body: JSON.stringify({ text: cn, enText: en, context }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -118,7 +120,7 @@ export default function EditTermModal({
       const data = await res.json();
       if (data.kw) {
         setFields(prev => ({ ...prev, KW: data.kw }));
-        toast.success('KW 自动生成成功！');
+        toast.success(`KW 自动生成成功: ${data.kw}`);
       } else {
         toast.error('生成结果为空，请手动填写');
       }
