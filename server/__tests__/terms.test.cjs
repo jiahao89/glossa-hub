@@ -134,4 +134,46 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
     expect(resCreate.status).toBe(200);
     expect(resCreate.body.records[0].recordId).toBe(term2Id); // 2026-01-01 is earlier than Date.now()
   });
+
+  it('should place copied terms at the end with higher sort_order in batch-copy', async () => {
+    const targetVersionId = 'ver-copy-target-' + Date.now();
+    const targetVersionName = '复制目标测试表_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    await db.run(
+      "INSERT INTO versions (id, project_id, version_name, created_at) VALUES ($1, 'proj-default', $2, datetime('now'))",
+      [targetVersionId, targetVersionName]
+    );
+
+    // Initial term in target table with sort_order = 1
+    const initialTermId = 'term-initial-target-' + Date.now();
+    await db.run(
+      `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, sort_order, status)
+       VALUES ($1, $2, 'KW_INITIAL', '页面', '标题', '初始词条', '{}', '{}', datetime('now'), datetime('now'), 0, 1, 'APPROVED')`,
+      [initialTermId, targetVersionId]
+    );
+
+    // Perform batch copy of testTermId to targetVersionId
+    const copyRes = await request(app)
+      .post('/api/terms/batch-copy')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        termIds: [testTermId],
+        targetVersionId,
+        duplicateStrategy: 'skip'
+      });
+
+    expect(copyRes.status).toBe(200);
+    expect(copyRes.body.addedCount).toBe(1);
+
+    // Fetch records of target table
+    const targetRecordsRes = await request(app)
+      .get(`/api/tables/${targetVersionId}/records`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(targetRecordsRes.status).toBe(200);
+    expect(targetRecordsRes.body.records.length).toBe(2);
+    // Initial term should remain at index 0, and copied term should be at index 1 (at the end)
+    expect(targetRecordsRes.body.records[0].fields.KW).toBe('KW_INITIAL');
+    expect(targetRecordsRes.body.records[1].fields.KW).toBe('KW_TEST_TERM');
+  });
 });
+

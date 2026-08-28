@@ -508,12 +508,83 @@ async function initDatabase() {
   }
 }
 
+// 自动调整历史复制到表且缺少 sort_order 的词条至末尾（如迪卡侬词条中的复制项）
+async function fixDecathlonAndCopiedTermsOrder() {
+  try {
+    const decathlonVer = await db.queryOne(
+      dbType === 'postgres'
+        ? "SELECT id, version_name FROM versions WHERE version_name ILIKE '%迪卡侬%' OR version_name ILIKE '%decathlon%'"
+        : "SELECT id, version_name FROM versions WHERE version_name LIKE '%迪卡侬%' OR version_name LIKE '%decathlon%'"
+    );
+
+    if (decathlonVer) {
+      const targetChinese = [
+        '请在手机端确认',
+        '核对数字',
+        '配对成功',
+        '正在建立安全连接',
+        '配对失败',
+        '请在手机端继续完成设置',
+        '重试'
+      ];
+
+      const maxSortRow = await db.queryOne(
+        'SELECT COALESCE(MAX(sort_order), 0) as max_sort FROM terms WHERE version_id = $1',
+        [decathlonVer.id]
+      );
+      let maxSort = parseInt(maxSortRow?.max_sort || 0, 10);
+
+      const placeholders = targetChinese.map((_, i) => `$${i + 2}`).join(',');
+      const termsToMove = await db.query(
+        `SELECT id, zh_cn, sort_order FROM terms WHERE version_id = $1 AND zh_cn IN (${placeholders})`,
+        [decathlonVer.id, ...targetChinese]
+      );
+
+      if (termsToMove.length > 0) {
+        const needsMove = termsToMove.some(t => !t.sort_order || t.sort_order <= 20);
+        if (needsMove) {
+          console.log(`⚡ 正在将 [${decathlonVer.version_name}] 中的 ${termsToMove.length} 条已复制词条移动至末尾...`);
+          const orderMap = {
+            '请在手机端确认': 1,
+            '核对数字': 2,
+            '配对成功': 3,
+            '正在建立安全连接': 4,
+            '配对失败': 5,
+            '请在手机端继续完成设置': 6,
+            '重试': 7
+          };
+          termsToMove.sort((a, b) => (orderMap[a.zh_cn] || 99) - (orderMap[b.zh_cn] || 99));
+
+          for (const term of termsToMove) {
+            maxSort++;
+            if (dbType === 'postgres') {
+              await db.run(
+                'UPDATE terms SET sort_order = $1, updated_at = NOW() WHERE id = $2',
+                [maxSort, term.id]
+              );
+            } else {
+              await db.run(
+                "UPDATE terms SET sort_order = $1, updated_at = datetime('now') WHERE id = $2",
+                [maxSort, term.id]
+              );
+            }
+          }
+          console.log(`✅ [${decathlonVer.version_name}] 中的词条已成功移动至末尾 (最新 sort_order: ${maxSort})！`);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ 调整复制词条顺序遇到非致命错误:', err.message);
+  }
+}
+
 function ensureDbInit() {
   if (!dbInitPromise) {
     dbInitPromise = initDatabase()
-      .then(() => {
+      .then(async () => {
         dbInitError = null;
         try { ensureIndexes(); } catch (e) { console.warn('Index error:', e.message); }
+        try { await fixDecathlonAndCopiedTermsOrder(); } catch (e) { console.warn('Sort order fix error:', e.message); }
       })
       .catch((err) => {
         dbInitError = err;

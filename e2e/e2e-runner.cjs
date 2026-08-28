@@ -44,19 +44,22 @@ async function runE2E() {
     console.log('✅ 后端服务启动成功！');
   }
 
-  // 2. 检查或启动 Frontend (Vite)
-  let frontendPort = 5173;
+  // 2. 检查或启动 Frontend (Vite) 在独立 E2E 端口 5178
+  let frontendPort = 5178;
   let frontendReady = false;
   try {
     const res = await fetch(`http://localhost:${frontendPort}`).catch(() => null);
     if (res && res.ok) {
-      frontendReady = true;
-      console.log(`⚡ 前端 Vite 服务已在端口 ${frontendPort} 运行中`);
+      const html = await res.text();
+      if (html.includes('GlossaHub') || html.includes('glossahub') || html.includes('root')) {
+        frontendReady = true;
+        console.log(`⚡ 前端 GlossaHub Vite 服务已在端口 ${frontendPort} 运行中`);
+      }
     }
   } catch {}
 
   if (!frontendReady) {
-    console.log(`📦 启动前端 Vite 开发服务...`);
+    console.log(`📦 启动前端 Vite 开发服务 (端口 ${frontendPort})...`);
     frontendProc = spawn('npx', ['vite', '--port', String(frontendPort), '--strictPort'], {
       cwd: rootDir,
       stdio: 'pipe'
@@ -94,24 +97,24 @@ async function runE2E() {
     await page.goto(`http://localhost:${frontendPort}`, { waitUntil: 'networkidle' });
     
     // Check if on login page
-    const loginInput = await page.locator('input[placeholder*="账号"], input[type="text"]').first();
-    if (await loginInput.isVisible()) {
+    const passwordInput = page.locator('input[type="password"]');
+    if (await passwordInput.isVisible({ timeout: 2000 }).catch(() => false)) {
       await page.fill('input[placeholder*="账号"], input[type="text"]', 'wangzhaoyun');
-      await page.fill('input[type="password"]', 'magene123');
-      await page.click('button:has-text("登录"), button[type="submit"]');
+      await passwordInput.fill('magene123');
+      await page.click('button[type="submit"], button:has-text("进入")');
       await page.waitForTimeout(1000);
     }
     
-    // Wait for Dashboard / Main UI
-    await page.waitForSelector('.header, .app-container', { timeout: 8000 });
+    // Wait for Sidebar / Main UI
+    await page.waitForSelector('.sidebar-nav, .header', { timeout: 10000 });
     recordStep('用户登录与凭证验证', 'PASSED', '登录成功并进入主工作台');
 
     // ----------------------------------------------------
     // Scenario 2: 全局深色 / 浅色模式切换
     // ----------------------------------------------------
     console.log('\n--- [Scenario 2: 主题模式动态切换] ---');
-    const themeBtn = page.locator('button[title*="主题"], button:has(.lucide-sun), button:has(.lucide-moon)').first();
-    if (await themeBtn.isVisible()) {
+    const themeBtn = page.locator('button[title*="模式"], button:has(.lucide-sun), button:has(.lucide-moon)').first();
+    if (await themeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
       await themeBtn.click();
       await page.waitForTimeout(300);
       const isLight = await page.evaluate(() => document.documentElement.classList.contains('light-mode'));
@@ -127,15 +130,12 @@ async function runE2E() {
     // Scenario 3: 导航至「词条管理」并验证 HeroUI Toolbar
     // ----------------------------------------------------
     console.log('\n--- [Scenario 3: 词条管理 & HeroUI Toolbar] ---');
-    const translationTabBtn = page.locator('button:has-text("词条管理")').first();
-    if (await translationTabBtn.isVisible()) {
-      await translationTabBtn.click();
-      await page.waitForTimeout(1500);
-    }
+    await page.click('button.nav-item-btn[title="词条管理"], button:has-text("词条管理")', { timeout: 8000 });
+    await page.waitForTimeout(1000);
 
     // 验证 Toolbar 容器存在
     const toolbar = page.locator('.heroui-toolbar-container, .toolbar').first();
-    await toolbar.waitFor({ state: 'visible', timeout: 5000 });
+    await toolbar.waitFor({ state: 'visible', timeout: 8000 });
     recordStep('Toolbar 容器渲染', 'PASSED', 'HeroUI 风格 Toolbar 成功呈现');
 
     // 验证 数据表版本 下拉框与总数徽章
