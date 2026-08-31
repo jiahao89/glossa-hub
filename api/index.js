@@ -11,6 +11,10 @@
 //
 // Falls back to a static error if RENDER_BACKEND_URL is missing.
 
+export const config = {
+  maxDuration: 60,
+};
+
 const TARGET = process.env.RENDER_BACKEND_URL || 'https://glossa-hub.onrender.com';
 
 export default async function handler(req, res) {
