@@ -5,9 +5,9 @@ const request = require('supertest');
 // ============================================================
 // /api/projects/:projectId/dify-test — builtin Dify App key 解析
 //
-// 这两个内置 App 由运维预配置, 前端用户选 preset 时不需要手动输入 Key:
-//   - night.magene.cn  → app-zV0Lo78Bi5WjhplWDL7OwsWR
-//   - api.dify.ai      → app-aochEehgytnJciYeI3L1pqfj
+// 这两个内置 App 由运维预配置, 前端用户选 preset 时不需要手动输入 Key。
+// Key 不再硬编码在源码中, 统一从环境变量 DIFY_BUILTIN_KEYS 读取
+// (逗号分隔, 顺序: [0]=night.magene.cn, [1]=api.dify.ai), 本地配置在 .env。
 //
 // 历史问题:
 //   - 之前选 dify_cloud 预设时 backend fallback 到 effective.apiKey
@@ -24,6 +24,9 @@ const request = require('supertest');
 const REAL_FETCH = global.fetch;
 let fetchMock;
 let adminToken = '';
+// 从环境变量解析内置 Key（与源码同一变量, 避免测试里再硬编码明文）。
+// 注意: .env 由 app.cjs 内的 dotenv 加载, 须在 require app 之后（beforeAll）才能读到。
+let BUILTIN_KEYS = [];
 
 beforeAll(async () => {
   const { db, ensureDbInit } = require('../config/db.cjs');
@@ -35,7 +38,11 @@ beforeAll(async () => {
   );
 
   // Login as admin
-  const app = require('../app.cjs');
+  const app = require('../app.cjs'); // 此时 dotenv 已加载 .env
+  BUILTIN_KEYS = (process.env.DIFY_BUILTIN_KEYS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const res = await request(app)
     .post('/api/auth/login')
     .send({ username: 'wangzhaoyun', password: 'magene123' });
@@ -74,7 +81,8 @@ describe('POST /api/projects/:projectId/dify-test — 内置 Dify App key fallba
     // not empty string and not the magene key.
     const [, init] = fetchMock.mock.calls[0];
     const authHeader = init.headers.Authorization;
-    expect(authHeader).toBe('Bearer app-aochEehgytnJciYeI3L1pqfj');
+    expect(BUILTIN_KEYS.length).toBeGreaterThanOrEqual(2); // 环境需配置 DIFY_BUILTIN_KEYS
+    expect(authHeader).toBe(`Bearer ${BUILTIN_KEYS[1]}`);
   });
 
   it('选 magene_night 预设 (night.magene.cn) 但用户没传 key: backend 自动用 magene 内置 Key', async () => {
@@ -91,7 +99,8 @@ describe('POST /api/projects/:projectId/dify-test — 内置 Dify App key fallba
 
     expect(res.status).toBe(200);
     const [, init] = fetchMock.mock.calls[0];
-    expect(init.headers.Authorization).toBe('Bearer app-zV0Lo78Bi5WjhplWDL7OwsWR');
+    expect(BUILTIN_KEYS.length).toBeGreaterThanOrEqual(1); // 环境需配置 DIFY_BUILTIN_KEYS
+    expect(init.headers.Authorization).toBe(`Bearer ${BUILTIN_KEYS[0]}`);
   });
 
   it('用户传了 apiKey (自定义场景): 使用用户传的 key, 不替换为内置 key', async () => {

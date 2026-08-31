@@ -30,19 +30,24 @@ if (gitCommit === 'unknown') {
 }
 console.log(`🚀 GlossaHub backend starting | commit=${gitCommit} | port=${PORT} | node=${process.version}`);
 
-// CORS 配置：支持跨域白名单（从环境变量读取，默认开发与 vercel.app 动态匹配）
-const defaultOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5178', 'http://127.0.0.1:5178'];
+// CORS 配置：支持跨域白名单（从环境变量读取）
+// 收紧策略: 不再放行任意 *.vercel.app (攻击者可在 vercel.app 部署钓鱼前端蹭跨域),
+// 只精确匹配生产域名与本项目 Vercel 预览域名前缀; 其他来源通过 CORS_ORIGINS 扩展。
+const defaultOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5178', 'http://127.0.0.1:5178', 'https://glossa-hub.vercel.app'];
 const envOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
   : [];
 const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
 
+// Vercel 预览部署域名 (PR 分支自动生成), 限定本项目前缀
+const VERCEL_PREVIEW_ORIGIN_RE = /^https:\/\/glossa-hub-git-[\w-]+\.vercel\.app$/;
+
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     if (
-      allowedOrigins.includes(origin) || 
-      origin.endsWith('.vercel.app') || 
+      allowedOrigins.includes(origin) ||
+      VERCEL_PREVIEW_ORIGIN_RE.test(origin) ||
       /^http:\/\/localhost:\d+$/.test(origin) || 
       /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)
     ) {
@@ -53,8 +58,8 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // 挂载 /api/health （置于 DB 初始化中间件之前，方便探针无视 DB 状态获取健康指标）
 app.use('/api', healthRoutes);

@@ -3,9 +3,11 @@ const { db } = require('../config/db.cjs');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 // Vercel Serverless 环境下 NODE_ENV=production 但 JWT_SECRET 仅在 Render 部署设置。
-// 为避免冷启动时 process.exit(1) 导致 FUNCTION_INVOCATION_FAILED,
-// 改为降级到开发密钥并打印警告——安全性由 Render 端环境变量保证,
-// Vercel serverless 只是反向代理层(无持久状态、无用户登录入口)。
+// 注意: api/index.js 现在是纯反向代理(只把 /api/* 转发到 Render 后端),
+// 不再在 Vercel 上运行本 Express 应用, 因此这段降级逻辑实际只服务于本地开发
+// (本地开发仍需要这个后备密钥才能启动)。生产环境的真实鉴权全部发生在
+// Render 端, 安全性由 Render 端 JWT_SECRET 环境变量保证。
+// 保留降级而不是 process.exit(1), 避免误设 NODE_ENV=production 时直接崩溃。
 if (!JWT_SECRET) {
   const isVercel = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
   if (process.env.NODE_ENV === 'production' && !isVercel) {

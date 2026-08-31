@@ -1,13 +1,28 @@
-const { db } = require('../config/db.cjs');
+const { db, getDbType } = require('../config/db.cjs');
+
+// 专业词库匹配查询失败是否已告警（避免 KW 高频生成时日志刷屏）
+let glossaryQueryWarned = false;
+
+// 内置 Dify 引擎域名 (顺序与环境变量 DIFY_BUILTIN_KEYS 中的 key 一一对应: [0]=night, [1]=dify 云)
+const BUILTIN_DIFY_HOSTS = ['night.magene.cn', 'api.dify.ai'];
+
+// ⚠️ 内置 Key 统一由环境变量 DIFY_BUILTIN_KEYS (逗号分隔) 注入, 源码不硬编码任何 key
+let builtinKeysWarned = false;
+function getBuiltinKeys() {
+  const keys = (process.env.DIFY_BUILTIN_KEYS || '')
+    .split(',')
+    .map(k => k.trim())
+    .filter(Boolean);
+  if (keys.length === 0 && !builtinKeysWarned) {
+    builtinKeysWarned = true;
+    console.warn('⚠️ 未配置 DIFY_BUILTIN_KEYS，内置 Dify 候选已禁用');
+  }
+  return keys;
+}
 
 const DEFAULT_DIFY_CONFIG = {
   baseUrl: process.env.DIFY_BASE_URL || 'https://night.magene.cn/v1',
-  apiKey: process.env.DIFY_API_KEY || 'app-zV0Lo78Bi5WjhplWDL7OwsWR'
-};
-
-const BUILTIN_DIFY_APPS = {
-  'night.magene.cn': 'app-zV0Lo78Bi5WjhplWDL7OwsWR',
-  'api.dify.ai': 'app-aochEehgytnJciYeI3L1pqfj'
+  apiKey: process.env.DIFY_API_KEY || getBuiltinKeys()[0] || ''
 };
 
 // 预置固件、码表、IoT与常用交互界面高频中英对照词典
@@ -22,7 +37,6 @@ const FIRMWARE_UI_DICT = {
   '编辑': 'EDIT',
   '完成': 'DONE',
   '返回': 'BACK',
-  '关闭': 'CLOSE',
   '退出': 'EXIT',
   '设置': 'SETTINGS',
   '下一步': 'NEXT',
@@ -146,6 +160,7 @@ const FIRMWARE_UI_DICT = {
   '开': 'ON',
   '关': 'OFF',
   '开启': 'ENABLE',
+  // 注意: '关闭' 在此映射表中统一为 DISABLE（与 ENABLE 对应；早期重复定义的 CLOSE 条目已移除）
   '关闭': 'DISABLE',
   '自动': 'AUTO',
   '手动': 'MANUAL',
@@ -187,9 +202,11 @@ async function getEffectiveDifyConfig(projectId) {
       }
       if (cfg.baseUrl) {
         let apiKey = cfg.apiKey;
+        const builtinKeys = getBuiltinKeys();
         if (cfg.baseUrl.includes('night.magene.cn')) {
-          if (!apiKey || apiKey === 'app-aochEehgytnJciYeI3L1pqfj') {
-            apiKey = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
+          // 已存 Key 为空或误存为 Dify 云内置 Key 时, 自动纠正为 Night 内置 Key
+          if (!apiKey || (builtinKeys[1] && apiKey === builtinKeys[1])) {
+            apiKey = builtinKeys[0] || '';
           }
         }
         if (apiKey) {
@@ -239,20 +256,21 @@ async function generateKwHelper(projectId, text, enText = '', context = '') {
 
   // 4. 查询数据库专业词汇库 (Glossary) 或已有同名中文的词条英文
   try {
+    // glossary_terms 表的中文词列名为 cn_term、英文译文列名为 en_term（无 term_name / translations 列）
     const glossaryTerm = await db.queryOne(
-      'SELECT translations FROM glossary_terms WHERE term_name = $1 LIMIT 1',
+      'SELECT en_term FROM glossary_terms WHERE cn_term = $1 LIMIT 1',
       [trimmedText]
     );
-    if (glossaryTerm && glossaryTerm.translations) {
-      const parsed = typeof glossaryTerm.translations === 'object' ? glossaryTerm.translations : JSON.parse(glossaryTerm.translations);
-      const en = parsed['EN（英文）'] || parsed['EN'] || parsed['en'];
-      if (en) {
-        return formatKw(en);
-      }
+    if (glossaryTerm && glossaryTerm.en_term) {
+      return formatKw(glossaryTerm.en_term);
     }
 
+    // PG 下 translations 是 jsonb 列，不能直接与字符串 '{}' 比较，需转 text；SQLite 存 TEXT 可直接比较
+    const notEmptyCond = getDbType() === 'postgres'
+      ? "translations::text != '{}'"
+      : "translations != '{}'";
     const existingTerm = await db.queryOne(
-      'SELECT translations FROM terms WHERE zh_cn = $1 AND translations IS NOT NULL AND translations != \'{}\' LIMIT 1',
+      `SELECT translations FROM terms WHERE zh_cn = $1 AND translations IS NOT NULL AND ${notEmptyCond} LIMIT 1`,
       [trimmedText]
     );
     if (existingTerm && existingTerm.translations) {
@@ -262,18 +280,24 @@ async function generateKwHelper(projectId, text, enText = '', context = '') {
         return formatKw(en);
       }
     }
-  } catch {
-    // ignore query failure
+  } catch (err) {
+    // 查询失败仅告警一次，避免 KW 批量生成时日志刷屏
+    if (!glossaryQueryWarned) {
+      glossaryQueryWarned = true;
+      console.warn('专业词库匹配查询失败:', err.message);
+    }
   }
 
   // 5. 调用 Dify AI 翻译引擎 (具备候选引擎故障切换)
   let difyResult = '';
   const primaryConfig = await getEffectiveDifyConfig(projectId);
+  const builtinKeys = getBuiltinKeys();
   const candidates = [
     primaryConfig,
-    ...Object.entries(BUILTIN_DIFY_APPS).map(([host, key]) => ({
+    // key 为空的候选引擎会在下方循环中被跳过 (防御未配置 DIFY_BUILTIN_KEYS 的场景)
+    ...BUILTIN_DIFY_HOSTS.map((host, i) => ({
       baseUrl: `https://${host}/v1`,
-      apiKey: key
+      apiKey: builtinKeys[i] || ''
     }))
   ];
 
@@ -380,5 +404,6 @@ module.exports = {
   FIRMWARE_UI_DICT,
   formatKw,
   getEffectiveDifyConfig,
-  generateKwHelper
+  generateKwHelper,
+  getBuiltinKeys
 };

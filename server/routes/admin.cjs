@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const { db, hashPassword, getDbType } = require('../config/db.cjs');
 const { authenticateToken, requireSystemAdmin } = require('../middleware/auth.cjs');
+const { createAuditLog } = require('../services/auditLogger.cjs');
 
 router.get('/users', authenticateToken, requireSystemAdmin, async (_req, res) => {
   try {
@@ -88,7 +89,32 @@ router.delete('/users/:id', authenticateToken, requireSystemAdmin, async (req, r
   }
 
   try {
+    const target = await db.queryOne('SELECT id, username, role FROM users WHERE id = $1', [id]);
+    if (!target) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    // 保护最后一个系统管理员, 防止系统失去管理员入口
+    if (target.role === 'admin') {
+      const adminCountRow = await db.queryOne("SELECT COUNT(*) as cnt FROM users WHERE role = 'admin'");
+      const adminCount = parseInt(adminCountRow?.cnt || 0, 10);
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: '不能删除最后一个系统管理员' });
+      }
+    }
+
     await db.run('DELETE FROM users WHERE id = $1', [id]);
+
+    try {
+      await createAuditLog({
+        action: '删除用户',
+        details: `删除用户 [${target.username}] (角色: ${target.role})`,
+        userId: req.user.id
+      });
+    } catch (logErr) {
+      console.error('[admin.deleteUser] 记录审计日志异常:', logErr);
+    }
+
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to delete user:', err);
