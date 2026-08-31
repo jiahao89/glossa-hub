@@ -41,6 +41,7 @@ export default function TranslationToolbar({
   onCopyContent,
   onBatchTranslate,
   onBatchGenerateKw,
+  onBatchClearTranslations,
   onBatchApprove,
   onBatchCategory,
   onBatchCopy,
@@ -225,6 +226,17 @@ export default function TranslationToolbar({
 
             {projectRole !== 'viewer' && (
               <>
+                {onBatchClearTranslations && (
+                  <button
+                    className="heroui-btn heroui-btn-sm"
+                    onClick={onBatchClearTranslations}
+                    title="清空选中词条的所有目标语言翻译（保留中文）"
+                  >
+                    <Eraser size={13} style={{ color: 'var(--amber, #f59e0b)' }} />
+                    <span>清空翻译</span>
+                  </button>
+                )}
+
                 <button className="heroui-btn heroui-btn-sm" onClick={onBatchApprove}>
                   <CheckCircle size={13} style={{ color: 'var(--green)' }} />
                   <span>批量审核</span>

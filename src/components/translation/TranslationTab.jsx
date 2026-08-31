@@ -817,6 +817,40 @@ export default function TranslationTab({
     }
   };
 
+  // 批量清空翻译（保留中文，删除其他所有目标语种翻译）
+  const handleBatchClearTranslations = async () => {
+    if (selectedRecordIds.size === 0) return;
+    const termIds = Array.from(selectedRecordIds);
+    if (!window.confirm(
+      `确定要清空选中的 ${termIds.length} 条词条的全部目标语种翻译吗？\n\n` +
+      `• 将保留中文（CN）及 KW、所在页面、字号类别等基础属性\n` +
+      `• 清空全部目标语种（英文、法、德、西等）翻译内容\n` +
+      `• 已锁定的词条将被自动跳过保护`
+    )) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await apiFetch('/api/terms/batch-clear-translations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ termIds })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '批量清空翻译失败');
+      }
+      const data = await res.json();
+      toast.success(data.message || `成功清空 ${termIds.length} 条词条的翻译！`);
+      setSelectedRecordIds(new Set());
+      await loadTableData(selectedTableId);
+    } catch (err) {
+      toast.error(err.message || '批量清空翻译失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBatchUpdateCategorySubmit = async () => {
     if (selectedRecordIds.size === 0) return;
     try {
@@ -1001,6 +1035,7 @@ export default function TranslationTab({
         selectedCount={selectedRecordIds.size}
         onClearSelection={() => setSelectedRecordIds(new Set())}
         onCopyContent={() => setCopyContentOpen(true)}
+        onBatchClearTranslations={handleBatchClearTranslations}
         onBatchApprove={() => setBatchApproveOpen(true)}
         onBatchCategory={() => setBatchUpdateOpen(true)}
         onBatchCopy={() => setBatchCopyOpen(true)}

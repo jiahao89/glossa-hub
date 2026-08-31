@@ -721,6 +721,93 @@ router.post('/terms/batch-update', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/terms/batch-clear-translations - 批量清空词条翻译 (保留中文, 删除其他所有语种翻译)
+router.post('/terms/batch-clear-translations', authenticateToken, writeLimiter, async (req, res) => {
+  const { termIds } = req.body;
+  const dbType = getDbType();
+
+  if (!Array.isArray(termIds) || termIds.length === 0) {
+    return res.status(400).json({ error: '必须包含 termIds 数组' });
+  }
+
+  try {
+    if (!(await requireAllTermsOwnership(req.user.id, termIds, req.user.role))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此项目的词条。' });
+    }
+
+    let successCount = 0;
+    let lockedCount = 0;
+
+    await db.transaction(async (tx) => {
+      const placeholders = termIds.map((_, i) => `$${i + 1}`).join(',');
+      const terms = await tx.query(`SELECT id, is_locked, kw, zh_cn, version_id FROM terms WHERE id IN (${placeholders})`, termIds);
+
+      const validTerms = terms.filter(t => {
+        if (t.is_locked === 1 || t.is_locked === true) {
+          lockedCount++;
+          return false;
+        }
+        return true;
+      });
+
+      if (validTerms.length === 0) {
+        return;
+      }
+
+      const validIds = validTerms.map(t => t.id);
+      const idPlaceholders = validIds.map((_, i) => `$${i + 2}`).join(',');
+
+      if (dbType === 'postgres') {
+        await tx.run(
+          `UPDATE terms 
+           SET translations = '{}'::jsonb, translations_meta = '{}'::jsonb, updated_at = NOW(), updated_by = $1 
+           WHERE id IN (${idPlaceholders})`,
+          [req.user.id, ...validIds]
+        );
+      } else {
+        await tx.run(
+          `UPDATE terms 
+           SET translations = '{}', translations_meta = '{}', updated_at = datetime('now'), updated_by = $1 
+           WHERE id IN (${idPlaceholders})`,
+          [req.user.id, ...validIds]
+        );
+      }
+
+      successCount = validIds.length;
+
+      if (successCount > 0) {
+        const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
+        const ver = await tx.queryOne('SELECT version_name FROM versions WHERE id = $1', [validTerms[0].version_id]);
+        const verName = ver ? ver.version_name : '未知版本';
+        const detailMsg = `批量清空了 ${successCount} 条词条的全部目标语言翻译（保留中文）。跳过锁定条数: ${lockedCount}。`;
+
+        if (dbType === 'postgres') {
+          await tx.run(
+            `INSERT INTO ${logsTable} (timestamp, action, details, version_name, user_id)
+             VALUES (NOW(), '清空翻译', $1, $2, $3)`,
+            [detailMsg, verName, req.user.id]
+          );
+        } else {
+          await tx.run(
+            `INSERT INTO ${logsTable} (timestamp, action, details, version_name, user_id)
+             VALUES (datetime('now'), '清空翻译', $1, $2, $3)`,
+            [detailMsg, verName, req.user.id]
+          );
+        }
+      }
+    });
+
+    res.json({
+      message: `成功清空 ${successCount} 条词条的翻译（保留中文）！${lockedCount > 0 ? `已自动跳过 ${lockedCount} 条锁定词条。` : ''}`,
+      successCount,
+      lockedCount
+    });
+  } catch (err) {
+    console.error('批量清空翻译失败:', err);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
+  }
+});
+
 // POST /api/terms/batch-delete - 批量软删除词条 (走回收站, 30 天可恢复)
 //
 // 行为:
