@@ -4,6 +4,7 @@ import { Plus, Trash2, FileText, AlertOctagon, ArrowRight, Clock, User, Edit2 } 
 import { apiFetch } from '../utils/api';
 import GlossaModal from './GlossaModal';
 import EmptyState from './EmptyState';
+import { formatDateTimeMinute } from '../utils/dateTime';
 
 export default function VersionsTab({ onNavigate, projectRole }) {
   const toast = useToast();
@@ -73,7 +74,7 @@ export default function VersionsTab({ onNavigate, projectRole }) {
         })
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(`创建失败: ${data.error || '未知错误'}`);
         setAdding(false);
@@ -190,7 +191,7 @@ export default function VersionsTab({ onNavigate, projectRole }) {
         method: 'DELETE'
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success(data.message || '数据表删除成功！');
         setDeleteModalOpen(false);
@@ -207,22 +208,7 @@ export default function VersionsTab({ onNavigate, projectRole }) {
     }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+  // 日期时间格式化已统一收敛到 src/utils/dateTime.js（formatDateTimeMinute）
 
   if (loading) {
     return (
@@ -279,11 +265,11 @@ export default function VersionsTab({ onNavigate, projectRole }) {
                       <span className="truncate" title={table.name}>{table.name}</span>
                     </div>
                   </td>
-                  <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{formatDate(table.created_at)}</td>
+                  <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{formatDateTimeMinute(table.created_at)}</td>
                   <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <Clock size={12} style={{ color: 'var(--text-muted)' }} />
-                      <span>{formatDate(table.last_modified)}</span>
+                      <span>{formatDateTimeMinute(table.last_modified)}</span>
                     </div>
                   </td>
                   <td style={{ padding: '1rem', color: 'var(--text-primary)' }}>
@@ -348,10 +334,11 @@ export default function VersionsTab({ onNavigate, projectRole }) {
         </div>
       </div>
 
-      {/* Add Modal */}
+      {/* Add Modal —— creating 期间禁止关闭，防止分批克隆中途被 ESC/误点打断 */}
       <GlossaModal
         isOpen={addModalOpen}
         onClose={() => setAddModalOpen(false)}
+        closeDisabled={adding}
         variant="simple"
         width="400px"
       >

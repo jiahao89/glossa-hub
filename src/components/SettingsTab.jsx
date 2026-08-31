@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
 import { Trash2, RotateCcw, AlertCircle, Loader2, Rocket } from 'lucide-react';
 import { useToast } from './Toast';
+import { formatLocaleDateTime } from '../utils/dateTime';
+
+// 内置密钥占位文案 —— 前端不再持有真实密钥明文，实际 key 由后端解析注入。
+// 提交配置时若仍为该占位值，则不传 apiKey，由服务端按 baseUrl 托管解析
+const BUILTIN_KEY_PLACEHOLDER = '内置 Key（由服务端托管）';
 
 export default function SettingsTab({ 
   onConnectionStatusChange,
@@ -24,8 +29,8 @@ export default function SettingsTab({
     setSelectedPreset(presetType);
     if (presetType === 'magene_night') {
       setDifyUrl('https://night.magene.cn/v1');
-      // 显示占位符提示用户这是内置 key, 实际 key 由后端解析
-      setDifyKey('app-zV0Lo78Bi5WjhplWDL7OwsWR');
+      // 显示占位符提示用户这是内置 key, 实际 key 由后端解析（前端不持有明文）
+      setDifyKey(BUILTIN_KEY_PLACEHOLDER);
       toast.info('已加载 [迈金 Night 专用引擎] 内置预设');
     } else if (presetType === 'dify_cloud') {
       setDifyUrl('https://api.dify.ai/v1');
@@ -54,8 +59,8 @@ export default function SettingsTab({
             setDifyUrl(data.baseUrl);
             if (data.baseUrl.includes('night.magene.cn')) {
               setSelectedPreset('magene_night');
-              // 内置 magene key 仅作 UI 占位符显示, 真实校验由后端做
-              setDifyKey('app-zV0Lo78Bi5WjhplWDL7OwsWR');
+              // 内置 key 仅作 UI 占位符显示（前端不回显明文）, 真实校验由后端做
+              setDifyKey(BUILTIN_KEY_PLACEHOLDER);
             } else if (data.baseUrl.includes('api.dify.ai')) {
               setSelectedPreset('dify_cloud');
               // 不填 key — 后端会按 baseUrl 自动解析内置 Dify App key
@@ -92,7 +97,8 @@ export default function SettingsTab({
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ baseUrl: dififyUrlClean(difyUrl), apiKey: difyKey || undefined })
+        // 占位符不提交 —— 由服务端按 baseUrl 解析托管的内置 Key
+        body: JSON.stringify({ baseUrl: dififyUrlClean(difyUrl), apiKey: (difyKey && difyKey !== BUILTIN_KEY_PLACEHOLDER) ? difyKey : undefined })
       });
       const data = await res.json();
       if (res.ok) {
@@ -124,7 +130,7 @@ export default function SettingsTab({
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ baseUrl: dififyUrlClean(difyUrl), apiKey: difyKey || undefined })
+        body: JSON.stringify({ baseUrl: dififyUrlClean(difyUrl), apiKey: difyKey && difyKey !== BUILTIN_KEY_PLACEHOLDER ? difyKey : undefined })
       });
       const data = await res.json();
       setTesting(false);
@@ -137,7 +143,7 @@ export default function SettingsTab({
         const debugInfo = data.debug
           ? ` | [debug] status=${data.debug.difyStatus} url=${data.debug.targetUrl} key=${data.debug.keySuffix} | raw=${data.debug.difyRaw?.slice(0, 200)}`
           : '';
-        toast.error((data.error || '连接测试失败') + debugInfo, { autoClose: 10000 });
+        toast.error((data.error || '连接测试失败') + debugInfo, { duration: 10000 });
         onConnectionStatusChange(false);
       }
     } catch (err) {
@@ -215,15 +221,7 @@ export default function SettingsTab({
     }
   };
 
-  const formatDateTime = (dateStr) => {
-    if (!dateStr) return '-';
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleString('zh-CN', { hour12: false });
-    } catch {
-      return dateStr;
-    }
-  };
+  // 日期时间格式化已统一收敛到 src/utils/dateTime.js（formatLocaleDateTime）
 
   return (
     <div style={{ padding: '1.5rem', height: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -420,7 +418,7 @@ export default function SettingsTab({
                           ? '使用内置迈金 Night 引擎 Key (留空即可)'
                           : selectedPreset === 'dify_cloud'
                           ? '使用内置 Dify 官方云 Key (留空即可)'
-                          : 'app-zV0Lo78Bi5WjhplWDL7OwsWR')
+                          : 'app-xxxxxxxxxxxxxxxxxxxxxxxx')
                   }
                   className="text-input"
                 />
@@ -512,8 +510,8 @@ export default function SettingsTab({
                           </td>
                           <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.entity_name}</td>
                           <td style={{ padding: '0.75rem 1rem' }}>{item.deleted_by_name || '系统管理员'}</td>
-                          <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>{formatDateTime(item.deleted_at)}</td>
-                          <td style={{ padding: '0.75rem 1rem', color: 'var(--red)', fontWeight: 500 }}>{formatDateTime(item.expires_at)}</td>
+                          <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>{formatLocaleDateTime(item.deleted_at)}</td>
+                          <td style={{ padding: '0.75rem 1rem', color: 'var(--red)', fontWeight: 500 }}>{formatLocaleDateTime(item.expires_at)}</td>
                           <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                               <button 

@@ -103,7 +103,7 @@ export function BatchCopyModal({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-          将选中的 <strong style={{ color: 'var(--accent)' }}>{selectedCount}</strong> 条词条复制复制到目标固件大表：
+          将选中的 <strong style={{ color: 'var(--accent)' }}>{selectedCount}</strong> 条词条复制到目标固件大表：
         </p>
 
         <div className="form-group">

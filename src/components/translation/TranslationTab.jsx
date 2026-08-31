@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { apiFetch, safeGetLocalStorage } from '../../utils/api';
 import { findTranslationForLang, DEFAULT_TARGET_LANGUAGES } from '../../utils/languageHelper';
+import { downloadBlob, buildExportFilename } from '../../utils/download.js';
 import { useToast } from '../Toast';
-import HistoryModal from './HistoryModal';
 import { BatchCategoryModal, BatchCopyModal, BatchApproveModal } from './BatchActionsModal';
 import BatchTranslateModal from './BatchTranslateModal';
 import TranslationToolbar from './TranslationToolbar';
@@ -17,8 +17,7 @@ import BatchGenerateKwModal from './BatchGenerateKwModal';
 
 export default function TranslationTab({ 
   difyConnected = false,
-  modifiedCells = {},
-  setModifiedCells = () => {},
+  user: propUser,
   selectedTableId: propSelectedTableId,
   setSelectedTableId: propSetSelectedTableId,
   projectRole = 'viewer'
@@ -26,6 +25,7 @@ export default function TranslationTab({
   const toast = useToast();
 
   const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
+  // TARGET_LANGUAGES 别名：组件内多处沿用该命名，统一指向异步加载后的语种列表
   const TARGET_LANGUAGES = targetLanguagesList;
   const [difyConfigured, setDifyConfigured] = useState(false);
 
@@ -34,7 +34,7 @@ export default function TranslationTab({
       try {
         const res = await apiFetch('/api/projects/proj-default/languages');
         if (res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           if (data && data.length > 0) {
             setTargetLanguagesList(data.map(item => item.lang_name));
           }
@@ -77,9 +77,28 @@ export default function TranslationTab({
     }
   }, [propSetSelectedTableId]);
 
-  const [_fields, _setFields] = useState([]);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // 单元格高亮（修改/新增标记）状态 — 已从 App.jsx 下沉到唯一消费者 TranslationTab
+  const [modifiedCells, setModifiedCells] = useState(() => {
+    return safeGetLocalStorage('glossahub_modified_cells', {});
+  });
+
+  // 防抖 localStorage 持久化（避免每次单元格编辑都阻塞主线程）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('glossahub_modified_cells', JSON.stringify(modifiedCells));
+      } catch (err) {
+        console.warn('Failed to persist modified cells:', err);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [modifiedCells]);
+
+  // 竞态防护：每次发起 loadTableData 递增，迟到响应据此丢弃
+  const reqIdRef = useRef(0);
 
   // State for Batch Add Modal
   const [batchAddModalOpen, setBatchAddModalOpen] = useState(false);
@@ -92,7 +111,7 @@ export default function TranslationTab({
     // match anything in the new table, and downstream bulk actions would
     // either report "都已完成翻译" (misleading) or operate on 0 rows.
     setSelectedRecordIds(new Set());
-  }, [selectedTableId, setModifiedCells]);
+  }, [selectedTableId]);
 
   // Column Visibility States
   // Column dropdown visibility is managed internally by TranslationToolbar.
@@ -100,7 +119,7 @@ export default function TranslationTab({
     if (typeof window !== 'undefined' && window.innerWidth < 1000) {
       return ['EN（英文）'];
     }
-    return TARGET_LANGUAGES;
+    return targetLanguagesList;
   });
 
   // Base columns that can be hidden (所在页面, 字号/负责人). Default: both hidden.
@@ -126,13 +145,13 @@ export default function TranslationTab({
   const [filterUntranslated, setFilterUntranslated] = useState(false);
   const [filterStatus, setFilterStatus] = useState('');
   const [sortBy, setSortBy] = useState('default');
-  const [sortOrder, _setSortOrder] = useState('desc');
+  // sortOrder 仅作为 API 查询参数读取，无需 setter
+  const [sortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
   // Field mappings
   const [fieldMap, setFieldMap] = useState({});
-  const [_revFieldMap, setRevFieldMap] = useState({});
 
   // Sorting State (only affects online browsing, does not affect export)
   const [sortField, setSortField] = useState(null);
@@ -164,13 +183,9 @@ export default function TranslationTab({
   const [batchApproveStatus, setBatchApproveStatus] = useState('APPROVED');
   const [batchApproveRejectReason, setBatchApproveRejectReason] = useState('');
 
-  // History & Snapshots
-  const [snapshotsModalOpen, setSnapshotsModalOpen] = useState(false);
-  const [snapshots, _setSnapshots] = useState([]);
-  const [loadingSnapshots, _setLoadingSnapshots] = useState(false);
-  const [rollingBackId, _setRollingBackId] = useState('');
-
-  const currentUser = useMemo(() => safeGetLocalStorage('user', null), []);
+  // 当前用户：优先使用父组件传入的 user prop，localStorage 兜底
+  const fallbackUser = useMemo(() => safeGetLocalStorage('user', null), []);
+  const currentUser = propUser ?? fallbackUser;
 
   // Excluded target languages for translation (remembered per-table + global fallback)
   const [excludedTranslateLangs, setExcludedTranslateLangs] = useState(() => {
@@ -256,7 +271,7 @@ export default function TranslationTab({
   // Dynamically update missing languages when excludedTranslateLangs changes while modal is open
   useEffect(() => {
     if (batchTranslateOpen && batchPreviewList.length > 0) {
-      const activeTargetLangs = TARGET_LANGUAGES.filter(lang => !excludedTranslateLangs.has(lang));
+      const activeTargetLangs = targetLanguagesList.filter(lang => !excludedTranslateLangs.has(lang));
       setBatchPreviewList(prev => prev.map(item => {
         const fields = item.existingFields || {};
         const missingLangs = activeTargetLangs.filter(lang => !fields[lang] || String(fields[lang]).trim() === '');
@@ -266,19 +281,32 @@ export default function TranslationTab({
         };
       }));
     }
-  }, [excludedTranslateLangs, batchTranslateOpen, TARGET_LANGUAGES, batchPreviewList.length]);
+  }, [excludedTranslateLangs, batchTranslateOpen, targetLanguagesList, batchPreviewList.length]);
 
   const handleStartBatchTranslate = async () => {
     setIsTranslatingBatch(true);
-    const updatedList = [...batchPreviewList];
+    // 本地工作副本 + 节流刷新：不再直接变异 state 对象，也不每条都全量 setState
+    const workingList = batchPreviewList.map(item => ({ ...item }));
     let translatedCount = 0;
     let successCount = 0;
     let errorCount = 0;
 
-    const activeTargetLangs = TARGET_LANGUAGES.filter(lang => !excludedTranslateLangs.has(lang));
+    // 攒批刷新：每翻译完 3 条或距上次刷新超过 500ms 才真正 setState 一次
+    let pendingFlush = 0;
+    let lastFlushAt = Date.now();
+    const flushPreview = (force = false) => {
+      const now = Date.now();
+      if (force || pendingFlush >= 3 || now - lastFlushAt >= 500) {
+        setBatchPreviewList([...workingList]);
+        pendingFlush = 0;
+        lastFlushAt = now;
+      }
+    };
 
-    for (let i = 0; i < updatedList.length; i++) {
-      const item = updatedList[i];
+    const activeTargetLangs = targetLanguagesList.filter(lang => !excludedTranslateLangs.has(lang));
+
+    for (let i = 0; i < workingList.length; i++) {
+      const item = workingList[i];
       if (!selectedBatchItemIds.has(item.recordId)) continue;
       
       const effectiveMissingLangs = (item.missingLangs || []).filter(l => activeTargetLangs.includes(l));
@@ -308,7 +336,7 @@ export default function TranslationTab({
         });
 
         if (!res.ok) {
-           const error = await res.json();
+           const error = await res.json().catch(() => ({}));
            const debugInfo = error.debug
              ? ` | [debug] status=${error.debug.difyStatus} | tried=${error.debug.triedUrls?.join(' → ')} | raw=${error.debug.difyRaw?.slice(0, 200)}`
              : '';
@@ -316,7 +344,7 @@ export default function TranslationTab({
            throw new Error((error.error || '翻译接口失败') + debugInfo);
         }
         
-        const result = await res.json();
+        const result = await res.json().catch(() => ({}));
         
         const trans = {};
         effectiveMissingLangs.forEach(lang => {
@@ -324,17 +352,21 @@ export default function TranslationTab({
           if (val) trans[lang] = val;
         });
         
+        // 不可变更新：以新对象替换旧 item，绝不直接变异 state 中的原对象
+        const nextItem = { ...item };
         if (result._source === 'tm') {
-          item.tmMatch = true;
+          nextItem.tmMatch = true;
         }
         
         if (Object.keys(trans).length > 0) {
-          item.translations = { ...(item.translations || {}), ...trans };
+          nextItem.translations = { ...(nextItem.translations || {}), ...trans };
           successCount++;
         } else {
           errorCount++;
         }
-        setBatchPreviewList([...updatedList]);
+        workingList[i] = nextItem;
+        pendingFlush++;
+        flushPreview();
       } catch (err) {
         errorCount++;
         console.error(`翻译词条 ${item.KW} 失败:`, err);
@@ -343,6 +375,8 @@ export default function TranslationTab({
       await new Promise(resolve => setTimeout(resolve, 300));
     }
 
+    // 循环结束强制终刷，确保后续「确认写入」能读到完整数据
+    flushPreview(true);
     setIsTranslatingBatch(false);
     if (errorCount > 0) {
       setBatchProgress(prev => ({ 
@@ -443,37 +477,45 @@ export default function TranslationTab({
     }
   };
 
+  // 仅拉取表格列表，不再依赖 selectedTableId（选中恢复逻辑拆到下方独立 effect）
   const loadTables = useCallback(async () => {
     try {
       setLoading(true);
       const res = await apiFetch('/api/tables');
       if (res.ok) {
-        const data = await res.json();
-        setTables(data);
-        if (data.length > 0) {
-          const savedTableId = safeGetLocalStorage('glossa_last_selected_table_id', '');
-          const matched = data.find(t => t.id === (selectedTableId || savedTableId));
-          if (matched) {
-            setSelectedTableId(matched.id);
-          } else if (!selectedTableId) {
-            setSelectedTableId(data[0].id);
-          }
-        }
+        const data = await res.json().catch(() => []);
+        setTables(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error('获取表格列表失败:', err);
     } finally {
       setLoading(false);
     }
-  }, [selectedTableId, setSelectedTableId]);
+  }, []);
+
+  // 选中表恢复：列表就绪后，若当前无选中或选中表已不存在，则恢复上次选中或选首表
+  useEffect(() => {
+    if (tables.length === 0) return;
+    const savedTableId = safeGetLocalStorage('glossa_last_selected_table_id', '');
+    const matched = tables.find(t => t.id === (selectedTableId || savedTableId));
+    if (matched) {
+      if (matched.id !== selectedTableId) {
+        setSelectedTableId(matched.id);
+      }
+    } else if (!selectedTableId) {
+      setSelectedTableId(tables[0].id);
+    }
+  }, [tables, selectedTableId, setSelectedTableId]);
 
   const [totalRecords, setTotalRecords] = useState(0);
 
   const loadTableData = useCallback(async (tableId) => {
     if (!tableId) return;
+    // 竞态防护：本次请求领取唯一递增 id；任何更新的请求发出后，本响应即视为迟到并丢弃
+    const myId = ++reqIdRef.current;
     try {
       setLoading(true);
-      
+
       const queryParams = new URLSearchParams({
         page: currentPage,
         pageSize,
@@ -485,9 +527,12 @@ export default function TranslationTab({
       });
 
       const res = await apiFetch(`/api/tables/${tableId}/records?${queryParams.toString()}`);
-      
+
+      if (myId !== reqIdRef.current) return;
+
       if (res.ok) {
-        const rData = await res.json();
+        const rData = await res.json().catch(() => ({}));
+        if (myId !== reqIdRef.current) return;
         setRecords(rData.records || []);
         setTotalRecords(rData.total || 0);
         // REMOVED: setModifiedCells({}) here to avoid pagination clearing
@@ -498,27 +543,26 @@ export default function TranslationTab({
           '所在页面': '所在页面',
           '字号类别': '字号类别'
         };
-        TARGET_LANGUAGES.forEach(lang => {
+        targetLanguagesList.forEach(lang => {
           fMap[lang] = lang;
-        });
-        
-        const revFMap = {};
-        Object.keys(fMap).forEach(key => {
-          revFMap[key] = key;
         });
 
         setFieldMap(fMap);
-        setRevFieldMap(revFMap);
       } else {
         toast.error('获取词条数据失败');
       }
     } catch (err) {
-      console.error('加载表格数据失败:', err);
-      toast.error(`获取词条数据失败: ${err.message}`);
+      if (myId === reqIdRef.current) {
+        console.error('加载表格数据失败:', err);
+        toast.error(`获取词条数据失败: ${err.message}`);
+      }
     } finally {
-      setLoading(false);
+      // 迟到响应不得打断新请求的 loading 态
+      if (myId === reqIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated, sortBy, sortOrder, toast, TARGET_LANGUAGES]);
+  }, [currentPage, pageSize, debouncedSearchQuery, filterStatus, filterUntranslated, sortBy, sortOrder, toast, targetLanguagesList]);
 
   useEffect(() => {
     loadTables();
@@ -592,12 +636,21 @@ export default function TranslationTab({
       const cmp = valA.localeCompare(valB, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
       return sortDirection === 'asc' ? cmp : -cmp;
     });
+    // TARGET_LANGUAGES 即 targetLanguagesList 的渲染期别名，作为依赖与别名用法保持一致
   }, [records, sortField, sortDirection, getRecordValueByName, TARGET_LANGUAGES]);
 
   const paginatedRecords = sortedRecords;
 
+  // 选中词条记忆化：引用稳定，避免父组件任意重渲染都产生新数组，
+  // 导致 BatchGenerateKwModal 等子弹窗误判数据变化而重置用户输入
+  const selectedTerms = useMemo(
+    () => records.filter(r => selectedRecordIds.has(r.recordId || r.id)),
+    [records, selectedRecordIds]
+  );
+
   // Handlers
-  const handleToggleRowLock = async (recId, currentLockState) => {
+  // 单行锁定切换；返回 true/false 表示成功与否，供批量操作 Promise.allSettled 统计
+  const handleToggleRowLock = useCallback(async (recId, currentLockState) => {
     const nextState = !currentLockState;
     try {
       setLockLoadingId(recId);
@@ -609,33 +662,70 @@ export default function TranslationTab({
       if (res.ok) {
         toast.success(nextState ? '词条已成功锁定' : '词条已解锁');
         setRecords(prev => prev.map(r => r.recordId === recId ? { ...r, isLocked: nextState ? 1 : 0 } : r));
+        return true;
       }
+      const errData = await res.json().catch(() => ({}));
+      toast.error(errData.error || '操作失败');
+      return false;
     } catch {
       toast.error('修改锁定状态失败');
+      return false;
     } finally {
       setLockLoadingId('');
     }
-  };
+  }, [toast]);
 
-  const handleSelectAllOnPage = (checked) => {
+  const handleSelectAllOnPage = useCallback((checked) => {
     if (checked) {
-      const pageIds = paginatedRecords.map(r => r.recordId || r.id);
-      setSelectedRecordIds(new Set([...selectedRecordIds, ...pageIds]));
+      setSelectedRecordIds(prev => new Set([...prev, ...paginatedRecords.map(r => r.recordId || r.id)]));
     } else {
       const pageIds = new Set(paginatedRecords.map(r => r.recordId || r.id));
-      setSelectedRecordIds(new Set([...selectedRecordIds].filter(id => !pageIds.has(id))));
+      setSelectedRecordIds(prev => new Set([...prev].filter(id => !pageIds.has(id))));
     }
-  };
+  }, [paginatedRecords]);
 
-  const handleToggleSelectRow = (recId, checked) => {
-    const next = new Set(selectedRecordIds);
-    if (checked) {
-      next.add(recId);
+  const handleToggleSelectRow = useCallback((recId, checked) => {
+    setSelectedRecordIds(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(recId);
+      } else {
+        next.delete(recId);
+      }
+      return next;
+    });
+  }, []);
+
+  // 打开编辑弹窗并清除该行的"已修改"高亮。
+  // useCallback + 函数式 setState：引用稳定，不击穿子组件 memo
+  const handleEditClick = useCallback((rec) => {
+    setEditModalRecord(rec);
+    const recId = rec.recordId || rec.id;
+    if (!recId) return;
+    setModifiedCells(prev => {
+      if (!prev[recId]) return prev;
+      const next = { ...prev };
+      delete next[recId];
+      return next;
+    });
+  }, []);
+
+  // 批量锁定/解锁：并发执行 + allSettled 统计成功/失败数，完成后统一刷新表格数据
+  const handleBatchLock = useCallback(async (lock) => {
+    const ids = Array.from(selectedRecordIds);
+    if (ids.length === 0) return;
+    const results = await Promise.allSettled(
+      ids.map(id => handleToggleRowLock(id, !lock))
+    );
+    const okCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+    const failCount = ids.length - okCount;
+    if (failCount > 0) {
+      toast.error(`批量${lock ? '锁定' : '解锁'}完成：${okCount} 条成功，${failCount} 条失败`);
     } else {
-      next.delete(recId);
+      toast.success(`批量${lock ? '锁定' : '解锁'}完成：${okCount} 条成功`);
     }
-    setSelectedRecordIds(next);
-  };
+    await loadTableData(selectedTableId);
+  }, [selectedRecordIds, handleToggleRowLock, loadTableData, selectedTableId, toast]);
 
   const handleBatchApproveSubmit = async () => {
     if (selectedRecordIds.size === 0) return;
@@ -656,10 +746,13 @@ export default function TranslationTab({
         setBatchApproveOpen(false);
         setSelectedRecordIds(new Set());
         loadTableData(selectedTableId);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || '批量审核失败');
       }
     } catch (err) {
-      const msg = await err?.json?.().then(d => d?.error).catch(() => null);
-      toast.error(`批量审核失败: ${msg || err.message}`);
+      // apiFetch 非 ok 不抛 Response 而是返回 res（上面已处理）；此处 catch 到的均为 Error 对象
+      toast.error(`批量审核失败: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -755,7 +848,7 @@ export default function TranslationTab({
         throw new Error(data.error || '复制失败');
       }
 
-      const result = await res.json();
+      const result = await res.json().catch(() => ({}));
       toast.success(result.message || '复制成功！');
       setBatchCopyOpen(false);
       setSelectedRecordIds(new Set());
@@ -787,15 +880,8 @@ export default function TranslationTab({
       });
       if (res.ok) {
         const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const tableName = tables.find(t => t.id === selectedTableId)?.name || selectedTableId;
-        a.download = `GlossaHub_${tableName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+        downloadBlob(blob, buildExportFilename('GlossaHub', tableName, 'xlsx'));
         toast.success('导出 Excel 文件成功！');
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -818,15 +904,8 @@ export default function TranslationTab({
       const res = await apiFetch(`/api/tables/${selectedTableId}/export-csv`);
       if (res.ok) {
         const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const tableName = tables.find(t => t.id === selectedTableId)?.name || selectedTableId;
-        a.download = `GlossaHub_${tableName}_${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+        downloadBlob(blob, buildExportFilename('GlossaHub', tableName, 'csv'));
         toast.success('导出 CSV 文件成功！');
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -885,7 +964,7 @@ export default function TranslationTab({
           setFilterUntranslated(val);
           setCurrentPage(1);
         }}
-        targetLanguages={TARGET_LANGUAGES}
+        targetLanguages={targetLanguagesList}
         visibleLanguages={visibleLanguages}
         setVisibleLanguages={setVisibleLanguages}
         baseOptionalColumns={BASE_OPTIONAL_COLUMNS}
@@ -900,12 +979,8 @@ export default function TranslationTab({
         onBatchApprove={() => setBatchApproveOpen(true)}
         onBatchCategory={() => setBatchUpdateOpen(true)}
         onBatchCopy={() => setBatchCopyOpen(true)}
-        onBatchLock={() => {
-          Array.from(selectedRecordIds).forEach(id => handleToggleRowLock(id, false));
-        }}
-        onBatchUnlock={() => {
-          Array.from(selectedRecordIds).forEach(id => handleToggleRowLock(id, true));
-        }}
+        onBatchLock={() => handleBatchLock(true)}
+        onBatchUnlock={() => handleBatchLock(false)}
         onBatchDelete={handleBatchDelete}
         onExportXLS={handleExportXLS}
         onExportCSV={handleExportCSV}
@@ -913,7 +988,7 @@ export default function TranslationTab({
           <CSVImportHandler 
             selectedTableId={selectedTableId}
             currentRecords={records}
-            targetLanguages={TARGET_LANGUAGES}
+            targetLanguages={targetLanguagesList}
             onImportComplete={(diff) => {
               if (diff) {
                 setModifiedCells(prev => {
@@ -961,7 +1036,7 @@ export default function TranslationTab({
         selectedRecordIds={selectedRecordIds}
         onSelectAll={handleSelectAllOnPage}
         onToggleSelectRow={handleToggleSelectRow}
-        targetLanguages={TARGET_LANGUAGES}
+        targetLanguages={targetLanguagesList}
         visibleLanguages={visibleLanguages}
         hiddenBaseColumns={hiddenBaseColumns}
         modifiedCells={modifiedCells}
@@ -975,17 +1050,7 @@ export default function TranslationTab({
         sortField={sortField}
         sortDirection={sortDirection}
         onToggleSort={handleToggleSort}
-        onEditClick={(rec) => {
-          setEditModalRecord(rec);
-          const recId = rec.recordId || rec.id;
-          if (recId && modifiedCells[recId]) {
-            setModifiedCells(prev => {
-              const next = { ...prev };
-              delete next[recId];
-              return next;
-            });
-          }
-        }}
+        onEditClick={handleEditClick}
       />
 
       {/* Subcomponent Modals */}
@@ -1046,14 +1111,8 @@ export default function TranslationTab({
         }}
       />
 
-      <HistoryModal
-        open={snapshotsModalOpen}
-        onClose={() => setSnapshotsModalOpen(false)}
-        snapshots={snapshots}
-        loadingSnapshots={loadingSnapshots}
-        rollingBackId={rollingBackId}
-        currentRecord={editModalRecord}
-      />
+      {/* M7: 原 <HistoryModal> 及其 snapshots/loadingSnapshots/rollingBackId 死 state 已移除 ——
+          修改历史/回退能力现由 EditTermModal 右侧 HistoryPanel 承载 */}
 
       <BatchCategoryModal
         open={batchUpdateOpen}
@@ -1114,7 +1173,7 @@ export default function TranslationTab({
       <CopyContentModal
         open={copyContentOpen}
         onClose={() => setCopyContentOpen(false)}
-        selectedRecords={records.filter(r => selectedRecordIds.has(r.recordId || r.id))}
+        selectedRecords={selectedTerms}
         targetLanguages={TARGET_LANGUAGES}
         getRecordValueByName={getRecordValueByName}
       />
@@ -1124,7 +1183,7 @@ export default function TranslationTab({
         onClose={() => setBatchGenerateKwOpen(false)}
         selectedTableId={selectedTableId}
         tableName={tables.find(t => t.id === selectedTableId)?.name || ''}
-        selectedTerms={records.filter(r => selectedRecordIds.has(r.recordId || r.id))}
+        selectedTerms={selectedTerms}
         allRecords={records}
         onSuccess={() => loadTableData(selectedTableId)}
       />

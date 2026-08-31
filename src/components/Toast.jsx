@@ -9,6 +9,8 @@ import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 //   toast.success('保存成功');
 //   toast.error('保存失败：xxx');
 //   toast.info('提示信息');
+//   // 第三参可选：自定义自动消失时长（毫秒），不传则按类型走默认值
+//   toast.error('较长的错误详情...', { duration: 10000 });
 // ============================================================
 
 const ToastContext = createContext(null);
@@ -57,18 +59,19 @@ export function ToastProvider({ children }) {
     setToasts((list) => list.filter((t) => t.id !== id));
   }, []);
 
-  const push = useCallback((type, message) => {
+  // options.duration 可覆盖默认停留时长（毫秒），向后兼容不传第三参的旧调用
+  const push = useCallback((type, message, options = {}) => {
     const id = ++_idCounter;
     setToasts((list) => [...list, { id, type, message }]);
-    const timeout = AUTO_DISMISS_MS[type] || 3000;
+    const timeout = options.duration || AUTO_DISMISS_MS[type] || 3000;
     setTimeout(() => dismiss(id), timeout);
     return id;
   }, [dismiss]);
 
   const toast = React.useMemo(() => ({
-    success: (m) => push('success', m),
-    error: (m) => push('error', m),
-    info: (m) => push('info', m),
+    success: (m, options) => push('success', m, options),
+    error: (m, options) => push('error', m, options),
+    info: (m, options) => push('info', m, options),
   }), [push]);
 
   return (

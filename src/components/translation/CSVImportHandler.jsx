@@ -91,15 +91,34 @@ export default function CSVImportHandler({ selectedTableId, currentRecords, targ
         }
 
         // --- Fetch Full Database Records for Accurate Diffing ---
+        // M3: 服务端分页上限固定 —— 改为循环翻页拉全（每页 500，按 total 终止，200 页上限防死循环）
         let allCurrentRecords = currentRecords || [];
         if (selectedTableId) {
           try {
-            const fetchRes = await apiFetch(`/api/tables/${selectedTableId}/records?pageSize=100000`);
-            if (fetchRes.ok) {
+            const PAGE_SIZE = 500;
+            const MAX_PAGES = 200;
+            const fetched = [];
+            let page = 1;
+            let total = Infinity;
+            while (page <= MAX_PAGES && fetched.length < total) {
+              const fetchRes = await apiFetch(`/api/tables/${selectedTableId}/records?page=${page}&pageSize=${PAGE_SIZE}`);
+              if (!fetchRes.ok) break;
               const fullData = await fetchRes.json();
               if (fullData && Array.isArray(fullData.records)) {
-                allCurrentRecords = fullData.records;
+                fetched.push(...fullData.records);
+                if (typeof fullData.total === 'number') total = fullData.total;
+                if (fullData.records.length < PAGE_SIZE) break;
+              } else if (Array.isArray(fullData)) {
+                // 兼容旧版 API 直接返回数组的形态
+                fetched.push(...fullData);
+                break;
+              } else {
+                break;
               }
+              page += 1;
+            }
+            if (fetched.length > 0) {
+              allCurrentRecords = fetched;
             }
           } catch (fetchErr) {
             console.warn('全量拉取数据表词条失败，降级使用当前页数据比对:', fetchErr);

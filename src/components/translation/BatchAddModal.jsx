@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import GlossaModal from '../GlossaModal';
 import { apiFetch } from '../../utils/api';
 import { findTranslationForLang } from '../../utils/languageHelper';
@@ -26,6 +26,18 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
   };
 
   const [rows, setRows] = useState(Array.from({ length: 5 }, getEmptyRow));
+
+  // M12: 仅在 open 由 false→true 的边沿重建空行 ——
+  // 目标语种是异步加载的，仅挂载时初始化会导致后加载的语种列缺失
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = open;
+    if (open && !wasOpen) {
+      setRows(Array.from({ length: 5 }, getEmptyRow));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const updateRow = (id, field, value) => {
     setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
@@ -100,15 +112,27 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
     }
 
     setIsTranslating(true);
-    let updatedRows = [...rows];
-    let translatedRows = [];
+    // H6: 先克隆出本地工作副本，循环内绝不直接变异 state 中的行对象；
+    // 翻译结果以新对象整体替换（不可变更新）
+    const workingRows = rows.map(r => ({ ...r }));
+    const targetRows = workingRows.filter(r => r['CN（中文）']?.trim());
+    const translatedRows = [];
 
-    for (let i = 0; i < validRows.length; i++) {
-      const row = validRows[i];
+    // 攒批刷新：每处理 5 条或循环结束时才合并一次 setState，避免逐条触发整表重渲染
+    let dirtyCount = 0;
+    const flushRows = (force = false) => {
+      if (force || dirtyCount >= 5) {
+        setRows(workingRows.map(r => ({ ...r })));
+        dirtyCount = 0;
+      }
+    };
+
+    for (let i = 0; i < targetRows.length; i++) {
+      const row = targetRows[i];
       setProgress({
-        total: validRows.length,
+        total: targetRows.length,
         current: i + 1,
-        status: `正在翻译 (${i + 1}/${validRows.length}): ${row.KW || row['CN（中文）']}`
+        status: `正在翻译 (${i + 1}/${targetRows.length}): ${row.KW || row['CN（中文）']}`
       });
 
       // We only translate if Chinese is provided, otherwise we just keep it
@@ -128,7 +152,7 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
           });
 
           if (!res.ok) {
-             const error = await res.json();
+             const error = await res.json().catch(() => ({}));
              const debugInfo = error.debug
                ? ` | [debug] status=${error.debug.difyStatus} | tried=${error.debug.triedUrls?.join(' → ')} | raw=${error.debug.difyRaw?.slice(0, 200)}`
                : '';
@@ -136,32 +160,39 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
              throw new Error((error.error || '翻译接口失败') + debugInfo);
           }
           
-          const result = await res.json();
-          
+          const result = await res.json().catch(() => ({}));
+
+          // 不可变更新：以新对象替换旧行
+          const nextRow = { ...row };
           targetLanguages.forEach(lang => {
             const val = findTranslationForLang(result, lang);
             if (val) {
-              row[lang] = val;
+              nextRow[lang] = val;
             }
           });
-          
+
           if (result._source === 'tm') {
-            row.tmMatch = true;
+            nextRow.tmMatch = true;
           }
 
-          // Update UI incrementally
-          updatedRows = updatedRows.map(r => r.id === row.id ? { ...row } : r);
-          setRows(updatedRows);
+          const workingIdx = workingRows.findIndex(r => r.id === nextRow.id);
+          if (workingIdx !== -1) workingRows[workingIdx] = nextRow;
+          dirtyCount++;
+          flushRows();
+          translatedRows.push(nextRow);
         } catch (err) {
           console.error(`翻译词条 ${row.KW} 失败:`, err);
           toast.error(`翻译词条 ${row.KW || row['CN（中文）']} 失败: ${err.message}`);
+          translatedRows.push(row);
         }
         await new Promise(resolve => setTimeout(resolve, 300));
+      } else {
+        translatedRows.push(row);
       }
-      translatedRows.push(row);
     }
 
-    setProgress({ total: validRows.length, current: validRows.length, status: '翻译完成，正在写入数据库...' });
+    flushRows(true);
+    setProgress({ total: targetRows.length, current: targetRows.length, status: '翻译完成，正在写入数据库...' });
     
     try {
       await saveToBackend(translatedRows);

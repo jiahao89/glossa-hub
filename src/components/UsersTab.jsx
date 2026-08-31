@@ -134,7 +134,7 @@ export default function UsersTab({ _projectRole }) {
   const handleDeleteUser = async (user, e) => {
     e.stopPropagation();
     const confirmDelete = window.confirm(
-      `⚠️ 警告：\n您正在准备永久删除系统用户 [${user.name} (${user.username})]。\n\n确实要删除此用户吗？`
+      `⚠️ 确认永久删除系统用户 [${user.name} (${user.username})]？\n该操作不可恢复。`
     );
     if (!confirmDelete) return;
 

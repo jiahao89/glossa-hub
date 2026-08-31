@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useToast } from './Toast';
 import Pagination from './Pagination';
 import { Plus, Trash2, Download, Upload, BookOpen, FileSpreadsheet, Search, Loader2 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { parseCSV, arrayToCSV, fuzzyFindIndex } from '../utils/csvHelper';
+import { downloadBlob, buildExportFilename } from '../utils/download';
 import GlossaModal from './GlossaModal';
 
 export default function GlossaryTab({ projectRole }) {
@@ -208,20 +209,10 @@ export default function GlossaryTab({ projectRole }) {
 
     const csvContent = arrayToCSV(displayHeaders, rows);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const now = new Date();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const dateStr = `${mm}${dd}`;
     const tableName = activeTable?.table_name || '专业词汇表';
 
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${tableName}_${dateStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // M4: 统一走 utils/download.js 下载通道（内部延迟 revoke，规避部分浏览器提前中断的问题）
+    downloadBlob(blob, buildExportFilename('GlossaHub', tableName, 'csv'));
   };
 
   // CSV Import Parser
@@ -339,20 +330,24 @@ export default function GlossaryTab({ projectRole }) {
     e.target.value = '';
   };
 
-  const filteredTerms = terms.filter(t => {
+  // 低危: 过滤与分页派生值记忆化，避免无关重渲染重复计算
+  const filteredTerms = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-    return (
+    if (!q) return terms;
+    return terms.filter(t => (
       t.cn_term.toLowerCase().includes(q) ||
       t.en_term.toLowerCase().includes(q) ||
       (t.description && t.description.toLowerCase().includes(q))
-    );
-  });
+    ));
+  }, [terms, searchQuery]);
 
   // 分页：搜索/词表切换时自动回到第 1 页
   const totalPages = Math.max(1, Math.ceil(filteredTerms.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
-  const pagedTerms = filteredTerms.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const pagedTerms = useMemo(
+    () => filteredTerms.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredTerms, safePage, pageSize]
+  );
 
   useEffect(() => {
     setCurrentPage(1);

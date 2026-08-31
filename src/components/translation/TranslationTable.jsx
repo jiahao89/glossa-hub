@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import TranslationRow from './TranslationRow';
 import EmptyState from '../EmptyState';
@@ -13,9 +13,10 @@ function SortHeader({ field, label, currentField, currentDir, onSort, className,
       style={{ cursor: 'pointer', userSelect: 'none', ...style }}
       onClick={() => onSort(field)}
       title={
+        // M9: 前端排序只作用于当前页数据（服务端分页），明确提示用户边界
         isActive
-          ? (currentDir === 'asc' ? '当前：升序 (点击切换为降序)' : '当前：降序 (点击恢复默认排序)')
-          : `点击按 ${label} 排序`
+          ? (currentDir === 'asc' ? '当前：升序 (点击切换为降序) · 仅当前页内排序' : '当前：降序 (点击恢复默认排序) · 仅当前页内排序')
+          : `点击按 ${label} 排序（仅当前页内排序）`
       }
     >
       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: style?.textAlign === 'center' ? 'center' : 'flex-start', gap: '4px', width: '100%' }}>
@@ -36,7 +37,7 @@ function SortHeader({ field, label, currentField, currentDir, onSort, className,
   );
 }
 
-export default function TranslationTable({
+const TranslationTable = memo(function TranslationTable({
   loading,
   records = [],
   paginatedRecords = [],
@@ -64,6 +65,12 @@ export default function TranslationTable({
   sortDirection = null,
   onToggleSort = () => {}
 }) {
+  // useMemo：全选态判断只依赖当前页记录与选中集，避免无关重渲染重复遍历
+  const isAllSelected = useMemo(
+    () => paginatedRecords.length > 0 && paginatedRecords.every(r => selectedRecordIds.has(r.recordId || r.id)),
+    [paginatedRecords, selectedRecordIds]
+  );
+
   if (loading) {
     return <SkeletonTable rows={10} cols={6} />;
   }
@@ -78,8 +85,6 @@ export default function TranslationTable({
       </div>
     );
   }
-
-  const isAllSelected = paginatedRecords.length > 0 && paginatedRecords.every(r => selectedRecordIds.has(r.recordId || r.id));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -224,7 +229,7 @@ export default function TranslationTable({
             )}
             {sortField && (
               <span style={{ marginLeft: '8px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                · 按 <strong style={{ color: 'var(--accent)' }}>{sortField}</strong> {sortDirection === 'asc' ? '升序' : '降序'}排序中 (仅浏览生效)
+                · 按 <strong style={{ color: 'var(--accent)' }}>{sortField}</strong> {sortDirection === 'asc' ? '升序' : '降序'}排序中（仅当前页内排序，不影响导出）
               </span>
             )}
           </>
@@ -232,4 +237,6 @@ export default function TranslationTable({
       />
     </div>
   );
-}
+});
+
+export default TranslationTable;
