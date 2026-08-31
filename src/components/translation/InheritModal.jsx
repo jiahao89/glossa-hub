@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import GlossaModal from '../GlossaModal';
 import { Layers, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../utils/api';
