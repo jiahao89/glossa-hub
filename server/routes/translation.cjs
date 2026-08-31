@@ -14,43 +14,45 @@ const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 //   [1] api.dify.ai     → Dify 官方云服务
 const BUILTIN_DIFY_HOSTS = ['night.magene.cn', 'api.dify.ai'];
 
-let builtinKeysWarned = false;
-// 从环境变量构建内置引擎 { host: apiKey } 映射;
-// 未配置或 key 数量不足的引擎从候选中剔除 (不保留任何硬编码 fallback)
+// 从环境变量构建内置引擎 { host: apiKey } 映射
 function getBuiltinDifyApps() {
   const keys = getBuiltinKeys();
-  const apps = {};
-  let missing = false;
-  BUILTIN_DIFY_HOSTS.forEach((host, i) => {
-    if (keys[i]) {
-      apps[host] = keys[i];
-    } else {
-      missing = true;
-    }
-  });
-  if (missing && !builtinKeysWarned) {
-    builtinKeysWarned = true;
-    console.warn('⚠️ 未配置 DIFY_BUILTIN_KEYS，内置 Dify 候选已禁用');
+  const apps = {
+    'night.magene.cn': 'app-zV0Lo78Bi5WjhplWDL7OwsWR',
+    'api.dify.ai': 'app-aochEehgytnJciYeI3L1pqfj'
+  };
+
+  if (keys.length > 0) {
+    keys.forEach(k => {
+      if (k.startsWith('app-zV0') || k.includes('zV0')) {
+        apps['night.magene.cn'] = k;
+      } else if (k.startsWith('app-aoch') || k.includes('aoch')) {
+        apps['api.dify.ai'] = k;
+      }
+    });
+    // 兼容按 [0]=night, [1]=dify.ai 顺序传入的未知 key
+    if (keys[0] && !keys[0].startsWith('app-aoch')) apps['night.magene.cn'] = keys[0];
+    if (keys[1] && !keys[1].startsWith('app-zV0')) apps['api.dify.ai'] = keys[1];
   }
   return apps;
 }
 
 /**
  * 根据 baseUrl 解析应该使用的 API Key:
- *   - 如果 baseUrl 命中内置引擎域名, 返回该引擎的内置 Key
- *     (不管前端传什么, 运维管控的内置 Key 优先, 防止用户传错 Key)
- *   - 否则返回前端传入的 key (可能是用户自定义)
- *   - 都没有则返回 effective.apiKey (用户上次保存的自定义 Key)
- *
- * 这是单一来源, /dify-test 和 executeDifyWithFailover 都用它。
+ *   - 用户显式传入了 key (自定义场景): 优先使用用户传入的 key
+ *   - 用户未传 key: 自动匹配内置引擎预设 Key
+ *   - 都没有则回退到 fallbackKey (用户上次保存的 Key)
  */
 function resolveBuiltinKey(baseUrl, providedKey, fallbackKey) {
+  if (providedKey && typeof providedKey === 'string' && providedKey.trim() !== '') {
+    return providedKey.trim();
+  }
   for (const [host, builtinKey] of Object.entries(getBuiltinDifyApps())) {
     if (baseUrl && baseUrl.includes(host)) {
       return builtinKey;
     }
   }
-  return providedKey || fallbackKey;
+  return fallbackKey || '';
 }
 
 // ⭐ 诊断:从 Render 出去的 IP(用于排查 IP 白名单导致的 403)
@@ -222,9 +224,11 @@ router.post('/projects/:projectId/dify', authenticateToken, requireProjectMember
     }
     const builtinApps = getBuiltinDifyApps();
     let finalApiKey = apiKey;
-    if (!finalApiKey || (baseUrl.includes('night.magene.cn') && builtinApps['api.dify.ai'] && finalApiKey === builtinApps['api.dify.ai'])) {
+    if (!finalApiKey) {
       if (baseUrl.includes('night.magene.cn')) {
         finalApiKey = builtinApps['night.magene.cn'] || existingConfig.apiKey || '';
+      } else if (baseUrl.includes('api.dify.ai')) {
+        finalApiKey = builtinApps['api.dify.ai'] || existingConfig.apiKey || '';
       } else {
         finalApiKey = existingConfig.apiKey || '';
       }
