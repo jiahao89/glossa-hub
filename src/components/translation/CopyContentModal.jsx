@@ -12,7 +12,7 @@ export default function CopyContentModal({
 }) {
   const toast = useToast();
   const [format, setFormat] = useState('tsv'); // 'tsv' (Excel/XLS) or 'csv'
-  const [includeHeader, setIncludeHeader] = useState(true);
+  const [includeHeader, setIncludeHeader] = useState(false);
   const [copied, setCopied] = useState(false);
 
   // Define all available columns
@@ -42,10 +42,11 @@ export default function CopyContentModal({
     setSelectedColumns(new Set(allColumns.map(c => c.key)));
   }, [allColumns]);
 
-  // Reset copied state on open
+  // Reset copied state and header state on open
   useEffect(() => {
     if (open) {
       setCopied(false);
+      setIncludeHeader(false);
     }
   }, [open]);
 
@@ -56,18 +57,18 @@ export default function CopyContentModal({
       return rec.status || 'DRAFT';
     }
     if (colKey === 'KW') {
-      return (getRecordValueByName && getRecordValueByName(rec, 'KW')) || rec.KW || rec.fields?.KW || '';
+      return (getRecordValueByName && getRecordValueByName(rec, 'KW')) || rec.KW || rec.kw || rec.fields?.KW || '';
     }
     if (colKey === 'CN（中文）') {
-      return (getRecordValueByName && (getRecordValueByName(rec, 'CN（中文）') || getRecordValueByName(rec, '中文'))) || rec.fields?.['CN（中文）'] || rec.fields?.['中文'] || '';
+      return (getRecordValueByName && (getRecordValueByName(rec, 'CN（中文）') || getRecordValueByName(rec, '中文'))) || rec['CN（中文）'] || rec['中文'] || rec.zh_cn || rec.fields?.['CN（中文）'] || rec.fields?.['中文'] || '';
     }
     if (colKey === '所在页面') {
-      return (getRecordValueByName && getRecordValueByName(rec, '所在页面')) || rec.fields?.['所在页面'] || '';
+      return (getRecordValueByName && getRecordValueByName(rec, '所在页面')) || rec['所在页面'] || rec.context || rec.fields?.['所在页面'] || '';
     }
     if (colKey === '字号类别') {
-      return (getRecordValueByName && (getRecordValueByName(rec, '字号类别') || getRecordValueByName(rec, '负责人'))) || rec.fields?.['字号类别'] || rec.fields?.['负责人'] || '';
+      return (getRecordValueByName && (getRecordValueByName(rec, '字号类别') || getRecordValueByName(rec, '负责人'))) || rec['字号类别'] || rec['负责人'] || rec.owner || rec.fields?.['字号类别'] || rec.fields?.['负责人'] || '';
     }
-    return (getRecordValueByName && getRecordValueByName(rec, colKey)) || rec.fields?.[colKey] || '';
+    return (getRecordValueByName && getRecordValueByName(rec, colKey)) || rec[colKey] || rec.translations?.[colKey] || rec.fields?.[colKey] || '';
   }, [getRecordValueByName]);
 
   // Escape formatting
