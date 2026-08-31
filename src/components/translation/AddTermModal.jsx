@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import GlossaModal from '../GlossaModal';
 import { apiFetch } from '../../utils/api';
 import { findTranslationForLang } from '../../utils/languageHelper';
