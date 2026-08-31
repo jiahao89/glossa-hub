@@ -21,8 +21,8 @@ function getBuiltinKeys() {
 }
 
 const DEFAULT_DIFY_CONFIG = {
-  baseUrl: process.env.DIFY_BASE_URL || 'https://night.magene.cn/v1',
-  apiKey: process.env.DIFY_API_KEY || getBuiltinKeys()[0] || ''
+  baseUrl: process.env.DIFY_BASE_URL || 'https://api.dify.ai/v1',
+  apiKey: process.env.DIFY_API_KEY || (getBuiltinKeys()[1] || getBuiltinKeys()[0] || '')
 };
 
 // 预置固件、码表、IoT与常用交互界面高频中英对照词典
@@ -208,6 +208,11 @@ async function getEffectiveDifyConfig(projectId) {
           if (!apiKey || (builtinKeys[1] && apiKey === builtinKeys[1])) {
             apiKey = builtinKeys[0] || '';
           }
+        } else if (cfg.baseUrl.includes('api.dify.ai')) {
+          // 已存 Key 为空或误存为 Night 内置 Key 时, 自动纠正为 Dify 云内置 Key
+          if (!apiKey || (builtinKeys[0] && apiKey === builtinKeys[0])) {
+            apiKey = builtinKeys[1] || '';
+          }
         }
         if (apiKey) {
           return { baseUrl: cfg.baseUrl, apiKey, isCustom: true };
@@ -294,11 +299,14 @@ async function generateKwHelper(projectId, text, enText = '', context = '') {
   const builtinKeys = getBuiltinKeys();
   const candidates = [
     primaryConfig,
-    // key 为空的候选引擎会在下方循环中被跳过 (防御未配置 DIFY_BUILTIN_KEYS 的场景)
-    ...BUILTIN_DIFY_HOSTS.map((host, i) => ({
-      baseUrl: `https://${host}/v1`,
-      apiKey: builtinKeys[i] || ''
-    }))
+    {
+      baseUrl: 'https://api.dify.ai/v1',
+      apiKey: builtinKeys[1] || ''
+    },
+    {
+      baseUrl: 'https://night.magene.cn/v1',
+      apiKey: builtinKeys[0] || ''
+    }
   ];
 
   for (const cfg of candidates) {

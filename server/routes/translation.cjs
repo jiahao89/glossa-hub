@@ -74,11 +74,18 @@ async function getOutboundIp() {
 async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
   const outboundIp = await getOutboundIp();
 
-  // Built-in fallback candidates (运维预配置, Key 由 DIFY_BUILTIN_KEYS 注入; 未配置的引擎已被剔除)
-  const builtinCandidates = Object.entries(getBuiltinDifyApps()).map(([host, key]) => ({
-    baseUrl: `https://${host}/v1`,
-    apiKey: key,
-  }));
+  // Built-in fallback candidates (优先稳定高效的 api.dify.ai，其次 night.magene.cn)
+  const builtinApps = getBuiltinDifyApps();
+  const orderedHosts = ['api.dify.ai', 'night.magene.cn'];
+  const builtinCandidates = [];
+  for (const host of orderedHosts) {
+    if (builtinApps[host]) {
+      builtinCandidates.push({
+        baseUrl: `https://${host}/v1`,
+        apiKey: builtinApps[host]
+      });
+    }
+  }
 
   const candidates = [primaryConfig, ...builtinCandidates];
 
@@ -112,7 +119,7 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
           'Accept': 'text/event-stream',
           'X-Magene-Source': 'GlossaHub'
         },
-        signal: AbortSignal.timeout(90000),
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           inputs,
           response_mode: 'streaming',
