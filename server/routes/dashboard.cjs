@@ -4,21 +4,30 @@ const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken } = require('../middleware/auth.cjs');
 
 // GET /api/dashboard/stats - 获取看版数据统计
-router.get('/stats', authenticateToken, async (_req, res) => {
+router.get('/stats', authenticateToken, async (req, res) => {
   try {
+    // 前端当前未传 projectId，保持 'proj-default' 兜底；后续多项目看板可通过 ?projectId=xxx 指定
+    const projectId = req.query.projectId || 'proj-default';
+    // 行数上限保护：避免超大库把全部 terms 载入内存做 JS 统计
+    const TERM_STATS_LIMIT = 50000;
+
     const languages = await db.query(
-      "SELECT lang_name FROM languages WHERE project_id = 'proj-default' ORDER BY display_order ASC"
+      'SELECT lang_name FROM languages WHERE project_id = $1 ORDER BY display_order ASC',
+      [projectId]
     );
     const langNames = languages.map(l => l.lang_name);
     const langCount = langNames.length || 1;
 
-    const versions = await db.query("SELECT id, version_name FROM versions WHERE project_id = $1", ['proj-default']);
-    const terms = await db.query(
+    const versions = await db.query("SELECT id, version_name FROM versions WHERE project_id = $1", [projectId]);
+    const termsRaw = await db.query(
       `SELECT t.id, t.version_id, t.translations, t.status FROM terms t
        JOIN versions v ON t.version_id = v.id
-       WHERE v.project_id = $1`,
-      ['proj-default']
+       WHERE v.project_id = $1
+       LIMIT $2`,
+      [projectId, TERM_STATS_LIMIT + 1]
     );
+    const truncated = termsRaw.length > TERM_STATS_LIMIT;
+    const terms = truncated ? termsRaw.slice(0, TERM_STATS_LIMIT) : termsRaw;
 
     const versionCount = versions.length;
     const termCount = terms.length;
@@ -125,7 +134,8 @@ router.get('/stats', authenticateToken, async (_req, res) => {
       langReviewProgress,
       reviewedTermCount: reviewedTerms,
       reviewCoverage,
-      recentLogs
+      recentLogs,
+      truncated
     });
   } catch (err) {
     console.error('获取看板统计数据失败:', err);

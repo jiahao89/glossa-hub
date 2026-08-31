@@ -1,48 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Database, FileText, CheckCircle, BarChart3, Activity, Clock, User, Languages, Cpu, Zap } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { Skeleton } from './Skeleton';
 import EmptyState from './EmptyState';
-
-function formatLogTime(timestampStr) {
-  if (!timestampStr) return '';
-  let date;
-  if (typeof timestampStr === 'string' && timestampStr.includes(' ') && !timestampStr.includes('T')) {
-    date = new Date(timestampStr.replace(' ', 'T') + '+08:00');
-  } else {
-    date = new Date(timestampStr);
-  }
-
-  if (isNaN(date.getTime())) {
-    return timestampStr;
-  }
-
-  const formatterDate = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  const formatterTime = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-
-  const now = new Date();
-  const todayStr = formatterDate.format(now);
-  const logDateStr = formatterDate.format(date);
-  const timePart = formatterTime.format(date);
-  
-  if (todayStr === logDateStr) {
-    return timePart;
-  } else {
-    const ymd = logDateStr.replace(/\//g, '-');
-    return `${ymd} ${timePart}`;
-  }
-}
+// M2/M6: formatLogTime 收敛到 utils/dateTime（Intl 格式化器为模块级常量，
+// 不再每行日志渲染都重复 new）
+import { formatLogTime } from '../utils/dateTime';
 
 export default function DashboardTab({ onNavigate }) {
   const [stats, setStats] = useState(null);
@@ -50,6 +13,10 @@ export default function DashboardTab({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [coverageTab, setCoverageTab] = useState('translation');
+
+  // M13: 用 ref 追踪 error 态，供 interval 闭包读取（interval 只注册一次）
+  const errorRef = useRef(false);
+  useEffect(() => { errorRef.current = !!error; }, [error]);
 
   const fetchStats = async () => {
     try {
@@ -62,6 +29,7 @@ export default function DashboardTab({ onNavigate }) {
       }
       const data = await statsRes.json();
       setStats(data);
+      setError(null); // 恢复成功后清除错误态，恢复正常渲染与轮询
       if (usageRes && usageRes.ok) {
         setAiUsage(await usageRes.json());
       }
@@ -77,6 +45,8 @@ export default function DashboardTab({ onNavigate }) {
     // Auto refresh stats every 10 seconds for real-time collaboration feel
     const interval = setInterval(() => {
       if (document.hidden) return;
+      // M13: error 状态下跳过本轮请求（保留 interval，点击"重试"恢复成功后自动继续刷新）
+      if (errorRef.current) return;
       fetchStats();
     }, 10000);
     return () => clearInterval(interval);
@@ -117,6 +87,7 @@ export default function DashboardTab({ onNavigate }) {
     return (
       <div className="flex-center" style={{ height: '70vh', color: 'var(--red)', flexDirection: 'column', gap: '0.5rem' }}>
         <span>⚠️ 仪表盘加载错误: {error}</span>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>错误期间已暂停自动轮询，点击下方按钮重试恢复</span>
         <button onClick={fetchStats} className="btn btn-secondary" style={{ marginTop: '1rem' }}>重试</button>
       </div>
     );

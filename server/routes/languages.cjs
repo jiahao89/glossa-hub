@@ -82,18 +82,47 @@ router.put('/projects/:projectId/languages/:langId', authenticateToken, requireP
     const newName = langName || oldName;
     const newOrder = displayOrder !== undefined ? displayOrder : oldLang.display_order;
 
-    await db.transaction(async (tx) => {
+    if (dbType === 'postgres') {
+      // PG 分支: 单条 jsonb 语句完成翻译键迁移，避免全量载入内存逐条 UPDATE
+      await db.transaction(async (tx) => {
+        if (oldName !== newName) {
+          const versions = await tx.query('SELECT id FROM versions WHERE project_id = $1', [projectId]);
+          const versionIds = versions.map(v => v.id);
+
+          if (versionIds.length > 0) {
+            const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
+            const oldKeyPh = `$${versionIds.length + 1}`;
+            const newKeyPh = `$${versionIds.length + 2}`;
+            // translations ? 旧键 仅命中存在旧键的行（旧键不存在则不改动，语义与逐条迁移等价）：
+            // 复制旧键值到新键后删除旧键；若新键已存在则被覆盖，与 JS 版行为一致
+            await tx.run(
+              `UPDATE terms
+               SET translations = (translations - ${oldKeyPh}) || jsonb_build_object(${newKeyPh}, translations -> ${oldKeyPh})
+               WHERE version_id IN (${versionPlaceholders}) AND translations ? ${oldKeyPh}`,
+              [...versionIds, oldName, newName]
+            );
+          }
+        }
+
+        await tx.run(
+          'UPDATE languages SET lang_name = $1, display_order = $2 WHERE id = $3',
+          [newName, newOrder, langId]
+        );
+      });
+    } else {
+      // SQLite 分支: 保留逐条迁移，但改为分批提交（每 500 条一次事务），降低长时间持锁
       if (oldName !== newName) {
-        const versions = await tx.query('SELECT id FROM versions WHERE project_id = $1', [projectId]);
+        const versions = await db.query('SELECT id FROM versions WHERE project_id = $1', [projectId]);
         const versionIds = versions.map(v => v.id);
 
         if (versionIds.length > 0) {
           const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
-          const allTerms = await tx.query(
+          const allTerms = await db.query(
             `SELECT id, translations FROM terms WHERE version_id IN (${versionPlaceholders})`,
             versionIds
           );
 
+          const updates = [];
           for (const term of allTerms) {
             let trans = {};
             try {
@@ -105,28 +134,30 @@ router.put('/projects/:projectId/languages/:langId', authenticateToken, requireP
             if (trans[oldName] !== undefined) {
               trans[newName] = trans[oldName];
               delete trans[oldName];
+              updates.push({ id: term.id, json: JSON.stringify(trans) });
+            }
+          }
 
-              if (dbType === 'postgres') {
-                await tx.run(
-                  'UPDATE terms SET translations = $1::jsonb WHERE id = $2',
-                  [JSON.stringify(trans), term.id]
-                );
-              } else {
+          const BATCH_SIZE = 500;
+          for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+            const batch = updates.slice(i, i + BATCH_SIZE);
+            await db.transaction(async (tx) => {
+              for (const u of batch) {
                 await tx.run(
                   'UPDATE terms SET translations = $1 WHERE id = $2',
-                  [JSON.stringify(trans), term.id]
+                  [u.json, u.id]
                 );
               }
-            }
+            });
           }
         }
       }
 
-      await tx.run(
+      await db.run(
         'UPDATE languages SET lang_name = $1, display_order = $2 WHERE id = $3',
         [newName, newOrder, langId]
       );
-    });
+    }
 
     res.json({ message: '语种修改及词条映射同步成功！' });
   } catch (err) {

@@ -84,7 +84,7 @@ https://udify.app/workflow/bDMaSQ18johTcMzW
 ### 节点 10：[2026/6/29 14:57:25]
 
 ```text
-dify api secret：app-aochEehgytnJciYeI3L1pqfj
+dify api secret：（已迁移至环境变量 DIFY_BUILTIN_KEYS，见 .env / .env.example；历史记录中的明文 Key 已在 Dify 控制台轮换，此处不再保留）
 ```
 
 ### 节点 11：[2026/6/29 14:58:05]

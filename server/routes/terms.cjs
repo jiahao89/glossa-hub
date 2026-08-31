@@ -11,6 +11,23 @@ const { createAuditLog } = require('../services/auditLogger.cjs');
 const { generateKwHelper } = require('../services/difyService.cjs');
 const ExcelJS = require('exceljs');
 
+// 批量 termIds 全集归属校验 (弥补只抽查 termIds[0] 的越权漏洞)。
+// 任一 id 不存在或不属于该用户所在项目 → 返回 false (路由层转 403)。
+// 系统管理员 (role==='admin') 直接放行, 与 requireTermOwnership 语义一致。
+async function requireAllTermsOwnership(userId, termIds, userRole) {
+  if (userRole === 'admin') return true;
+  if (!Array.isArray(termIds) || termIds.length === 0) return false;
+  const placeholders = termIds.map((_, i) => `$${i + 1}`).join(',');
+  const row = await db.queryOne(
+    `SELECT COUNT(DISTINCT t.id) as cnt FROM terms t
+     JOIN versions v ON t.version_id = v.id
+     JOIN project_members pm ON pm.project_id = v.project_id
+     WHERE t.id IN (${placeholders}) AND pm.user_id = $${termIds.length + 1}`,
+    [...termIds, userId]
+  );
+  return parseInt(row?.cnt || 0, 10) === termIds.length;
+}
+
 // GET /api/tables/:tableId/records - 读取特定版本下的所有词条数据 (分页)
 router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
   const { tableId } = req.params;
@@ -130,6 +147,16 @@ router.get('/terms/by-kw-version', authenticateToken, async (req, res) => {
   }
   try {
     const effectiveProjectId = projectId || 'proj-default';
+    // 项目成员校验: 非成员不能读取该项目词条 (管理员放行)
+    if (req.user.role !== 'admin') {
+      const member = await db.queryOne(
+        'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+        [effectiveProjectId, req.user.id]
+      );
+      if (!member) {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '您无权访问此项目。' });
+      }
+    }
     const term = await db.queryOne(
       `SELECT t.id, t.kw, t.zh_cn, t.is_locked FROM terms t
        JOIN versions v ON t.version_id = v.id
@@ -405,6 +432,17 @@ router.get('/versions/:versionId/terms/:kw/references', authenticateToken, async
     }
     const projectId = currentVer.project_id;
 
+    // 项目成员校验: 通过 version_id 反查 project_id 后验证成员身份 (管理员放行)
+    if (req.user.role !== 'admin') {
+      const member = await db.queryOne(
+        'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+        [projectId, req.user.id]
+      );
+      if (!member) {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '您无权访问此项目。' });
+      }
+    }
+
     const rows = await db.query(
       `SELECT v.version_name, t.zh_cn, t.translations, t.owner, t.updated_at
        FROM terms t
@@ -571,7 +609,7 @@ router.post('/terms/batch-update', authenticateToken, async (req, res) => {
   }
 
   try {
-    if (termIds.length > 0 && !(await requireTermOwnership(req.user.id, termIds[0]))) {
+    if (!(await requireAllTermsOwnership(req.user.id, termIds, req.user.role))) {
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此项目的词条。' });
     }
     let successCount = 0;
@@ -626,13 +664,13 @@ router.post('/terms/batch-update', authenticateToken, async (req, res) => {
         : `UPDATE terms SET ${updateFields.join(', ')}, updated_at = datetime('now'), updated_by = $${idx}`;
 
       updateParams.push(req.user.id);
-      const termIdParamIndex = idx + 1;
 
-      for (const t of validTerms) {
-        const query = `${baseQuery} WHERE id = $${termIdParamIndex}`;
-        await tx.run(query, [...updateParams, t.id]);
-        successCount++;
-      }
+      // 各行更新的字段集合完全一致, 合并为单条 UPDATE ... WHERE id IN (...)。
+      // 原逐条循环的 UPDATE 不带 updated_at 乐观锁条件, 合并不改变并发语义。
+      const validIds = validTerms.map(t => t.id);
+      const idPlaceholders = validIds.map((_, i) => `$${idx + 1 + i}`).join(',');
+      await tx.run(`${baseQuery} WHERE id IN (${idPlaceholders})`, [...updateParams, ...validIds]);
+      successCount = validIds.length;
 
       if (successCount > 0) {
         const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
@@ -690,8 +728,8 @@ router.post('/terms/batch-delete', authenticateToken, writeLimiter, async (req, 
   }
 
   try {
-    // RBAC: 用第一条做抽样检查 (与 batch-update 同样的策略)
-    if (!(await requireTermOwnership(req.user.id, termIds[0]))) {
+    // RBAC: 对全部 termIds 做归属校验 (任一不属于即拒绝), 管理员放行
+    if (!(await requireAllTermsOwnership(req.user.id, termIds, req.user.role))) {
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权删除此项目的词条。' });
     }
 
@@ -777,9 +815,25 @@ router.post('/terms/batch-copy', authenticateToken, async (req, res) => {
   }
 
   try {
-    const targetVer = await db.queryOne('SELECT version_name FROM versions WHERE id = $1', [targetVersionId]);
+    // RBAC: 源词条必须全部属于用户所在项目 (任一不属于即拒绝), 管理员放行
+    if (!(await requireAllTermsOwnership(req.user.id, termIds, req.user.role))) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: '您无权复制这些词条。' });
+    }
+
+    const targetVer = await db.queryOne('SELECT version_name, project_id FROM versions WHERE id = $1', [targetVersionId]);
     if (!targetVer) {
       return res.status(404).json({ error: '目标版本不存在' });
+    }
+
+    // RBAC: 目标版本归属项目必须是用户所在项目, 管理员放行
+    if (req.user.role !== 'admin') {
+      const targetMember = await db.queryOne(
+        'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+        [targetVer.project_id, req.user.id]
+      );
+      if (!targetMember) {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '您无权向该目标版本写入词条。' });
+      }
     }
 
     let copyCount = 0;
@@ -1029,7 +1083,7 @@ router.post('/terms/batch-approve', authenticateToken, async (req, res) => {
     return res.status(403).json({ error: 'FORBIDDEN', message: '只有管理员有权审核词条！' });
   }
 
-  if (Array.isArray(termIds) && termIds.length > 0 && !(await requireTermOwnership(req.user.id, termIds[0]))) {
+  if (Array.isArray(termIds) && termIds.length > 0 && !(await requireAllTermsOwnership(req.user.id, termIds, req.user.role))) {
     return res.status(403).json({ error: 'FORBIDDEN', message: '您无权审核此项目的词条。' });
   }
 
@@ -1108,6 +1162,13 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
       }
 
       // 2. Insert (Added)
+      // sort_order 自增基数在循环外只查一次, 内存递增 (避免逐条 SELECT MAX 的重复查询)
+      const maxSortRow = await tx.queryOne(
+        'SELECT COALESCE(MAX(sort_order), 0) as max_sort FROM terms WHERE version_id = $1',
+        [tableId]
+      );
+      let nextSortOrder = parseInt(maxSortRow?.max_sort || 0, 10);
+
       for (const rec of added) {
         let kwVal = (rec.fields['KW'] || rec.kw || '').trim();
         if (!kwVal) {
@@ -1133,15 +1194,13 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
 
         const lockedFalseVal = dbType === 'postgres' ? false : 0;
 
-        // Auto-assign sort_order: use provided value, or compute next max
+        // Auto-assign sort_order: use provided value, or take the next in-memory value
         let sortOrder = rec.sortOrder;
         if (sortOrder === undefined || sortOrder === null) {
-          const maxRow = await tx.queryOne(
-            'SELECT COALESCE(MAX(sort_order), 0) as max_sort FROM terms WHERE version_id = $1',
-            [tableId]
-          );
-          sortOrder = (parseInt(maxRow?.max_sort || 0, 10)) + 1;
+          sortOrder = nextSortOrder + 1;
         }
+        // 显式传入的 sortOrder 可能高于当前基数, 同步抬升基数避免后续自增与其冲突
+        nextSortOrder = Math.max(nextSortOrder, sortOrder);
 
         await tx.query(`
           INSERT INTO terms (id, version_id, kw, context, zh_cn, translations, translations_meta, is_locked, status, sort_order, created_at, updated_at)

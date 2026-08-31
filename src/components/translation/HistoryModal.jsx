@@ -83,7 +83,7 @@ export default function HistoryModal({
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px', background: 'var(--bg-secondary)', padding: '10px', borderRadius: 'var(--radius-sm)' }}>
                     {langKeys.length === 0 ? (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>无无译文数据</span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>无译文数据</span>
                     ) : (
                       langKeys.map(lang => (
                         <div key={lang} style={{ fontSize: '0.8rem' }}>

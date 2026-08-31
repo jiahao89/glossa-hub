@@ -27,6 +27,19 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
   const [newFields, setNewFields] = useState(getInitialFields());
   const [generatingKw, setGeneratingKw] = useState(false);
 
+  // M12: 仅在 open 由 false→true 的边沿重建表单 ——
+  // 目标语种是异步加载的，只在挂载时初始化会导致后加载的语种输入框缺失；
+  // 同时保证再次打开时不残留上一次的输入
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = open;
+    if (open && !wasOpen) {
+      setNewFields(getInitialFields());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   const handleFieldChange = (field, value) => {
     setNewFields(prev => ({ ...prev, [field]: value }));
   };
@@ -92,11 +105,11 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
       });
 
       if (!res.ok) {
-        const error = await res.json();
+        const error = await res.json().catch(() => ({}));
         throw new Error(error.error || '翻译接口调用失败');
       }
 
-      const result = await res.json();
+      const result = await res.json().catch(() => ({}));
       const updates = {};
       activeTargetLangs.forEach(lang => {
         const val = findTranslationForLang(result, lang);

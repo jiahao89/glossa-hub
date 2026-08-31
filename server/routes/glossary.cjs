@@ -128,6 +128,25 @@ router.post('/glossary-tables/:tableId/terms', authenticateToken, async (req, re
   try {
     if (!(await requireGlossaryMember(req, res, tableId))) return;
     if (Array.isArray(termsList)) {
+      // 拒绝空数组导入, 防止误操作清空整表术语
+      if (termsList.length === 0) {
+        return res.status(400).json({ error: '导入列表不能为空，禁止以空数组清空整表术语！' });
+      }
+
+      const tbl = await db.queryOne('SELECT id, table_name FROM glossary_tables WHERE id = $1', [tableId]);
+      if (!tbl) {
+        return res.status(404).json({ error: '词汇表未找到' });
+      }
+
+      // 覆盖导入前先把现有整表数据备份进回收站 (30 天内可恢复), 避免硬删丢失
+      const existingCount = await db.queryOne(
+        'SELECT COUNT(*) as cnt FROM glossary_terms WHERE table_id = $1',
+        [tableId]
+      );
+      if (existingCount && existingCount.cnt > 0) {
+        await backupToRecycleBin('glossary_table', tableId, tbl.table_name, req.user.id);
+      }
+
       const createdTime = new Date().toISOString();
       await db.transaction(async (tx) => {
         if (Array.isArray(headers) && headers.length > 0) {

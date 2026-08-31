@@ -1,8 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 const { db, verifyPassword, hashPassword } = require('../config/db.cjs');
 const { signUserToken } = require('../middleware/auth.cjs');
 const { loginLimiter } = require('../middleware/rateLimiters.cjs');
+
+// 模块加载时预生成一个固定 dummy bcrypt hash: 用户不存在时也执行一次
+// bcrypt 校验, 使两条路径耗时接近, 消除"用户名是否存在"的时序侧信道。
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('__glossahub_dummy_password__', 10);
 
 router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
@@ -13,6 +18,8 @@ router.post('/login', loginLimiter, async (req, res) => {
   try {
     const user = await db.queryOne('SELECT * FROM users WHERE username = $1', [username]);
     if (!user) {
+      // 与"用户存在但密码错误"路径保持等耗时
+      bcrypt.compareSync(password, DUMMY_PASSWORD_HASH);
       return res.status(401).json({ error: '用户名或密码不正确！' });
     }
 

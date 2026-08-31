@@ -5,11 +5,14 @@ const { authenticateToken } = require('../middleware/auth.cjs');
 
 router.get('/health', (_req, res) => {
   const dbInitError = getDbInitError();
+  const pgErr = getPgError();
+  // 错误详情只写服务端日志, 不向无鉴权的探针暴露 (可能含主机/账号片段)
+  if (dbInitError || pgErr) {
+    console.error('🩺 健康检查发现数据库异常:', dbInitError ? dbInitError.message : '', pgErr || '');
+  }
   res.json({
     status: dbInitError ? 'db_error' : 'ok',
     dbType: getDbType(),
-    dbInitError: dbInitError ? dbInitError.message : null,
-    pgError: getPgError(),
     timestamp: new Date().toISOString()
   });
 });

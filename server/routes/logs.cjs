@@ -1,7 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const { db, getDbType } = require('../config/db.cjs');
-const { authenticateToken } = require('../middleware/auth.cjs');
+const { authenticateToken, requireSystemAdmin } = require('../middleware/auth.cjs');
+
+// POST /api/logs 允许写入的 action 白名单 (与后端各路由 createAuditLog 使用的枚举一致)。
+// 前端任意用户都可触发写日志, 因此用白名单防止伪造任意动作文案污染审计记录。
+const ALLOWED_LOG_ACTIONS = [
+  '新增词条', '修改词条', '批量新增', '批量修改', '批量更新', '批量删除',
+  '批量复制', '批量生成KW', 'AI批量翻译', '翻译继承', '历史回退', '内容审核',
+  '数据清理', '回收站恢复', '锁定词条', '解锁词条', '同步合并',
+  '创建版本', '删除版本', '重命名版本'
+];
+
+// 字符串字段统一截断, 防止超长内容撑爆审计表
+const truncateField = (val, max = 200) => (typeof val === 'string' ? val.slice(0, max) : '');
 
 // GET /api/logs - 获取修改日志（分页 + 服务端筛选）
 router.get('/', authenticateToken, async (req, res) => {
@@ -62,17 +74,24 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     if (startDate) {
+      // 前端日期选择器传 YYYY-MM-DD；也可能传完整时间串。统一补成当日起点。
       const startVal = startDate.includes('T') || startDate.includes(' ') ? startDate : `${startDate} 00:00:00`;
-      whereClause += ` AND (l.timestamp >= $${pi} OR l.timestamp >= $${pi + 1})`;
-      params.push(startVal, `${startDate}T00:00:00`);
-      pi += 2;
+      // SQLite 里 timestamp 存在两种格式 (datetime('now') 的空格分隔 / toISOString 的 T 分隔),
+      // 用 datetime() 归一化后再比较, 保证两种格式都能正确过滤。
+      whereClause += dbType === 'sqlite'
+        ? ` AND datetime(l.timestamp) >= datetime($${pi})`
+        : ` AND l.timestamp >= $${pi}`;
+      params.push(startVal);
+      pi += 1;
     }
 
     if (endDate) {
-      const endVal = endDate.includes('T') || endDate.includes(' ') ? endDate : `${endDate} 23:59:59`;
-      whereClause += ` AND (l.timestamp <= $${pi} OR l.timestamp <= $${pi + 1})`;
-      params.push(endVal, `${endDate}T23:59:59.999Z`);
-      pi += 2;
+      const endVal = endDate.includes('T') || endDate.includes(' ') ? endDate : `${endDate} 23:59:59.999`;
+      whereClause += dbType === 'sqlite'
+        ? ` AND datetime(l.timestamp) <= datetime($${pi})`
+        : ` AND l.timestamp <= $${pi}`;
+      params.push(endVal);
+      pi += 1;
     }
 
     // Paginated query
@@ -134,12 +153,21 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // POST /api/logs - 记录新的修改日志
+// 前端普通用户操作也会触发 (App.jsx handleAddLog), 因此不加管理员门禁,
+// 改为: action 白名单校验 + 各字符串字段长度截断, 防止伪造动作/注入超长内容。
 router.post('/', authenticateToken, async (req, res) => {
-  const { kw, chinese, action, details, version } = req.body;
   const dbType = getDbType();
+  const action = truncateField(req.body.action, 50);
+  const kw = truncateField(req.body.kw);
+  const chinese = truncateField(req.body.chinese);
+  const details = truncateField(req.body.details, 2000);
+  const version = truncateField(req.body.version);
 
   if (!action) {
     return res.status(400).json({ error: '必须包含 action 动作说明！' });
+  }
+  if (!ALLOWED_LOG_ACTIONS.includes(action)) {
+    return res.status(400).json({ error: '非法的 action 动作类型！' });
   }
 
   try {
@@ -149,7 +177,7 @@ router.post('/', authenticateToken, async (req, res) => {
     await db.run(
       `INSERT INTO ${logsTable} (timestamp, kw, chinese, action, details, version_name, user_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [nowStr, kw || '', chinese || '', action, details || '', version || '', req.user.id]
+      [nowStr, kw, chinese, action, details, version, req.user.id]
     );
 
     res.status(201).json({
@@ -167,8 +195,8 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE /api/logs - 清空日志
-router.delete('/', authenticateToken, async (_req, res) => {
+// DELETE /api/logs - 清空日志 (仅系统管理员)
+router.delete('/', authenticateToken, requireSystemAdmin, async (_req, res) => {
   const dbType = getDbType();
   try {
     const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';

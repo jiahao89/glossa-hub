@@ -144,20 +144,29 @@ export default function LanguagesTab({ projectRole }) {
     const targetLang = languages[targetIndex];
 
     try {
-      // Swapping orders by PUT api
-      await apiFetch(`/api/projects/proj-default/languages/${lang.id}`, {
+      // 交换顺序需两次 PUT —— 每步都校验 res.ok，失败即终止，避免出现两边各改一半的脏状态
+      const firstRes = await apiFetch(`/api/projects/proj-default/languages/${lang.id}`, {
         method: 'PUT',
         body: JSON.stringify({ displayOrder: targetLang.display_order })
       });
+      if (!firstRes.ok) {
+        toast.error(`排序调整失败: [${lang.lang_name}] 顺序更新未成功（${firstRes.status}），已终止交换`);
+        return;
+      }
 
-      await apiFetch(`/api/projects/proj-default/languages/${targetLang.id}`, {
+      const secondRes = await apiFetch(`/api/projects/proj-default/languages/${targetLang.id}`, {
         method: 'PUT',
         body: JSON.stringify({ displayOrder: lang.display_order })
       });
+      if (!secondRes.ok) {
+        toast.error(`排序调整失败: [${targetLang.lang_name}] 顺序更新未成功（${secondRes.status}），请刷新后重试`);
+        return;
+      }
 
       fetchLanguages();
     } catch (err) {
       console.error('排序调整失败:', err);
+      toast.error(`排序调整失败: ${err.message}`);
     }
   };
 

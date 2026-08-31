@@ -120,20 +120,13 @@ export default function App() {
     loadProjectRole();
   }, [token]);
 
-  // Cell highlight modified state
-  const [modifiedCells, setModifiedCells] = useState(() => safeGetLocalStorage('glossahub_modified_cells', {}));
+  // H10: modifiedCells 单元格高亮状态已下沉到唯一消费者 TranslationTab 内部管理
 
-  // Debounced localStorage persistence (avoids blocking main thread on every cell edit)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('glossahub_modified_cells', JSON.stringify(modifiedCells));
-      } catch (err) {
-        console.warn('Failed to persist modified cells:', err);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [modifiedCells]);
+  // M5: 有效项目角色只计算一次 —— 系统管理员一律视为 owner（仅 UI 门控，服务端独立强制 RBAC）
+  const effectiveRole = useMemo(
+    () => (user?.role === 'admin' ? 'owner' : projectRole),
+    [user, projectRole]
+  );
 
   const handleAddLog = async (action, kw = '', chinese = '', details = '', version = '') => {
     if (!token) return;
@@ -573,27 +566,27 @@ export default function App() {
 
         {/* Dynamic page container */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+          {/* M8: key={activeTab} 为有意为之 —— 切换 tab 时强制 remount 内容区，
+              防止各 tab 内部状态（选中集、弹窗、滚动位置等）跨页签串台 */}
           <div key={activeTab} className="tab-fade-in" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
             <Suspense fallback={<SkeletonTab />}>
             {activeTab === 'dashboard' && <DashboardTab onNavigate={setActiveTab} />}
-            {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
+            {activeTab === 'versions' && <VersionsTab onNavigate={handleNavigate} projectRole={effectiveRole} />}
             {activeTab === 'translate' && (
               <TranslationTab
                 difyConnected={difyConnected}
                 onAddLog={handleAddLog}
-                modifiedCells={modifiedCells}
-                setModifiedCells={setModifiedCells}
                 selectedTableId={selectedTableId}
                 setSelectedTableId={setSelectedTableId}
-                projectRole={user?.role === 'admin' ? 'owner' : projectRole}
+                projectRole={effectiveRole}
               />
             )}
-            {activeTab === 'compare' && <ComparisonTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
-            {activeTab === 'glossary' && <GlossaryTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
-            {activeTab === 'languages' && <LanguagesTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
-            {activeTab === 'logs' && <LogsTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
-            {activeTab === 'users' && <UsersTab projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
-            {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} projectRole={user?.role === 'admin' ? 'owner' : projectRole} />}
+            {activeTab === 'compare' && <ComparisonTab projectRole={effectiveRole} />}
+            {activeTab === 'glossary' && <GlossaryTab projectRole={effectiveRole} />}
+            {activeTab === 'languages' && <LanguagesTab projectRole={effectiveRole} />}
+            {activeTab === 'logs' && <LogsTab projectRole={effectiveRole} />}
+            {activeTab === 'users' && <UsersTab projectRole={effectiveRole} />}
+            {activeTab === 'settings' && <SettingsTab onConnectionStatusChange={setDifyConnected} projectRole={effectiveRole} />}
             {activeTab === 'guide' && (
               <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <iframe

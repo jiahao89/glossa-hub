@@ -21,13 +21,22 @@ const normalizeText = (text) => {
     .replace(/[\u2018\u2019]/g, "'");
 };
 
+// 服务端分页参数：循环翻页拉全 records，每页 500 条，最多 200 页防死循环
+const RECORDS_PAGE_SIZE = 500;
+const MAX_PAGES = 200;
+const MAX_RECORDS_LIMIT = RECORDS_PAGE_SIZE * MAX_PAGES;
+
+// 差异条目的稳定行标识：diff 对象无自带 id，使用 KW + status 组合
+// （不能存过滤后数组下标 —— 筛选变化后选中会错位到别的行，而同步是破坏性写操作）
+const getDiffRowKey = (item) => `${item.KW}::${item.status}`;
+
 export default function ComparisonTab() {
   const toast = useToast();
   const [targetLanguagesList, setTargetLanguagesList] = useState(DEFAULT_TARGET_LANGUAGES);
   const TARGET_LANGUAGES = targetLanguagesList;
 
   const [sourceRecordsState, setSourceRecordsState] = useState([]);
-  const [selectedIndexes, setSelectedIndexes] = useState(new Set());
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
@@ -103,16 +112,36 @@ export default function ComparisonTab() {
   }, []);
 
   // Safe fetch helper for records
+  // 服务端接口默认只返回前 50 条 —— 必须循环翻页拉全所有 records，
+  // 否则大表（>50 条）的比对结果会静默缺数据
   const fetchRecordsFromTable = async (tableId) => {
     if (!tableId) return [];
     try {
-      const res = await apiFetch(`/api/tables/${tableId}/records`);
-      if (!res.ok) throw new Error('无法读取数据表内容');
-      const dbRecords = await res.json();
-      // 后端返回分页对象 { records: [...], total, page, pageSize }
-      // 旧的 API 直接返回数组 — 这次重构(commit history) 改成分页但客户端未同步
-      const recordList = Array.isArray(dbRecords) ? dbRecords : (dbRecords.records || []);
-      return recordList.map(r => {
+      const recordList = [];
+      let page = 1;
+      let total = Infinity;
+
+      while (page <= MAX_PAGES && recordList.length < Math.min(total, MAX_RECORDS_LIMIT)) {
+        const res = await apiFetch(`/api/tables/${tableId}/records?page=${page}&pageSize=${RECORDS_PAGE_SIZE}`);
+        if (!res.ok) throw new Error('无法读取数据表内容');
+        const dbRecords = await res.json();
+        // 兼容旧版 API 直接返回数组的形态
+        if (Array.isArray(dbRecords)) {
+          recordList.push(...dbRecords);
+          break;
+        }
+        // 分页对象 { records: [...], total, page, pageSize }
+        if (typeof dbRecords.total === 'number') {
+          total = dbRecords.total;
+        }
+        const pageRecords = dbRecords.records || [];
+        recordList.push(...pageRecords);
+        // 不足一整页说明已是最后一页
+        if (pageRecords.length < RECORDS_PAGE_SIZE) break;
+        page += 1;
+      }
+
+      return recordList.slice(0, MAX_RECORDS_LIMIT).map(r => {
         const trans = {};
         TARGET_LANGUAGES.forEach(lang => {
           trans[lang] = r.fields[lang] || '';
@@ -361,7 +390,7 @@ export default function ComparisonTab() {
       });
 
       setSourceRecordsState(sourceRecords);
-      setSelectedIndexes(new Set());
+      setSelectedKeys(new Set());
       setComparisonResults(compared);
     } catch (err) {
       setErrorMsg(`计算比对数据失败: ${err.message}`);
@@ -375,7 +404,7 @@ export default function ComparisonTab() {
     setFallbackCsvData(null);
     setFallbackFileName('');
     setSourceRecordsState([]);
-    setSelectedIndexes(new Set());
+    setSelectedKeys(new Set());
     if (tables.length > 0) {
       setSourceTableId(tables[0].id);
     }
@@ -408,44 +437,48 @@ export default function ComparisonTab() {
     return countsDict;
   }, [comparisonResults]);
 
-  // Checkbox helpers
-  const toggleSelectRow = (idx) => {
-    const next = new Set(selectedIndexes);
-    if (next.has(idx)) {
-      next.delete(idx);
+  // Checkbox helpers —— 全部基于稳定 key（getDiffRowKey）操作
+  const toggleSelectRow = (key) => {
+    const next = new Set(selectedKeys);
+    if (next.has(key)) {
+      next.delete(key);
     } else {
-      next.add(idx);
+      next.add(key);
     }
-    setSelectedIndexes(next);
+    setSelectedKeys(next);
   };
 
   const isAllSelected = useMemo(() => {
     const selectable = filteredResults.filter(r => r.status !== 'unchanged');
     if (selectable.length === 0) return false;
-    return selectable.every((_, i) => selectedIndexes.has(filteredResults.indexOf(selectable[i])));
-  }, [filteredResults, selectedIndexes]);
+    // Set.has O(1) 判断，替代原先 indexOf 的 O(n²) 写法
+    return selectable.every(r => selectedKeys.has(getDiffRowKey(r)));
+  }, [filteredResults, selectedKeys]);
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
-      setSelectedIndexes(new Set());
+      setSelectedKeys(new Set());
     } else {
-      const selectableIndexes = new Set();
-      filteredResults.forEach((r, idx) => {
-        if (r.status !== 'unchanged') selectableIndexes.add(idx);
+      const selectableKeys = new Set();
+      filteredResults.forEach(r => {
+        if (r.status !== 'unchanged') selectableKeys.add(getDiffRowKey(r));
       });
-      setSelectedIndexes(selectableIndexes);
+      setSelectedKeys(selectableKeys);
     }
   };
 
-  // Synchronization executor
-  const handleSyncActions = async (indexes) => {
-    if (indexes.size === 0) return;
+  // Synchronization executor —— 入参为稳定 key 集合，按 key 反查条目
+  const handleSyncActions = async (keys) => {
+    if (keys.size === 0) return;
 
     const actions = [];
-    const idxArray = Array.from(indexes);
+    const keyArray = Array.from(keys);
 
-    for (const idx of idxArray) {
-      const item = filteredResults[idx];
+    // 从全量比对结果按稳定 key 反查（不依赖筛选后的位置索引）
+    const resultsByKey = new Map(comparisonResults.map(r => [getDiffRowKey(r), r]));
+
+    for (const key of keyArray) {
+      const item = resultsByKey.get(key);
       if (!item || item.status === 'unchanged') continue;
 
       const kw = item.KW;
@@ -509,10 +542,10 @@ export default function ComparisonTab() {
       if (res.ok) {
         const result = await res.json();
         toast.success(result.message || '合并同步成功！');
-        setSelectedIndexes(new Set());
+        setSelectedKeys(new Set());
         await handleCompare(); // Re-trigger compare to refresh diff list
       } else {
-        const errorData = await res.json();
+        const errorData = await res.json().catch(() => ({}));
         toast.error(`同步失败: ${errorData.error || '服务器未知错误'}`);
       }
     } catch (e) {
@@ -692,13 +725,13 @@ export default function ComparisonTab() {
         </div>
       )}
 
-      {selectedIndexes.size > 0 && (
+      {selectedKeys.size > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1.5rem', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', justifyContent: 'space-between', flexShrink: 0 }}>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            已选中 <strong style={{ color: 'var(--accent)' }}>{selectedIndexes.size}</strong> 项差异条目
+            已选中 <strong style={{ color: 'var(--accent)' }}>{selectedKeys.size}</strong> 项差异条目
           </span>
-          <button 
-            onClick={() => handleSyncActions(selectedIndexes)} 
+          <button
+            onClick={() => handleSyncActions(selectedKeys)}
             disabled={syncing}
             className="btn btn-primary"
             style={{ padding: '0.35rem 1.2rem', fontSize: '0.8rem' }}
@@ -745,7 +778,8 @@ export default function ComparisonTab() {
               </tr>
             </thead>
             <tbody>
-              {filteredResults.map((item, idx) => {
+              {filteredResults.map((item) => {
+                const rowKey = getDiffRowKey(item);
                 let rowClass = '';
                 let statusTag = null;
                 
@@ -762,16 +796,14 @@ export default function ComparisonTab() {
                   statusTag = <span className="diff-tag diff-tag-unchanged">无变化</span>;
                 }
 
-                const globalIdx = idx;
-
                 return (
-                  <tr key={idx} className={rowClass}>
+                  <tr key={rowKey} className={rowClass}>
                     <td style={{ textAlign: 'center' }}>
                       {item.status !== 'unchanged' && (
                         <input 
                           type="checkbox" 
-                          checked={selectedIndexes.has(globalIdx)}
-                          onChange={() => toggleSelectRow(globalIdx)}
+                          checked={selectedKeys.has(rowKey)}
+                          onChange={() => toggleSelectRow(rowKey)}
                           style={{ cursor: 'pointer' }}
                         />
                       )}
@@ -806,7 +838,7 @@ export default function ComparisonTab() {
                     <td style={{ textAlign: 'center' }}>
                       {item.status === 'added' && (
                         <button 
-                          onClick={() => handleSyncActions(new Set([globalIdx]))} 
+                          onClick={() => handleSyncActions(new Set([rowKey]))} 
                           disabled={syncing}
                           className="btn btn-secondary" 
                           style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem', borderColor: 'var(--green)', color: 'var(--green)', background: 'transparent' }}
@@ -815,8 +847,8 @@ export default function ComparisonTab() {
                         </button>
                       )}
                       {item.status === 'modified' && (
-                        <button 
-                          onClick={() => handleSyncActions(new Set([globalIdx]))} 
+                        <button
+                          onClick={() => handleSyncActions(new Set([rowKey]))}
                           disabled={syncing}
                           className="btn btn-secondary" 
                           style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem', borderColor: 'var(--yellow)', color: 'var(--yellow)', background: 'transparent' }}
@@ -826,7 +858,7 @@ export default function ComparisonTab() {
                       )}
                       {item.status === 'deleted' && (
                         <button 
-                          onClick={() => handleSyncActions(new Set([globalIdx]))} 
+                          onClick={() => handleSyncActions(new Set([rowKey]))} 
                           disabled={syncing}
                           className="btn btn-secondary" 
                           style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent' }}

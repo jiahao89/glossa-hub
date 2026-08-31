@@ -3,16 +3,37 @@ const router = express.Router();
 const { db, getDbType } = require('../config/db.cjs');
 const { authenticateToken, requireProjectMember, requireRole } = require('../middleware/auth.cjs');
 const { aiTranslateLimiter } = require('../middleware/rateLimiters.cjs');
-const { getEffectiveDifyConfig, generateKwHelper } = require('../services/difyService.cjs');
+const { getEffectiveDifyConfig, generateKwHelper, getBuiltinKeys } = require('../services/difyService.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
 
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GlossaHub/1.1';
 
 // 内置 Dify 引擎 (由运维预配置, 前端无需手动输入 Key)
-const BUILTIN_DIFY_APPS = {
-  'night.magene.cn': 'app-zV0Lo78Bi5WjhplWDL7OwsWR',     // 迈金 Night 专用引擎
-  'api.dify.ai':     'app-aochEehgytnJciYeI3L1pqfj',     // Dify 官方云服务
-};
+// Key 由环境变量 DIFY_BUILTIN_KEYS (逗号分隔) 注入, 顺序与 BUILTIN_DIFY_HOSTS 一一对应:
+//   [0] night.magene.cn → 迈金 Night 专用引擎
+//   [1] api.dify.ai     → Dify 官方云服务
+const BUILTIN_DIFY_HOSTS = ['night.magene.cn', 'api.dify.ai'];
+
+let builtinKeysWarned = false;
+// 从环境变量构建内置引擎 { host: apiKey } 映射;
+// 未配置或 key 数量不足的引擎从候选中剔除 (不保留任何硬编码 fallback)
+function getBuiltinDifyApps() {
+  const keys = getBuiltinKeys();
+  const apps = {};
+  let missing = false;
+  BUILTIN_DIFY_HOSTS.forEach((host, i) => {
+    if (keys[i]) {
+      apps[host] = keys[i];
+    } else {
+      missing = true;
+    }
+  });
+  if (missing && !builtinKeysWarned) {
+    builtinKeysWarned = true;
+    console.warn('⚠️ 未配置 DIFY_BUILTIN_KEYS，内置 Dify 候选已禁用');
+  }
+  return apps;
+}
 
 /**
  * 根据 baseUrl 解析应该使用的 API Key:
@@ -24,7 +45,7 @@ const BUILTIN_DIFY_APPS = {
  * 这是单一来源, /dify-test 和 executeDifyWithFailover 都用它。
  */
 function resolveBuiltinKey(baseUrl, providedKey, fallbackKey) {
-  for (const [host, builtinKey] of Object.entries(BUILTIN_DIFY_APPS)) {
+  for (const [host, builtinKey] of Object.entries(getBuiltinDifyApps())) {
     if (baseUrl && baseUrl.includes(host)) {
       return builtinKey;
     }
@@ -32,19 +53,29 @@ function resolveBuiltinKey(baseUrl, providedKey, fallbackKey) {
   return providedKey || fallbackKey;
 }
 
-async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
-  // ⭐ 诊断:从 Render 出去的 IP(用于排查 IP 白名单导致的 403)
-  let outboundIp = null;
+// ⭐ 诊断:从 Render 出去的 IP(用于排查 IP 白名单导致的 403)
+// 进程生命周期内只外呼一次 api.ipify.org: 成功则缓存结果复用;
+// 失败则缓存空值, 后续请求不再外呼(不再重试), 避免每次翻译都打第三方。
+let cachedOutboundIp = null;
+let outboundIpResolved = false;
+async function getOutboundIp() {
+  if (outboundIpResolved) return cachedOutboundIp;
   try {
     const r = await fetch('https://api.ipify.org?format=json');
     if (r.ok) {
       const j = await r.json();
-      outboundIp = j.ip;
+      cachedOutboundIp = j.ip || null;
     }
   } catch {}
+  outboundIpResolved = true;
+  return cachedOutboundIp;
+}
 
-  // Built-in fallback candidates (运维预配置)
-  const builtinCandidates = Object.entries(BUILTIN_DIFY_APPS).map(([host, key]) => ({
+async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
+  const outboundIp = await getOutboundIp();
+
+  // Built-in fallback candidates (运维预配置, Key 由 DIFY_BUILTIN_KEYS 注入; 未配置的引擎已被剔除)
+  const builtinCandidates = Object.entries(getBuiltinDifyApps()).map(([host, key]) => ({
     baseUrl: `https://${host}/v1`,
     apiKey: key,
   }));
@@ -182,10 +213,11 @@ router.post('/projects/:projectId/dify', authenticateToken, requireProjectMember
         existingConfig = {};
       }
     }
+    const builtinApps = getBuiltinDifyApps();
     let finalApiKey = apiKey;
-    if (!finalApiKey || (baseUrl.includes('night.magene.cn') && finalApiKey === 'app-aochEehgytnJciYeI3L1pqfj')) {
+    if (!finalApiKey || (baseUrl.includes('night.magene.cn') && builtinApps['api.dify.ai'] && finalApiKey === builtinApps['api.dify.ai'])) {
       if (baseUrl.includes('night.magene.cn')) {
-        finalApiKey = 'app-zV0Lo78Bi5WjhplWDL7OwsWR';
+        finalApiKey = builtinApps['night.magene.cn'] || existingConfig.apiKey || '';
       } else {
         finalApiKey = existingConfig.apiKey || '';
       }
@@ -413,7 +445,8 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
       }
 
       // ⭐ 调试模式:返回 Dify 真实响应,前端能直接看到原始错误
-      const debugPayload = req.query.debug === '1' || req.body?.debug === true;
+      // 仅系统管理员可见原始错误/备用引擎列表/出口 IP, 普通用户只拿脱敏文案
+      const debugPayload = (req.query.debug === '1' || req.body?.debug === true) && req.user?.role === 'admin';
       const responseBody = {
         error: `Dify API 响应错误: ${cleanMsg}`,
       };
@@ -590,18 +623,21 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
     res.status(500).json({ error: `解析 Dify 输出 JSON 失败。原始输出为: ${String(rawVal).slice(0, 200)}` });
   } catch (err) {
     console.error('中转 AI 翻译失败:', err);
-    // ⭐ 调试模式:把异常消息 + Render 出口 IP 暴露出来
-    const debugInfo = {
-      message: err?.message || String(err),
-      stack: (err?.stack || '').split('\n').slice(0, 3).join(' | '),
-    };
-    if (req.query.debug === '1' || req.body?.debug === true) {
-      debugInfo.timestamp = new Date().toISOString();
+    // ⭐ 调试模式:把异常消息 + Render 出口 IP 暴露出来 (仅管理员, 防止向普通用户泄漏内部错误细节)
+    const debugRequested = req.query.debug === '1' || req.body?.debug === true;
+    if (debugRequested && req.user?.role === 'admin') {
+      const debugInfo = {
+        message: err?.message || String(err),
+        stack: (err?.stack || '').split('\n').slice(0, 3).join(' | '),
+        timestamp: new Date().toISOString(),
+      };
+      res.status(500).json({
+        error: `服务器内部错误: ${err?.message || err}`,
+        debug: debugInfo,
+      });
+    } else {
+      res.status(500).json({ error: '服务器内部错误，请稍后重试。' });
     }
-    res.status(500).json({
-      error: `服务器内部错误: ${err?.message || err}`,
-      debug: Object.keys(debugInfo).length > 1 ? debugInfo : undefined,
-    });
   }
 });
 
@@ -730,8 +766,8 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
       // (业务错误, 不是认证错误) 并带 X-Business-Error 头让 apiFetch 区分。
       const businessStatus = response.status === 401 || response.status === 403 ? 502 : 400;
       const responseBody = { error: cleanMsg };
-      // ⭐ 调试模式:返回真实 Dify 响应
-      if (req.query.debug === '1' || req.body?.debug === true) {
+      // ⭐ 调试模式:返回真实 Dify 响应 (仅管理员可见原始错误/目标 URL/Key 后缀)
+      if ((req.query.debug === '1' || req.body?.debug === true) && req.user?.role === 'admin') {
         responseBody.debug = {
           difyStatus: response.status,
           difyRaw: errorText.slice(0, 500),

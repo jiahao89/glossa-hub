@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import GlossaModal from '../GlossaModal';
 import { apiFetch } from '../../utils/api';
 import { useToast } from '../Toast';
@@ -21,31 +21,48 @@ export default function BatchGenerateKwModal({
   const [isSaving, setIsSaving] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
 
-  // Initialize candidate items when modal opens
+  const formatRecord = (r) => {
+    const id = r.recordId || r.id;
+    const kw = r.fields?.KW || r.kw || '';
+    const cn = r.fields?.['CN（中文）'] || r.zh_cn || '';
+    const en = r.fields?.['EN（英文）'] || r.fields?.EN || (r.translations ? (typeof r.translations === 'object' ? r.translations['EN（英文）'] || r.translations.EN : '') : '') || '';
+    const context = r.fields?.['所在页面'] || r.context || '';
+
+    return {
+      id,
+      originalKw: kw,
+      kw: kw,
+      generatedKw: '',
+      cn,
+      en,
+      context,
+      status: kw ? 'has_kw' : 'empty_kw'
+    };
+  };
+
+  // 仅在 open 由 false→true 的边沿重建 items；
+  // 之后父组件重渲染导致 selectedTerms 引用变化时只做增量合并，
+  // 绝不整体重建 —— 否则会覆盖用户已手动修改的 KW 输入
+  const prevOpenRef = useRef(false);
   useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = open;
     if (!open) return;
 
     const source = selectedTerms.length > 0 ? selectedTerms : allRecords;
-    const formatted = source.map(r => {
-      const id = r.recordId || r.id;
-      const kw = r.fields?.KW || r.kw || '';
-      const cn = r.fields?.['CN（中文）'] || r.zh_cn || '';
-      const en = r.fields?.['EN（英文）'] || r.fields?.EN || (r.translations ? (typeof r.translations === 'object' ? r.translations['EN（英文）'] || r.translations.EN : '') : '') || '';
-      const context = r.fields?.['所在页面'] || r.context || '';
 
-      return {
-        id,
-        originalKw: kw,
-        kw: kw,
-        generatedKw: '',
-        cn,
-        en,
-        context,
-        status: kw ? 'has_kw' : 'empty_kw'
-      };
+    if (!wasOpen) {
+      // 边沿打开：完整重建候选列表
+      setItems(source.map(formatRecord));
+      return;
+    }
+
+    // 已打开状态下数据变化：按词条 id 增量合并，保留用户已编辑的项
+    setItems(prev => {
+      const prevIds = new Set(prev.map(it => it.id));
+      const additions = source.map(formatRecord).filter(it => !prevIds.has(it.id));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
     });
-
-    setItems(formatted);
   }, [open, selectedTerms, allRecords]);
 
   if (!open) return null;

@@ -3,6 +3,12 @@ import { Lock, Unlock, Edit2, Bot, Check, Loader2 } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import { formatDateTime } from '../../utils/dateTime';
 
+// 低危: 语种单元格内联样式提升为模块级常量，避免每行每次渲染都重建对象
+const LANG_CELL_FLEX_STYLE = { display: 'inline-flex', alignItems: 'center', gap: '2px', width: '100%' };
+const AI_ICON_STYLE = { flexShrink: 0, color: 'var(--purple)' };
+const TM_ICON_STYLE = { flexShrink: 0, color: 'var(--green)' };
+const LANG_VALUE_SPAN_STYLE = { flex: 1, minWidth: 0 };
+
 const TranslationRow = memo(function TranslationRow({
   rec,
   index,
@@ -194,10 +200,10 @@ const TranslationRow = memo(function TranslationRow({
             title={val ? `${val}${isAiSource ? ' (AI 翻译)' : isTmSource ? ' (翻译记忆)' : ''}` : undefined}
           >
             {val ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', width: '100%' }}>
-                {isAiSource && <Bot size={11} style={{ flexShrink: 0, color: 'var(--purple)' }} />}
-                {isTmSource && <Check size={11} style={{ flexShrink: 0, color: 'var(--green)' }} />}
-                <span className="truncate" style={{ flex: 1, minWidth: 0 }}>{val}</span>
+              <span style={LANG_CELL_FLEX_STYLE}>
+                {isAiSource && <Bot size={11} style={AI_ICON_STYLE} />}
+                {isTmSource && <Check size={11} style={TM_ICON_STYLE} />}
+                <span className="truncate" style={LANG_VALUE_SPAN_STYLE}>{val}</span>
               </span>
             ) : <span className="cell-empty">未翻译</span>}
           </td>

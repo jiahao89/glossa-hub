@@ -311,14 +311,27 @@ router.post('/versions/sync-terms', authenticateToken, heavyOperationLimiter, as
 
     await db.transaction(async (tx) => {
       const logsTable = dbType === 'postgres' ? 'logs' : 'logs_v2';
+      // 跨库锁判断: PG 是 boolean, SQLite 是 0/1 (与本文件 sync-table 分支写法一致)
+      const lockedFalse = dbType === 'postgres' ? 'FALSE' : '0';
 
       for (const action of syncActions) {
         const { type, kw, data } = action;
         if (!kw) continue;
 
-        await tx.run('DELETE FROM terms WHERE version_id = $1 AND kw = $2', [targetVersionId, kw]);
+        // 锁定的词条不允许被合并覆盖/删除
+        const delResult = await tx.run(
+          `DELETE FROM terms WHERE version_id = $1 AND kw = $2 AND (is_locked IS NULL OR is_locked = ${lockedFalse})`,
+          [targetVersionId, kw]
+        );
 
         if (type === 'ADD' || type === 'MOD') {
+          // 若旧词条被锁定而未被删除, 跳过本次插入, 避免 (version_id, kw) 唯一约束冲突
+          const remaining = await tx.queryOne(
+            'SELECT id FROM terms WHERE version_id = $1 AND kw = $2',
+            [targetVersionId, kw]
+          );
+          if (remaining) continue;
+
           if (type === 'ADD') addCount++;
           if (type === 'MOD') modCount++;
 
@@ -342,7 +355,8 @@ router.post('/versions/sync-terms', authenticateToken, heavyOperationLimiter, as
             );
           }
         } else if (type === 'DEL') {
-          delCount++;
+          // 只有真正删掉(非锁定)才计数
+          if ((delResult.changes || 0) > 0) delCount++;
         }
       }
 

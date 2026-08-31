@@ -82,6 +82,22 @@ describe('Toast 系统', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('第三参 options.duration 可覆盖默认停留时长', () => {
+    const { getToast } = renderWithToast();
+    act(() => { getToast().error('较长的错误详情...', { duration: 10000 }); });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    // 默认 5000ms 处不应消失（证明 duration 已覆盖默认值）
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(4999); });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('点击关闭按钮立即移除 toast', () => {
     const { getToast } = renderWithToast();
     act(() => { getToast().info('手动关闭'); });

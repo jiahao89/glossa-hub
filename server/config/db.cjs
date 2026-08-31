@@ -34,8 +34,8 @@ function verifyPassword(plain, hash) {
   return bcrypt.compareSync(plain, hash);
 }
 
-// 创建关键索引以加速常用查询
-function ensureIndexes() {
+// 创建关键索引以加速常用查询（SQLite 与 Postgres 均需执行，索引语句语法两库通用，无 SQLite 专有写法）
+async function ensureIndexes() {
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_versions_project_id ON versions(project_id)',
     'CREATE INDEX IF NOT EXISTS idx_terms_version_id ON terms(version_id)',
@@ -47,6 +47,18 @@ function ensureIndexes() {
   if (dbType === 'sqlite' && sqliteDb) {
     indexes.forEach(idx => sqliteDb.run(idx));
     console.log('⚡ SQLite 索引已就绪');
+  } else if (dbType === 'postgres' && pgPool) {
+    for (const idx of indexes) {
+      // logs_v2 是 SQLite 专有表名（PG 审计日志表为 logs，且 db_init_pg.sql 已建 idx_pg_logs_user_id），PG 分支跳过
+      if (idx.includes('logs_v2')) continue;
+      try {
+        await pgPool.query(idx);
+      } catch (err) {
+        // 部分部署可能尚未创建对应表（如 languages / glossary_terms），单条失败不阻塞其余索引
+        console.warn('⚠️ PG 索引创建跳过:', err.message);
+      }
+    }
+    console.log('⚡ PG 索引已就绪');
   }
 }
 
@@ -170,6 +182,9 @@ async function initSqliteTables() {
 
       // Pre-populate users
       const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'magene123';
+      if (process.env.NODE_ENV === 'production' && adminPassword === 'magene123') {
+        console.warn('🚨🚨 安全警告: 生产环境仍在使用默认管理员种子密码 (magene123)，请立即通过 INITIAL_ADMIN_PASSWORD 环境变量修改！ 🚨🚨');
+      }
       const passHash = hashPassword(adminPassword);
       const userHash = hashPassword('user123');
       const viewerHash = hashPassword('viewer123');
@@ -583,7 +598,7 @@ function ensureDbInit() {
     dbInitPromise = initDatabase()
       .then(async () => {
         dbInitError = null;
-        try { ensureIndexes(); } catch (e) { console.warn('Index error:', e.message); }
+        try { await ensureIndexes(); } catch (e) { console.warn('Index error:', e.message); }
         try { await fixDecathlonAndCopiedTermsOrder(); } catch (e) { console.warn('Sort order fix error:', e.message); }
       })
       .catch((err) => {
