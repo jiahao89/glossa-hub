@@ -33,7 +33,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       await db.run('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
     }
 
-    const token = signUserToken({ id: user.id, username: user.username, role: user.role, name: user.name });
+    const effectiveRole = user.system_role || user.role || 'user';
+    const token = signUserToken({ id: user.id, username: user.username, role: effectiveRole, system_role: effectiveRole, name: user.name });
 
     res.json({
       token,
@@ -41,7 +42,8 @@ router.post('/login', loginLimiter, async (req, res) => {
         id: user.id,
         username: user.username,
         name: user.name,
-        role: user.role
+        role: effectiveRole,
+        system_role: effectiveRole
       }
     });
   } catch (err) {
