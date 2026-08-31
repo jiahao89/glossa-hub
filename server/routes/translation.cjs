@@ -121,7 +121,7 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
           'Accept': 'text/event-stream',
           'X-Magene-Source': 'GlossaHub'
         },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(60000),
         body: JSON.stringify({
           inputs,
           response_mode: 'streaming',
