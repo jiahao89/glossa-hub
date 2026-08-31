@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import GlossaModal from '../GlossaModal';
-import { Sparkles, Loader2, History, GitBranch, RotateCcw } from 'lucide-react';
+import { Sparkles, Loader2, History, GitBranch, RotateCcw, Eraser, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../utils/api';
+import { findTranslationForLang } from '../../utils/languageHelper';
 import { useToast } from '../Toast';
 
 // ============================================================
@@ -45,6 +46,7 @@ export default function EditTermModal({
   const [fields, setFields] = useState({});
   const [loading, setLoading] = useState(false);
   const [generatingKw, setGeneratingKw] = useState(false);
+  const [retranslating, setRetranslating] = useState(false);
 
   // Right-side tab: 'tm' (跨版本参考) | 'history' (修改历史快照)
   // v1.2 重构后此功能丢失 — 现在恢复
@@ -128,6 +130,69 @@ export default function EditTermModal({
       toast.error(err.message || '生成 KW 失败');
     } finally {
       setGeneratingKw(false);
+    }
+  };
+
+  // 清空翻译：删除中文外的其他语种（仅清空表单, 需保存才生效）
+  const handleClearTranslations = () => {
+    const langs = targetLanguagesRef.current;
+    if (langs.length === 0) return;
+    if (!window.confirm('确定要清空全部目标语言的翻译吗？\n仅清空表单内容，点击「保存修改」后才会生效，也可取消不保存。')) {
+      return;
+    }
+    setFields(prev => {
+      const next = { ...prev };
+      langs.forEach(lang => { next[lang] = ''; });
+      return next;
+    });
+    toast.success('已清空翻译，点击「保存修改」确认');
+  };
+
+  // 重新翻译：调用 AI 翻译接口, 更新词条全部翻译（仅写入表单, 需保存才生效）
+  const handleRetranslate = async () => {
+    const cn = (fields['CN（中文）'] || '').trim();
+    if (!cn) {
+      toast.error('请先填写 CN（中文）源文本再重新翻译');
+      return;
+    }
+    const langs = targetLanguagesRef.current;
+    if (langs.length === 0) {
+      toast.error('暂无目标语言');
+      return;
+    }
+    setRetranslating(true);
+    try {
+      const inputs = {
+        KW: (fields.KW || '').trim(),
+        text: cn,
+        context: (fields['所在页面'] || '').trim() || '无',
+        target_languages: langs.join(','),
+      };
+      const res = await apiFetch(`/api/projects/${projectId}/ai-translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '翻译接口失败');
+      }
+      const result = await res.json().catch(() => ({}));
+      const updated = {};
+      langs.forEach(lang => {
+        const val = findTranslationForLang(result, lang);
+        if (val) updated[lang] = val;
+      });
+      if (Object.keys(updated).length === 0) {
+        toast.error('AI 未返回有效翻译结果，请稍后重试');
+        return;
+      }
+      setFields(prev => ({ ...prev, ...updated }));
+      toast.success(`重新翻译完成，已更新 ${Object.keys(updated).length} 个语种，点击「保存修改」确认`);
+    } catch (err) {
+      toast.error(err.message || '重新翻译失败');
+    } finally {
+      setRetranslating(false);
     }
   };
 
@@ -272,7 +337,9 @@ export default function EditTermModal({
 
   const isLocked = record.isLocked === 1 || record.isLocked === true;
   const canManageLock = currentUserRole === 'admin' || projectRole === 'owner';
+  const canWrite = projectRole === 'owner' || projectRole === 'editor' || currentUserRole === 'admin';
   const inputsDisabled = loading || (isLocked && !canManageLock);
+  const transToolsDisabled = inputsDisabled || !canWrite || retranslating;
 
   return (
     <GlossaModal
@@ -376,8 +443,50 @@ export default function EditTermModal({
 
         {/* 翻译列 */}
         <div style={{ gridColumn: 'span 2', marginTop: '1rem' }}>
-          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-            目标语言翻译
+          <h4 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+            <span>目标语言翻译</span>
+            {!inputsDisabled && canWrite && (
+              <span style={{ display: 'inline-flex', gap: '0.6rem' }}>
+                <button
+                  type="button"
+                  onClick={handleClearTranslations}
+                  disabled={transToolsDisabled}
+                  className="btn-text"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    fontSize: '0.78rem',
+                    color: 'var(--red)',
+                    padding: '0.15rem 0.5rem',
+                    borderRadius: '4px',
+                  }}
+                  title="删除中文外的其他语种翻译（需保存后生效）"
+                >
+                  <Eraser size={12} />
+                  <span>清空翻译</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRetranslate}
+                  disabled={transToolsDisabled}
+                  className="btn-text"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    fontSize: '0.78rem',
+                    color: 'var(--accent)',
+                    padding: '0.15rem 0.5rem',
+                    borderRadius: '4px',
+                  }}
+                  title="调用 AI 重新翻译全部语种（需保存后生效）"
+                >
+                  {retranslating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                  <span>{retranslating ? '翻译中...' : '重新翻译'}</span>
+                </button>
+              </span>
+            )}
           </h4>
         </div>
 

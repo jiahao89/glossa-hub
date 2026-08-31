@@ -168,6 +168,106 @@ describe('EditTermModal', () => {
     });
   });
 
+  it('点击"清空翻译": 确认后清空全部目标语言输入框 (不自动保存)', async () => {
+    const origConfirm = window.confirm;
+    window.confirm = vi.fn(() => true);
+
+    const recWithEn = {
+      ...sampleRecord,
+      fields: { ...sampleRecord.fields, 'EN（英文）': 'old-en' },
+    };
+
+    render(
+      <ToastProvider>
+        <EditTermModal
+        open={true}
+        record={recWithEn}
+        fieldMap={{ ...fieldMap }}
+        getRecordValue={(rec, fId) => {
+          const inv = { f_kw: 'KW', f_cn: 'CN（中文）', f_page: '所在页面', f_size: '字号类别', f_en: 'EN（英文）' };
+          return rec.fields[inv[fId]] || '';
+        }}
+        targetLanguages={['EN（英文）']}
+        projectRole="editor"
+        onClose={mockOnClose}
+      />
+      </ToastProvider>
+    );
+
+    fireEvent.click(screen.getByText('清空翻译').closest('button'));
+
+    // EN 输入框被清空
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('old-en')).toBeNull();
+    });
+    // 中文源文本保留
+    expect(screen.getByDisplayValue('现有中文')).toBeInTheDocument();
+    // 未触发保存
+    expect(mockOnSaveSuccess).not.toHaveBeenCalled();
+    expect(mockOnClose).not.toHaveBeenCalled();
+
+    window.confirm = origConfirm;
+  });
+
+  it('点击"重新翻译": 调用 ai-translate 并把结果写入全部语种输入框', async () => {
+    // 按 URL 分发 mock, 不依赖请求顺序 (references 默认加载 vs ai-translate)
+    mockFetch.mockImplementation((url) => {
+      if (String(url).includes('ai-translate')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ 'EN（英文）': 'new-en' }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+    });
+
+    render(
+      <ToastProvider>
+        <EditTermModal
+        open={true}
+        record={sampleRecord}
+        fieldMap={fieldMap}
+        getRecordValue={getRecordValue}
+        targetLanguages={['EN（英文）']}
+        projectRole="editor"
+        onClose={mockOnClose}
+      />
+      </ToastProvider>
+    );
+
+    fireEvent.click(screen.getByText('重新翻译').closest('button'));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/projects/proj-default/ai-translate'),
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    // AI 结果写入 EN 输入框
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('new-en')).toBeInTheDocument();
+    });
+    // 未自动保存
+    expect(mockOnSaveSuccess).not.toHaveBeenCalled();
+  });
+
+  it('viewer 角色不显示"清空翻译/重新翻译"按钮', () => {
+    render(
+      <ToastProvider>
+        <EditTermModal
+        open={true}
+        record={sampleRecord}
+        fieldMap={fieldMap}
+        getRecordValue={getRecordValue}
+        targetLanguages={['EN（英文）']}
+        projectRole="viewer"
+        onClose={mockOnClose}
+      />
+      </ToastProvider>
+    );
+
+    expect(screen.queryByText('清空翻译')).toBeNull();
+    expect(screen.queryByText('重新翻译')).toBeNull();
+  });
+
   it('点击"保存修改": 调用 PUT /api/terms/:id 并触发 onSaveSuccess + onClose', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
