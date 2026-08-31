@@ -337,11 +337,14 @@ export default function TranslationTab({
 
         if (!res.ok) {
            const error = await res.json().catch(() => ({}));
-           const debugInfo = error.debug
-             ? ` | [debug] status=${error.debug.difyStatus} | tried=${error.debug.triedUrls?.join(' → ')} | raw=${error.debug.difyRaw?.slice(0, 200)}`
-             : '';
            console.error(`🔍 [batch-translate] Dify error:`, error);
-           throw new Error((error.error || '翻译接口失败') + debugInfo);
+           let msg = error.error || '翻译接口失败';
+           if (msg.includes('PluginInvokeError') || msg.includes('google/genai')) {
+             msg = 'Dify 内部大模型插件异常 (Google GenAI 报错或频率超限)';
+           } else if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+             msg = 'AI 模型请求频次超限 (Rate Limit)';
+           }
+           throw new Error(msg);
         }
         
         const result = await res.json().catch(() => ({}));
@@ -370,9 +373,9 @@ export default function TranslationTab({
       } catch (err) {
         errorCount++;
         console.error(`翻译词条 ${item.KW} 失败:`, err);
-        toast.error(`翻译词条 ${item.KW || item['中文']} 失败: ${err.message}`);
+        toast.error(`翻译词条「${item.KW || item['中文']}」失败: ${err.message}`);
       }
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 600));
     }
 
     // 循环结束强制终刷，确保后续「确认写入」能读到完整数据

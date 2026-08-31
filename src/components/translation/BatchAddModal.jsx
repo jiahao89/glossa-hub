@@ -153,11 +153,14 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
 
           if (!res.ok) {
              const error = await res.json().catch(() => ({}));
-             const debugInfo = error.debug
-               ? ` | [debug] status=${error.debug.difyStatus} | tried=${error.debug.triedUrls?.join(' → ')} | raw=${error.debug.difyRaw?.slice(0, 200)}`
-               : '';
              console.error(`🔍 [batch-add] Dify error:`, error);
-             throw new Error((error.error || '翻译接口失败') + debugInfo);
+             let msg = error.error || '翻译接口失败';
+             if (msg.includes('PluginInvokeError') || msg.includes('google/genai')) {
+               msg = 'Dify 内部大模型插件异常 (Google GenAI 报错或频率超限)';
+             } else if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+               msg = 'AI 模型请求频次超限 (Rate Limit)';
+             }
+             throw new Error(msg);
           }
           
           const result = await res.json().catch(() => ({}));
@@ -182,10 +185,10 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
           translatedRows.push(nextRow);
         } catch (err) {
           console.error(`翻译词条 ${row.KW} 失败:`, err);
-          toast.error(`翻译词条 ${row.KW || row['CN（中文）']} 失败: ${err.message}`);
+          toast.error(`翻译词条「${row.KW || row['CN（中文）']}」失败: ${err.message}`);
           translatedRows.push(row);
         }
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 600));
       } else {
         translatedRows.push(row);
       }
