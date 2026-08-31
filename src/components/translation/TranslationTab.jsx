@@ -138,6 +138,7 @@ export default function TranslationTab({
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchInput);
+      setCurrentPage(1);
     }, 250);
     return () => clearTimeout(timer);
   }, [searchInput]);
@@ -965,7 +966,10 @@ export default function TranslationTab({
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '0.8rem 1.2rem', gap: '0.8rem' }}>
       <TranslationToolbar
         searchInput={searchInput}
-        setSearchInput={setSearchInput}
+        setSearchInput={(val) => {
+          setSearchInput(val);
+          setCurrentPage(1);
+        }}
         totalRecords={totalRecords}
         difyConfigured={difyConfigured || difyConnected}
         filterStatus={filterStatus}
