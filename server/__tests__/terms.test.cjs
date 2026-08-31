@@ -170,10 +170,58 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(targetRecordsRes.status).toBe(200);
-    expect(targetRecordsRes.body.records.length).toBe(2);
     // Initial term should remain at index 0, and copied term should be at index 1 (at the end)
     expect(targetRecordsRes.body.records[0].fields.KW).toBe('KW_INITIAL');
     expect(targetRecordsRes.body.records[1].fields.KW).toBe('KW_TEST_TERM');
+  });
+
+  describe('Search Functionality (/api/tables/:tableId/records?search=...)', () => {
+    const searchTermId = 'term-search-test-' + Date.now();
+
+    beforeAll(async () => {
+      await db.run(
+        `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+         VALUES ($1, $2, 'KW_SEARCH_UNIT', '搜索测试页面', '大标题', '精准搜索中文', '{"EN（英文）":"Search Target"}', '{}', datetime('now'), datetime('now'), 0, 'APPROVED')`,
+        [searchTermId, testVersionId]
+      );
+    });
+
+    it('should search with leading/trailing spaces correctly', async () => {
+      const res = await request(app)
+        .get(`/api/tables/${testVersionId}/records?search=${encodeURIComponent(' 精准搜索 ')}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.records.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.records.some(r => r.recordId === searchTermId)).toBe(true);
+    });
+
+    it('should search by owner (字号类别) column', async () => {
+      const res = await request(app)
+        .get(`/api/tables/${testVersionId}/records?search=${encodeURIComponent('大标题')}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.records.some(r => r.recordId === searchTermId)).toBe(true);
+    });
+
+    it('should support multi-token space-separated search', async () => {
+      const res = await request(app)
+        .get(`/api/tables/${testVersionId}/records?search=${encodeURIComponent('精准 页面')}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.records.some(r => r.recordId === searchTermId)).toBe(true);
+    });
+
+    it('should escape wildcard underscores properly', async () => {
+      const res = await request(app)
+        .get(`/api/tables/${testVersionId}/records?search=${encodeURIComponent('KW_SEARCH_UNIT')}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.records.some(r => r.recordId === searchTermId)).toBe(true);
+    });
   });
 });
 

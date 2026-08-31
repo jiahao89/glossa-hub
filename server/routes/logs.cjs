@@ -41,17 +41,33 @@ router.get('/', authenticateToken, async (req, res) => {
     const params = [];
     let pi = 1; // paramIndex
 
-    if (search) {
+    const rawSearch = (search || '').trim();
+    if (rawSearch) {
+      const tokens = rawSearch.split(/\s+/).filter(Boolean);
+      const escapeLike = (str) => str.replace(/([%_\\])/g, '\\$1');
+
       if (dbType === 'sqlite') {
-        const p1 = pi, p2 = pi + 1, p3 = pi + 2, p4 = pi + 3;
-        const pattern = `%${search}%`;
-        whereClause += ` AND (l.kw LIKE $${p1} OR l.chinese LIKE $${p2} OR l.details LIKE $${p3} OR u.name LIKE $${p4})`;
-        params.push(pattern, pattern, pattern, pattern);
-        pi += 4;
+        const tokenClauses = [];
+        for (const token of tokens) {
+          const p1 = pi, p2 = pi + 1, p3 = pi + 2, p4 = pi + 3;
+          tokenClauses.push(`(l.kw LIKE $${p1} ESCAPE '\\' OR l.chinese LIKE $${p2} ESCAPE '\\' OR l.details LIKE $${p3} ESCAPE '\\' OR u.name LIKE $${p4} ESCAPE '\\')`);
+          const pattern = `%${escapeLike(token)}%`;
+          params.push(pattern, pattern, pattern, pattern);
+          pi += 4;
+        }
+        if (tokenClauses.length > 0) {
+          whereClause += ` AND (${tokenClauses.join(' AND ')})`;
+        }
       } else {
-        whereClause += ` AND (l.kw ILIKE $${pi} OR l.chinese ILIKE $${pi} OR l.details ILIKE $${pi} OR u.name ILIKE $${pi})`;
-        params.push(`%${search}%`);
-        pi++;
+        const tokenClauses = [];
+        for (const token of tokens) {
+          tokenClauses.push(`(l.kw ILIKE $${pi} ESCAPE '\\' OR l.chinese ILIKE $${pi} ESCAPE '\\' OR l.details ILIKE $${pi} ESCAPE '\\' OR u.name ILIKE $${pi} ESCAPE '\\')`);
+          params.push(`%${escapeLike(token)}%`);
+          pi++;
+        }
+        if (tokenClauses.length > 0) {
+          whereClause += ` AND (${tokenClauses.join(' AND ')})`;
+        }
       }
     }
 

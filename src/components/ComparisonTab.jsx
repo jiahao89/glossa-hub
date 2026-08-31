@@ -412,10 +412,17 @@ export default function ComparisonTab() {
 
   // Filtered comparison results
   const filteredResults = useMemo(() => {
+    const q = (searchQuery || '').toLowerCase().trim();
+    if (!q) {
+      if (statusFilter !== 'all') {
+        return comparisonResults.filter(item => item.status === statusFilter);
+      }
+      return comparisonResults;
+    }
     return comparisonResults.filter(item => {
-      const matchesSearch = 
-        item.KW.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        item.中文.toLowerCase().includes(searchQuery.toLowerCase());
+      const kw = String(item.KW || '').toLowerCase();
+      const cn = String(item.中文 || item['CN（中文）'] || item.zh_cn || '').toLowerCase();
+      const matchesSearch = kw.includes(q) || cn.includes(q);
       
       if (!matchesSearch) return false;
 

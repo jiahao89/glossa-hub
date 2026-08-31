@@ -43,17 +43,33 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
     const queryParams = [tableId];
     let paramIndex = 2;
 
-    if (search) {
+    const rawSearch = (req.query.search || '').trim();
+    if (rawSearch) {
+      const tokens = rawSearch.split(/\s+/).filter(Boolean);
+      const escapeLike = (str) => str.replace(/([%_\\])/g, '\\$1');
+
       if (dbType === 'sqlite') {
-        const p1 = paramIndex, p2 = paramIndex + 1, p3 = paramIndex + 2, p4 = paramIndex + 3;
-        whereClause += ` AND (kw LIKE $${p1} OR zh_cn LIKE $${p2} OR context LIKE $${p3} OR translations LIKE $${p4})`;
-        const searchPattern = `%${search}%`;
-        queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
-        paramIndex += 4;
+        const tokenClauses = [];
+        for (const token of tokens) {
+          const p1 = paramIndex, p2 = paramIndex + 1, p3 = paramIndex + 2, p4 = paramIndex + 3, p5 = paramIndex + 4;
+          tokenClauses.push(`(kw LIKE $${p1} ESCAPE '\\' OR zh_cn LIKE $${p2} ESCAPE '\\' OR context LIKE $${p3} ESCAPE '\\' OR owner LIKE $${p4} ESCAPE '\\' OR translations LIKE $${p5} ESCAPE '\\')`);
+          const searchPattern = `%${escapeLike(token)}%`;
+          queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
+          paramIndex += 5;
+        }
+        if (tokenClauses.length > 0) {
+          whereClause += ` AND (${tokenClauses.join(' AND ')})`;
+        }
       } else {
-        whereClause += ` AND (kw ILIKE $${paramIndex} OR zh_cn ILIKE $${paramIndex} OR context ILIKE $${paramIndex} OR translations::text ILIKE $${paramIndex})`;
-        queryParams.push(`%${search}%`);
-        paramIndex++;
+        const tokenClauses = [];
+        for (const token of tokens) {
+          tokenClauses.push(`(kw ILIKE $${paramIndex} ESCAPE '\\' OR zh_cn ILIKE $${paramIndex} ESCAPE '\\' OR context ILIKE $${paramIndex} ESCAPE '\\' OR owner ILIKE $${paramIndex} ESCAPE '\\' OR translations::text ILIKE $${paramIndex} ESCAPE '\\')`);
+          queryParams.push(`%${escapeLike(token)}%`);
+          paramIndex++;
+        }
+        if (tokenClauses.length > 0) {
+          whereClause += ` AND (${tokenClauses.join(' AND ')})`;
+        }
       }
     }
 
