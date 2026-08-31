@@ -109,7 +109,10 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
   let lastStatus = 500;
   let lastErrorText = '';
 
-  for (const item of uniqueCandidates) {
+  for (let cIdx = 0; cIdx < uniqueCandidates.length; cIdx++) {
+    const item = uniqueCandidates[cIdx];
+    const isPrimary = (cIdx === 0);
+    const candidateTimeout = isPrimary ? 45000 : 12000;
     try {
       const targetUrl = `${item.baseUrl}/workflows/run`;
       const response = await fetch(targetUrl, {
@@ -121,7 +124,7 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
           'Accept': 'text/event-stream',
           'X-Magene-Source': 'GlossaHub'
         },
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(candidateTimeout),
         body: JSON.stringify({
           inputs,
           response_mode: 'streaming',

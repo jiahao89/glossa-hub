@@ -145,22 +145,40 @@ export default function BatchAddModal({ open, onClose, selectedTableId, onAddSuc
             target_languages: targetLanguages.join(',')
           };
 
-          const res = await apiFetch(`/api/projects/proj-default/ai-translate?debug=1`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inputs })
-          });
+          let res = null;
+          let lastErr = null;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              res = await apiFetch(`/api/projects/proj-default/ai-translate?debug=1`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inputs })
+              });
+              if (res.ok) {
+                lastErr = null;
+                break;
+              }
+              const error = await res.json().catch(() => ({}));
+              console.error(`🔍 [batch-add] Dify error (attempt ${attempt + 1}):`, error);
+              let msg = error.error || '翻译接口失败';
+              if (msg.includes('PluginInvokeError') || msg.includes('google/genai')) {
+                msg = 'Dify 内部大模型插件异常 (Google GenAI 报错或频率超限)';
+              } else if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+                msg = 'AI 模型请求频次超限 (Rate Limit)';
+              } else if (msg.includes('timeout') || msg.includes('Timeout')) {
+                msg = 'AI 翻译请求超时';
+              }
+              lastErr = new Error(msg);
+            } catch (e) {
+              lastErr = e;
+            }
+            if (attempt === 0) {
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
 
-          if (!res.ok) {
-             const error = await res.json().catch(() => ({}));
-             console.error(`🔍 [batch-add] Dify error:`, error);
-             let msg = error.error || '翻译接口失败';
-             if (msg.includes('PluginInvokeError') || msg.includes('google/genai')) {
-               msg = 'Dify 内部大模型插件异常 (Google GenAI 报错或频率超限)';
-             } else if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
-               msg = 'AI 模型请求频次超限 (Rate Limit)';
-             }
-             throw new Error(msg);
+          if (!res || !res.ok) {
+            throw lastErr || new Error('翻译失败');
           }
           
           const result = await res.json().catch(() => ({}));
