@@ -175,6 +175,64 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
     expect(targetRecordsRes.body.records[1].fields.KW).toBe('KW_TEST_TERM');
   });
 
+  describe('Batch Clear Translations (/api/terms/batch-clear-translations)', () => {
+    const clearTestTerm1 = 'term-clear-1-' + Date.now();
+    const clearTestTerm2 = 'term-clear-2-' + Date.now();
+    const lockedClearTerm = 'term-clear-locked-' + Date.now();
+
+    beforeAll(async () => {
+      await db.run(
+        `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+         VALUES ($1, $2, 'KW_CLEAR_1', '清空页面1', '字号A', '保留中文1', '{"EN（英文）":"Clear Me 1","FR（法）":"Effacer 1"}', '{"EN（英文）":"ai"}', datetime('now'), datetime('now'), 0, 'APPROVED')`,
+        [clearTestTerm1, testVersionId]
+      );
+      await db.run(
+        `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+         VALUES ($1, $2, 'KW_CLEAR_2', '清空页面2', '字号B', '保留中文2', '{"EN（英文）":"Clear Me 2","DE（德）":"Löschen 2"}', '{"DE（德）":"tm"}', datetime('now'), datetime('now'), 0, 'APPROVED')`,
+        [clearTestTerm2, testVersionId]
+      );
+      await db.run(
+        `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+         VALUES ($1, $2, 'KW_CLEAR_LOCKED', '锁定页面', '字号C', '锁定中文', '{"EN（英文）":"Locked English"}', '{}', datetime('now'), datetime('now'), 1, 'APPROVED')`,
+        [lockedClearTerm, testVersionId]
+      );
+    });
+
+    it('should reject requests with empty termIds with 400', async () => {
+      const res = await request(app)
+        .post('/api/terms/batch-clear-translations')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ termIds: [] });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('should clear translations while preserving Chinese and other fields, skipping locked terms', async () => {
+      const res = await request(app)
+        .post('/api/terms/batch-clear-translations')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ termIds: [clearTestTerm1, clearTestTerm2, lockedClearTerm] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.successCount).toBe(2);
+      expect(res.body.lockedCount).toBe(1);
+
+      // Verify term 1 and 2 in DB
+      const r1 = await db.queryOne('SELECT * FROM terms WHERE id = $1', [clearTestTerm1]);
+      expect(r1.zh_cn).toBe('保留中文1');
+      expect(r1.kw).toBe('KW_CLEAR_1');
+      expect(r1.context).toBe('清空页面1');
+      expect(r1.owner).toBe('字号A');
+      const trans1 = typeof r1.translations === 'string' ? JSON.parse(r1.translations) : r1.translations;
+      expect(Object.keys(trans1).length).toBe(0);
+
+      // Verify locked term was NOT cleared
+      const rLocked = await db.queryOne('SELECT * FROM terms WHERE id = $1', [lockedClearTerm]);
+      const transLocked = typeof rLocked.translations === 'string' ? JSON.parse(rLocked.translations) : rLocked.translations;
+      expect(transLocked['EN（英文）']).toBe('Locked English');
+    });
+  });
+
   describe('Search Functionality (/api/tables/:tableId/records?search=...)', () => {
     const searchTermId = 'term-search-test-' + Date.now();
 
