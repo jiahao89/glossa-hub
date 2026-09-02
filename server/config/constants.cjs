@@ -25,7 +25,7 @@ const TARGET_LANGUAGES = [
   '瑞典',
   '挪威',
   '荷兰',
-  'TH（泰语）',
+  '泰语',
 ];
 
 /**
@@ -49,7 +49,7 @@ const LEGACY_TO_NEW_LANG_MAP = {
   '瑞典语': '瑞典',
   '挪威语': '挪威',
   '荷兰语': '荷兰',
-  '泰语': 'TH（泰语）', 'TH': 'TH（泰语）', '泰': 'TH（泰语）', 'Thai': 'TH（泰语）', 'thai': 'TH（泰语）', 'TH（泰）': 'TH（泰语）',
+  'TH（泰语）': '泰语', 'TH': '泰语', '泰': '泰语', 'Thai': '泰语', 'thai': '泰语', 'TH（泰）': '泰语',
 };
 
 module.exports = { TARGET_LANGUAGES, LEGACY_TO_NEW_LANG_MAP };
