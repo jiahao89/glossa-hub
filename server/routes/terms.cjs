@@ -83,12 +83,30 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
     }
 
     if (untranslated) {
-      if (dbType === 'sqlite') {
-        const conditions = TARGET_LANGUAGES.map(lang => `(json_extract(translations, '$.${lang}') IS NULL OR json_extract(translations, '$.${lang}') = '')`);
-        whereClause += ` AND (${conditions.join(' OR ')})`;
-      } else {
-        const conditions = TARGET_LANGUAGES.map(lang => `(translations->>'${lang}' IS NULL OR translations->>'${lang}' = '')`);
-        whereClause += ` AND (${conditions.join(' OR ')})`;
+      // 动态获取当前数据表对应项目配置的有效语种列表 (避免硬编码导致语种字段名不匹配)
+      const verRow = await db.queryOne('SELECT project_id FROM versions WHERE id = $1', [tableId]);
+      const projectId = verRow?.project_id || 'proj-default';
+      const langRows = await db.query(
+        'SELECT lang_name FROM languages WHERE project_id = $1 ORDER BY display_order ASC',
+        [projectId]
+      );
+      const activeLangs = (langRows && langRows.length > 0)
+        ? langRows.map(l => l.lang_name)
+        : TARGET_LANGUAGES;
+
+      if (activeLangs.length > 0) {
+        if (dbType === 'sqlite') {
+          const conditions = activeLangs.map(lang => `(json_extract(translations, '$.${lang}') IS NULL OR json_extract(translations, '$.${lang}') = '')`);
+          whereClause += ` AND (${conditions.join(' OR ')})`;
+        } else {
+          const conditions = activeLangs.map((lang, idx) => {
+            const p = paramIndex + idx;
+            return `(translations->>$${p} IS NULL OR translations->>$${p} = '')`;
+          });
+          queryParams.push(...activeLangs);
+          paramIndex += activeLangs.length;
+          whereClause += ` AND (${conditions.join(' OR ')})`;
+        }
       }
     }
 

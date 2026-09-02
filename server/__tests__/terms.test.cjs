@@ -281,5 +281,44 @@ describe('Term Management & Concurrency Control (/api/terms, /api/tables)', () =
       expect(res.body.records.some(r => r.recordId === searchTermId)).toBe(true);
     });
   });
+
+  describe('Untranslated Filter (/api/tables/:tableId/records?untranslated=true)', () => {
+    const fullTermId = 'term-full-trans-' + Date.now();
+    const untranslatedTermId = 'term-partial-trans-' + Date.now();
+
+    beforeAll(async () => {
+      // Fetch active languages for test project
+      const langRows = await db.query(
+        "SELECT lang_name FROM languages WHERE project_id = 'proj-default' ORDER BY display_order ASC"
+      );
+      const fullTranslations = {};
+      langRows.forEach(l => {
+        fullTranslations[l.lang_name] = `Translated ${l.lang_name}`;
+      });
+
+      await db.run(
+        `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+         VALUES ($1, $2, 'KW_FULL_TRANS', '页面1', '字号1', '完全翻译词条', $3, '{}', datetime('now'), datetime('now'), 0, 'APPROVED')`,
+        [fullTermId, testVersionId, JSON.stringify(fullTranslations)]
+      );
+
+      await db.run(
+        `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, status)
+         VALUES ($1, $2, 'KW_UNTRANS', '页面2', '字号2', '未翻译词条', '{}', '{}', datetime('now'), datetime('now'), 0, 'APPROVED')`,
+        [untranslatedTermId, testVersionId]
+      );
+    });
+
+    it('should only return records that have missing translations when untranslated=true', async () => {
+      const res = await request(app)
+        .get(`/api/tables/${testVersionId}/records?untranslated=true`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      const returnedIds = res.body.records.map(r => r.recordId);
+      expect(returnedIds).toContain(untranslatedTermId);
+      expect(returnedIds).not.toContain(fullTermId);
+    });
+  });
 });
 
