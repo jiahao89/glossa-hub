@@ -33,7 +33,6 @@ router.get('/tables/:tableId/records', authenticateToken, async (req, res) => {
   const { tableId } = req.params;
   const page = parseInt(req.query.page) || 1;
   const pageSize = parseInt(req.query.pageSize) || 50;
-  const search = req.query.search || '';
   const statusFilter = req.query.status || '';
   const untranslated = req.query.untranslated === 'true' || req.query.untranslated === '1';
 
