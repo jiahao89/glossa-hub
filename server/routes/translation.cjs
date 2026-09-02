@@ -9,10 +9,9 @@ const { parseJsonField } = require('../utils/jsonFields.cjs');
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GlossaHub/1.1';
 
 // 内置 Dify 引擎 (由运维预配置, 前端无需手动输入 Key)
-// Key 由环境变量 DIFY_BUILTIN_KEYS (逗号分隔) 注入, 顺序与 BUILTIN_DIFY_HOSTS 一一对应:
+// Key 由环境变量 DIFY_BUILTIN_KEYS (逗号分隔) 注入, 顺序:
 //   [0] night.magene.cn → 迈金 Night 专用引擎
 //   [1] api.dify.ai     → Dify 官方云服务
-const BUILTIN_DIFY_HOSTS = ['night.magene.cn', 'api.dify.ai'];
 
 // 从环境变量构建内置引擎 { host: apiKey } 映射
 function getBuiltinDifyApps() {
@@ -299,7 +298,8 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
     return res.status(400).json({ error: '缺少 inputs 输入参数' });
   }
 
-  const termKw = inputs.kw || inputs.keyword || '';
+  // ⚠️ 前端统一发送大写 KW (Dify 工作流入参), 兼容旧客户端的小写 kw/keyword
+  const termKw = inputs.KW || inputs.kw || inputs.keyword || '';
   const zhCn = (inputs.zh_cn || inputs.chinese || inputs.text || '').trim();
   const targetLangs = inputs.target_languages || inputs.languages || '';
 

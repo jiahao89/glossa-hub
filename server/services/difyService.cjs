@@ -3,10 +3,8 @@ const { db, getDbType } = require('../config/db.cjs');
 // 专业词库匹配查询失败是否已告警（避免 KW 高频生成时日志刷屏）
 let glossaryQueryWarned = false;
 
-// 内置 Dify 引擎域名 (顺序与环境变量 DIFY_BUILTIN_KEYS 中的 key 一一对应: [0]=night, [1]=dify 云)
-const BUILTIN_DIFY_HOSTS = ['night.magene.cn', 'api.dify.ai'];
-
 // ⚠️ 内置 Key 统一由环境变量 DIFY_BUILTIN_KEYS (逗号分隔) 注入, 源码不硬编码任何 key
+// 顺序与内置引擎域名一一对应: [0]=night.magene.cn, [1]=api.dify.ai
 let builtinKeysWarned = false;
 function getBuiltinKeys() {
   const keys = (process.env.DIFY_BUILTIN_KEYS || '')
