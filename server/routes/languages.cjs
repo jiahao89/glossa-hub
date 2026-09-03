@@ -93,12 +93,17 @@ router.put('/projects/:projectId/languages/:langId', authenticateToken, requireP
             const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
             const oldKeyPh = `$${versionIds.length + 1}`;
             const newKeyPh = `$${versionIds.length + 2}`;
-            // translations ? 旧键 仅命中存在旧键的行（旧键不存在则不改动，语义与逐条迁移等价）：
-            // 复制旧键值到新键后删除旧键；若新键已存在则被覆盖，与 JS 版行为一致
+            // translations / translations_meta ? 旧键 仅命中存在旧键的行：
+            // 复制旧键值到新键后删除旧键；若新键已存在则被覆盖
             await tx.run(
               `UPDATE terms
-               SET translations = (translations - ${oldKeyPh}) || jsonb_build_object(${newKeyPh}, translations -> ${oldKeyPh})
-               WHERE version_id IN (${versionPlaceholders}) AND translations ? ${oldKeyPh}`,
+               SET translations = (translations - ${oldKeyPh}) || jsonb_build_object(${newKeyPh}, translations -> ${oldKeyPh}),
+                   translations_meta = CASE 
+                     WHEN translations_meta ? ${oldKeyPh} 
+                     THEN (translations_meta - ${oldKeyPh}) || jsonb_build_object(${newKeyPh}, translations_meta -> ${oldKeyPh})
+                     ELSE translations_meta 
+                   END
+               WHERE version_id IN (${versionPlaceholders}) AND (translations ? ${oldKeyPh} OR translations_meta ? ${oldKeyPh})`,
               [...versionIds, oldName, newName]
             );
           }
@@ -118,23 +123,36 @@ router.put('/projects/:projectId/languages/:langId', authenticateToken, requireP
         if (versionIds.length > 0) {
           const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
           const allTerms = await db.query(
-            `SELECT id, translations FROM terms WHERE version_id IN (${versionPlaceholders})`,
+            `SELECT id, translations, translations_meta FROM terms WHERE version_id IN (${versionPlaceholders})`,
             versionIds
           );
 
           const updates = [];
           for (const term of allTerms) {
             let trans = {};
+            let meta = {};
             try {
               trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
+              meta = typeof term.translations_meta === 'string' ? JSON.parse(term.translations_meta || '{}') : (term.translations_meta || {});
             } catch {
               trans = {};
+              meta = {};
             }
 
+            let changed = false;
             if (trans[oldName] !== undefined) {
               trans[newName] = trans[oldName];
               delete trans[oldName];
-              updates.push({ id: term.id, json: JSON.stringify(trans) });
+              changed = true;
+            }
+            if (meta[oldName] !== undefined) {
+              meta[newName] = meta[oldName];
+              delete meta[oldName];
+              changed = true;
+            }
+
+            if (changed) {
+              updates.push({ id: term.id, transJson: JSON.stringify(trans), metaJson: JSON.stringify(meta) });
             }
           }
 
@@ -144,8 +162,8 @@ router.put('/projects/:projectId/languages/:langId', authenticateToken, requireP
             await db.transaction(async (tx) => {
               for (const u of batch) {
                 await tx.run(
-                  'UPDATE terms SET translations = $1 WHERE id = $2',
-                  [u.json, u.id]
+                  'UPDATE terms SET translations = $1, translations_meta = $2 WHERE id = $3',
+                  [u.transJson, u.metaJson, u.id]
                 );
               }
             });
@@ -187,30 +205,48 @@ router.delete('/projects/:projectId/languages/:langId', authenticateToken, requi
 
       if (versionIds.length > 0) {
         const versionPlaceholders = versionIds.map((_, idx) => `$${idx + 1}`).join(',');
-        const allTerms = await tx.query(
-          `SELECT id, translations FROM terms WHERE version_id IN (${versionPlaceholders})`,
-          versionIds
-        );
+        const oldKeyPh = `$${versionIds.length + 1}`;
 
-        for (const term of allTerms) {
-          let trans = {};
-          try {
-            trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
-          } catch {
-            trans = {};
-          }
+        if (dbType === 'postgres') {
+          // PG 分支: 使用单条 jsonb 键减法语句高效删除键
+          await tx.run(
+            `UPDATE terms
+             SET translations = translations - ${oldKeyPh},
+                 translations_meta = translations_meta - ${oldKeyPh}
+             WHERE version_id IN (${versionPlaceholders}) AND (translations ? ${oldKeyPh} OR translations_meta ? ${oldKeyPh})`,
+            [...versionIds, oldName]
+          );
+        } else {
+          const allTerms = await tx.query(
+            `SELECT id, translations, translations_meta FROM terms WHERE version_id IN (${versionPlaceholders})`,
+            versionIds
+          );
 
-          if (trans[oldName] !== undefined) {
-            delete trans[oldName];
-            if (dbType === 'postgres') {
+          for (const term of allTerms) {
+            let trans = {};
+            let meta = {};
+            try {
+              trans = typeof term.translations === 'string' ? JSON.parse(term.translations || '{}') : (term.translations || {});
+              meta = typeof term.translations_meta === 'string' ? JSON.parse(term.translations_meta || '{}') : (term.translations_meta || {});
+            } catch {
+              trans = {};
+              meta = {};
+            }
+
+            let changed = false;
+            if (trans[oldName] !== undefined) {
+              delete trans[oldName];
+              changed = true;
+            }
+            if (meta[oldName] !== undefined) {
+              delete meta[oldName];
+              changed = true;
+            }
+
+            if (changed) {
               await tx.run(
-                'UPDATE terms SET translations = $1::jsonb WHERE id = $2',
-                [JSON.stringify(trans), term.id]
-              );
-            } else {
-              await tx.run(
-                'UPDATE terms SET translations = $1 WHERE id = $2',
-                [JSON.stringify(trans), term.id]
+                'UPDATE terms SET translations = $1, translations_meta = $2 WHERE id = $3',
+                [JSON.stringify(trans), JSON.stringify(meta), term.id]
               );
             }
           }

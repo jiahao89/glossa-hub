@@ -288,16 +288,15 @@ export default function TranslationTab({
     setIsTranslatingBatch(true);
     // 本地工作副本 + 节流刷新：不再直接变异 state 对象，也不每条都全量 setState
     const workingList = batchPreviewList.map(item => ({ ...item }));
-    let translatedCount = 0;
     let successCount = 0;
     let errorCount = 0;
 
-    // 攒批刷新：每翻译完 3 条或距上次刷新超过 500ms 才真正 setState 一次
+    // 攒批刷新：每翻译完 2 条或距上次刷新超过 300ms 才真正 setState 一次
     let pendingFlush = 0;
     let lastFlushAt = Date.now();
     const flushPreview = (force = false) => {
       const now = Date.now();
-      if (force || pendingFlush >= 3 || now - lastFlushAt >= 500) {
+      if (force || pendingFlush >= 2 || now - lastFlushAt >= 300) {
         setBatchPreviewList([...workingList]);
         pendingFlush = 0;
         lastFlushAt = now;
@@ -306,20 +305,34 @@ export default function TranslationTab({
 
     const activeTargetLangs = targetLanguagesList.filter(lang => !excludedTranslateLangs.has(lang));
 
+    // 收集所有待翻译的任务项
+    const tasks = [];
     for (let i = 0; i < workingList.length; i++) {
       const item = workingList[i];
       if (!selectedBatchItemIds.has(item.recordId)) continue;
       
       const effectiveMissingLangs = (item.missingLangs || []).filter(l => activeTargetLangs.includes(l));
       if (effectiveMissingLangs.length === 0) continue;
+      tasks.push({ item, index: i, effectiveMissingLangs });
+    }
 
-      translatedCount++;
-      setBatchProgress({
-        total: selectedBatchItemIds.size,
-        current: translatedCount,
-        status: `正在翻译 (${translatedCount}/${selectedBatchItemIds.size}): ${item.KW || item['中文']}`
-      });
+    if (tasks.length === 0) {
+      setIsTranslatingBatch(false);
+      setBatchProgress({ total: 0, current: 0, status: '所选项已全部翻译，无需重复翻译。' });
+      return;
+    }
 
+    const totalTasks = tasks.length;
+    let completedCount = 0;
+
+    setBatchProgress({
+      total: totalTasks,
+      current: 0,
+      status: `准备就绪，正在以并发模式启动翻译 (0/${totalTasks})...`
+    });
+
+    const translateTask = async (task) => {
+      const { item, index: i, effectiveMissingLangs } = task;
       try {
         const targetLangsReq = effectiveMissingLangs.join(',');
 
@@ -374,8 +387,7 @@ export default function TranslationTab({
           if (val) trans[lang] = val;
         });
         
-        // 不可变更新：以新对象替换旧 item，绝不直接变异 state 中的原对象
-        const nextItem = { ...item };
+        const nextItem = { ...workingList[i] };
         if (result._source === 'tm') {
           nextItem.tmMatch = true;
         }
@@ -387,15 +399,33 @@ export default function TranslationTab({
           errorCount++;
         }
         workingList[i] = nextItem;
-        pendingFlush++;
-        flushPreview();
       } catch (err) {
         errorCount++;
         console.error(`翻译词条 ${item.KW} 失败:`, err);
         toast.error(`翻译词条「${item.KW || item['中文']}」失败: ${err.message}`);
+      } finally {
+        completedCount++;
+        pendingFlush++;
+        flushPreview();
+        setBatchProgress({
+          total: totalTasks,
+          current: completedCount,
+          status: `正在并发翻译 (${completedCount}/${totalTasks}): ${item.KW || item['中文']}`
+        });
       }
-      await new Promise(resolve => setTimeout(resolve, 600));
-    }
+    };
+
+    // 并发工作池 (3 路并发，在消除 600ms 冗余休眠的同时避免频控，提速 300%)
+    const CONCURRENCY = 3;
+    let taskPointer = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, async () => {
+      while (taskPointer < tasks.length) {
+        const currentTask = tasks[taskPointer++];
+        await translateTask(currentTask);
+      }
+    });
+
+    await Promise.all(workers);
 
     // 循环结束强制终刷，确保后续「确认写入」能读到完整数据
     flushPreview(true);

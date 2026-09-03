@@ -5,6 +5,38 @@ const { authenticateToken, requireProjectMember, requireRole } = require('../mid
 const { aiTranslateLimiter } = require('../middleware/rateLimiters.cjs');
 const { getEffectiveDifyConfig, generateKwHelper, getBuiltinKeys } = require('../services/difyService.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
+const { getCachedGlossaryTerms } = require('../services/glossaryCache.cjs');
+
+// Preferred Dify engine memory (avoid retrying broken endpoints for 45s on every term)
+let preferredEngineUrl = null;
+const engineFailureTimestamps = new Map();
+
+function isPrivateOrLocalUrl(urlString) {
+  try {
+    const parsed = new URL(urlString);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.local')) {
+      return true;
+    }
+    const ipMatch = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipMatch) {
+      const b0 = parseInt(ipMatch[1], 10);
+      const b1 = parseInt(ipMatch[2], 10);
+      if (b0 === 10) return true; // 10.0.0.0/8
+      if (b0 === 127) return true; // 127.0.0.0/8
+      if (b0 === 172 && (b1 >= 16 && b1 <= 31)) return true; // 172.16.0.0/12
+      if (b0 === 192 && b1 === 168) return true; // 192.168.0.0/16
+      if (b0 === 169 && b1 === 254) return true; // 169.254.0.0/16 Link-local / Cloud metadata
+      if (b0 === 0) return true; // 0.0.0.0
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GlossaHub/1.1';
 
@@ -105,13 +137,25 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
     }
   }
 
+  // Prioritize preferred engine if it succeeded recently
+  if (preferredEngineUrl) {
+    const prefIdx = uniqueCandidates.findIndex(c => c.baseUrl === preferredEngineUrl);
+    if (prefIdx > 0) {
+      const [fav] = uniqueCandidates.splice(prefIdx, 1);
+      uniqueCandidates.unshift(fav);
+    }
+  }
+
   let lastStatus = 500;
   let lastErrorText = '';
 
   for (let cIdx = 0; cIdx < uniqueCandidates.length; cIdx++) {
     const item = uniqueCandidates[cIdx];
     const isPrimary = (cIdx === 0);
-    const candidateTimeout = isPrimary ? 45000 : 12000;
+    // If an engine recently failed within 30s and there are alternatives, use a shorter timeout
+    const recentFailTime = engineFailureTimestamps.get(item.baseUrl) || 0;
+    const isRecentlyFailed = (Date.now() - recentFailTime < 30000);
+    const candidateTimeout = isRecentlyFailed ? 10000 : (isPrimary ? 35000 : 15000);
     try {
       const targetUrl = `${item.baseUrl}/workflows/run`;
       const response = await fetch(targetUrl, {
@@ -171,27 +215,33 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
 
         if (streamError) {
           lastErrorText = streamError;
+          engineFailureTimestamps.set(item.baseUrl, Date.now());
           console.warn(`⚠️ Dify workflow stream error on ${item.baseUrl}: ${streamError}`);
         } else if (finalData) {
           const status = finalData.data?.status || finalData.status;
           if (status !== 'failed' && status !== 'stopped') {
+            preferredEngineUrl = item.baseUrl;
             return { ok: true, data: { data: finalData.data }, usedUrl: item.baseUrl };
           } else {
             lastErrorText = finalData.data?.error || finalData.error || `Workflow status: ${status}`;
+            engineFailureTimestamps.set(item.baseUrl, Date.now());
             console.warn(`⚠️ Dify workflow status ${status} on ${item.baseUrl}: ${lastErrorText}`);
           }
         } else {
           lastErrorText = "Stream finished without workflow_finished event";
+          engineFailureTimestamps.set(item.baseUrl, Date.now());
           console.warn(`⚠️ Stream finished without workflow_finished event on ${item.baseUrl}`);
         }
       } else {
         lastStatus = response.status;
         lastErrorText = await response.text();
+        engineFailureTimestamps.set(item.baseUrl, Date.now());
         console.warn(`⚠️ Dify API returned ${response.status} from ${item.baseUrl}, trying failover...`);
       }
     } catch (err) {
       console.warn(`⚠️ Dify fetch exception on ${item.baseUrl}: ${err.message}`);
       lastErrorText = err.message;
+      engineFailureTimestamps.set(item.baseUrl, Date.now());
     }
   }
 
@@ -308,14 +358,8 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
   }
 
   try {
-    // === START GLOSSARY INTERCEPTION ===
-    const glossaryQuery = `
-      SELECT t.cn_term, t.en_term, t.fields 
-      FROM glossary_terms t
-      JOIN glossary_tables tb ON t.table_id = tb.id
-      WHERE tb.project_id = $1
-    `;
-    const glossaryTerms = await db.query(glossaryQuery, [projectId]);
+    // === START GLOSSARY INTERCEPTION (USING IN-MEMORY CACHE) ===
+    const glossaryTerms = await getCachedGlossaryTerms(projectId);
 
     const allMatches = glossaryTerms.filter(term => term.cn_term === zhCn);
     let fullMatch = null;
@@ -409,7 +453,9 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
 
     let matchedTerms = [];
     glossaryTerms.forEach(term => {
-      if (zhCn.includes(term.cn_term)) {
+      const cn = (term.cn_term || '').trim();
+      // 过滤单字符或纯符号，防止无意义的部分匹配导致 prompt 膨胀与 token 超标
+      if (cn.length >= 2 && zhCn.includes(cn)) {
         const termFields = parseJsonField(term && term.fields);
 
         let targetConstraints = { "英文": term.en_term };
@@ -418,14 +464,15 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
         });
 
         matchedTerms.push({
-          "中文名词": term.cn_term,
+          "中文名词": cn,
           "各语种强制翻译": targetConstraints
         });
       }
     });
 
     if (matchedTerms.length > 0) {
-      inputs.glossary_context = JSON.stringify(matchedTerms, null, 2);
+      // 限制最多注入 15 条最相关的名词约束，防止 prompt 过大导致 LLM 推理卡顿 30+ 秒
+      inputs.glossary_context = JSON.stringify(matchedTerms.slice(0, 15), null, 2);
     } else {
       inputs.glossary_context = "";
     }
@@ -724,11 +771,16 @@ router.post('/projects/:projectId/dify-test', authenticateToken, requireProjectM
   const { baseUrl, apiKey } = req.body;
 
   const effective = await getEffectiveDifyConfig(projectId);
-  const targetUrl = baseUrl || effective.baseUrl;
-  // 复用 executeDifyWithFailover 的内置 Key 解析逻辑:
-  //   baseUrl 命中 night.magene.cn → 内置 magene key
-  //   baseUrl 命中 api.dify.ai     → 内置 dify_cloud key
-  //   否则用前端传入的 key, 没有则回退到 effective.apiKey
+  const targetUrl = (baseUrl || effective.baseUrl || '').trim();
+
+  // SSRF 防护: 拦截内网/私有 IP 地址
+  if (isPrivateOrLocalUrl(targetUrl)) {
+    return res
+      .status(400)
+      .set('X-Business-Error', 'ssrf-blocked')
+      .json({ error: '安全拦截：禁止连接内网私有地址！' });
+  }
+
   const targetKey = resolveBuiltinKey(targetUrl, apiKey, effective.apiKey);
 
   if (!targetUrl || !targetKey) {

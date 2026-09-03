@@ -453,11 +453,37 @@ async function initDatabase() {
 
       try {
         await pgPool.query(`
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'member_role') THEN
+              CREATE TYPE member_role AS ENUM ('owner', 'editor', 'viewer');
+            END IF;
+          END$$;
+
+          CREATE TABLE IF NOT EXISTS users (
+              id VARCHAR(64) PRIMARY KEY,
+              username TEXT UNIQUE NOT NULL,
+              password_hash TEXT NOT NULL,
+              name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'user',
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+
           CREATE TABLE IF NOT EXISTS projects (
               id VARCHAR(64) PRIMARY KEY,
               name TEXT NOT NULL UNIQUE,
               description TEXT,
-              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+              dify_config JSONB DEFAULT '{}'::jsonb,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              created_by VARCHAR(64)
+          );
+
+          CREATE TABLE IF NOT EXISTS project_members (
+              id VARCHAR(64) PRIMARY KEY,
+              project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+              user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              role member_role NOT NULL DEFAULT 'viewer',
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              UNIQUE(project_id, user_id)
           );
 
           CREATE TABLE IF NOT EXISTS versions (
@@ -490,6 +516,17 @@ async function initDatabase() {
               UNIQUE(version_id, kw)
           );
 
+          CREATE TABLE IF NOT EXISTS term_snapshots (
+              id VARCHAR(64) PRIMARY KEY,
+              term_id VARCHAR(64) NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+              version_id VARCHAR(64) NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+              kw TEXT NOT NULL,
+              zh_cn TEXT,
+              translations JSONB NOT NULL DEFAULT '{}'::jsonb,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              created_by VARCHAR(64)
+          );
+
           CREATE TABLE IF NOT EXISTS logs (
               id SERIAL PRIMARY KEY,
               timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -501,15 +538,68 @@ async function initDatabase() {
               user_id VARCHAR(64)
           );
 
+          CREATE TABLE IF NOT EXISTS languages (
+              id TEXT PRIMARY KEY,
+              project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+              lang_code TEXT NOT NULL,
+              lang_name TEXT NOT NULL,
+              display_order INTEGER DEFAULT 0,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              UNIQUE(project_id, lang_code)
+          );
+
+          CREATE TABLE IF NOT EXISTS glossary_tables (
+              id VARCHAR(64) PRIMARY KEY,
+              project_id VARCHAR(64) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+              table_name TEXT NOT NULL,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              headers TEXT DEFAULT '["中文专业术语","英文翻译对应","说明 / 定义"]'
+          );
+
+          CREATE TABLE IF NOT EXISTS glossary_terms (
+              id VARCHAR(64) PRIMARY KEY,
+              table_id VARCHAR(64) NOT NULL REFERENCES glossary_tables(id) ON DELETE CASCADE,
+              cn_term TEXT,
+              en_term TEXT,
+              description TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              fields TEXT DEFAULT '{}'
+          );
+
+          CREATE TABLE IF NOT EXISTS ai_usage_logs (
+              id SERIAL PRIMARY KEY,
+              user_id VARCHAR(64),
+              project_id VARCHAR(64) NOT NULL,
+              term_kw TEXT,
+              zh_cn TEXT,
+              target_languages TEXT,
+              total_tokens INTEGER DEFAULT 0,
+              elapsed_time REAL DEFAULT 0,
+              status TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS recycle_bin (
+              id VARCHAR(64) PRIMARY KEY,
+              entity_type TEXT NOT NULL,
+              entity_name TEXT NOT NULL,
+              payload JSONB NOT NULL,
+              deleted_by VARCHAR(64),
+              deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+          );
+
           INSERT INTO projects (id, name, description)
           VALUES ('proj-default', '迈金智能骑行码表', 'Magene 码表固件词条多人协同翻译项目')
           ON CONFLICT (id) DO NOTHING;
 
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS dify_config JSONB DEFAULT '{}'::jsonb;
           ALTER TABLE terms ADD COLUMN IF NOT EXISTS translations_meta JSONB NOT NULL DEFAULT '{}'::jsonb;
           ALTER TABLE terms ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
           CREATE INDEX IF NOT EXISTS idx_terms_version_sort ON terms(version_id, sort_order);
+          CREATE INDEX IF NOT EXISTS idx_pg_recycle_bin_expires_at ON recycle_bin(expires_at);
         `);
-        console.log('✅ 数据库同步完成: Postgres 基础表结构与属性列已就绪');
+        console.log('✅ 数据库同步完成: Postgres 全量表结构与索引已就绪');
       } catch (err) {
         console.warn('⚠️ 数据库同步警告 (Postgres):', err.message);
       }

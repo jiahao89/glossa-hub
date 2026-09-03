@@ -108,7 +108,7 @@ router.post('/projects/:projectId/versions/:versionId/inherit-chunk', authentica
 
   try {
     const baseTerms = await db.query(
-      'SELECT kw, context, owner, zh_cn, translations, translations_meta FROM terms WHERE version_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
+      'SELECT kw, context, owner, zh_cn, translations, translations_meta, sort_order FROM terms WHERE version_id = $1 ORDER BY sort_order ASC, created_at ASC, id ASC LIMIT $2 OFFSET $3',
       [baseVersionId, limit, offset]
     );
 
@@ -131,7 +131,7 @@ router.post('/projects/:projectId/versions/:versionId/inherit-chunk', authentica
           : JSON.stringify(term.translations_meta || {});
 
         valuePlaceholders.push(
-          `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}::jsonb, $${paramIdx + 7}::jsonb, NOW(), NOW(), FALSE)`
+          `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}::jsonb, $${paramIdx + 7}::jsonb, NOW(), NOW(), FALSE, $${paramIdx + 8})`
         );
         values.push(
           newTermId,
@@ -141,12 +141,13 @@ router.post('/projects/:projectId/versions/:versionId/inherit-chunk', authentica
           term.owner ?? null,
           term.zh_cn,
           translationsStr,
-          translationsMetaStr
+          translationsMetaStr,
+          term.sort_order ?? 0
         );
-        paramIdx += 8;
+        paramIdx += 9;
       }
 
-      const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')} ON CONFLICT (version_id, kw) DO NOTHING`;
+      const sql = `INSERT INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, sort_order) VALUES ${valuePlaceholders.join(', ')} ON CONFLICT (version_id, kw) DO NOTHING`;
       await db.run(sql, values);
     } else {
       const valuePlaceholders = [];
@@ -161,7 +162,7 @@ router.post('/projects/:projectId/versions/:versionId/inherit-chunk', authentica
           ? term.translations_meta
           : JSON.stringify(term.translations_meta || {});
 
-        valuePlaceholders.push(`(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 0)`);
+        valuePlaceholders.push(`(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 0, ?)`);
         values.push(
           newTermId,
           versionId,
@@ -170,11 +171,12 @@ router.post('/projects/:projectId/versions/:versionId/inherit-chunk', authentica
           term.owner ?? null,
           term.zh_cn,
           translationsStr,
-          translationsMetaStr
+          translationsMetaStr,
+          term.sort_order ?? 0
         );
       }
 
-      const sql = `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked) VALUES ${valuePlaceholders.join(', ')}`;
+      const sql = `INSERT OR IGNORE INTO terms (id, version_id, kw, context, owner, zh_cn, translations, translations_meta, created_at, updated_at, is_locked, sort_order) VALUES ${valuePlaceholders.join(', ')}`;
       await db.run(sql, values);
     }
 
@@ -267,44 +269,68 @@ router.post('/versions/:versionId/inherit-translations', authenticateToken, asyn
       return res.status(404).json({ error: '指定的源版本或目标版本不存在！' });
     }
 
+    if (req.user.role !== 'admin') {
+      const tgtMembership = await db.queryOne(
+        'SELECT pm.role FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
+        [versionId, req.user.id]
+      );
+      if (!tgtMembership || tgtMembership.role === 'viewer') {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权继承写入翻译。' });
+      }
+      const srcMembership = await db.queryOne(
+        'SELECT pm.role FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
+        [sourceVersionId, req.user.id]
+      );
+      if (!srcMembership) {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '您无权访问源版本数据。' });
+      }
+    }
+
     let inheritCount = 0;
 
     await db.transaction(async (tx) => {
-      const srcTerms = await tx.query('SELECT kw, translations FROM terms WHERE version_id = $1', [sourceVersionId]);
-      const tgtTerms = await tx.query('SELECT id, kw, translations, is_locked FROM terms WHERE version_id = $1', [versionId]);
+      const srcTerms = await tx.query('SELECT kw, translations, translations_meta FROM terms WHERE version_id = $1', [sourceVersionId]);
+      const tgtTerms = await tx.query('SELECT id, kw, translations, translations_meta, is_locked FROM terms WHERE version_id = $1', [versionId]);
 
       const srcMap = {};
       srcTerms.forEach(t => {
-        srcMap[t.kw] = typeof t.translations === 'string' ? JSON.parse(t.translations) : (t.translations || {});
+        srcMap[t.kw] = {
+          trans: typeof t.translations === 'string' ? JSON.parse(t.translations || '{}') : (t.translations || {}),
+          meta: typeof t.translations_meta === 'string' ? JSON.parse(t.translations_meta || '{}') : (t.translations_meta || {})
+        };
       });
 
       for (const tgt of tgtTerms) {
         if (tgt.is_locked === 1 || tgt.is_locked === true) continue;
 
-        const srcTrans = srcMap[tgt.kw];
-        if (!srcTrans) continue;
+        const srcData = srcMap[tgt.kw];
+        if (!srcData) continue;
 
-        const tgtTrans = typeof tgt.translations === 'string' ? JSON.parse(tgt.translations) : (tgt.translations || {});
+        const srcTrans = srcData.trans;
+        const tgtTrans = typeof tgt.translations === 'string' ? JSON.parse(tgt.translations || '{}') : (tgt.translations || {});
+        const tgtMeta = typeof tgt.translations_meta === 'string' ? JSON.parse(tgt.translations_meta || '{}') : (tgt.translations_meta || {});
         let merged = false;
 
         Object.keys(srcTrans).forEach(lang => {
           if (srcTrans[lang] && (!tgtTrans[lang] || tgtTrans[lang].trim() === '')) {
             tgtTrans[lang] = srcTrans[lang];
+            tgtMeta[lang] = 'tm'; // 继承标记为记忆库来源 (绿色对勾)
             merged = true;
           }
         });
 
         if (merged) {
           const updatedTransStr = JSON.stringify(tgtTrans);
+          const updatedMetaStr = JSON.stringify(tgtMeta);
           if (dbType === 'postgres') {
             await tx.run(
-              'UPDATE terms SET translations = $1::jsonb, updated_at = NOW(), updated_by = $2 WHERE id = $3',
-              [updatedTransStr, req.user.id, tgt.id]
+              'UPDATE terms SET translations = $1::jsonb, translations_meta = $2::jsonb, updated_at = NOW(), updated_by = $3 WHERE id = $4',
+              [updatedTransStr, updatedMetaStr, req.user.id, tgt.id]
             );
           } else {
             await tx.run(
-              "UPDATE terms SET translations = $1, updated_at = datetime('now'), updated_by = $2 WHERE id = $3",
-              [updatedTransStr, req.user.id, tgt.id]
+              "UPDATE terms SET translations = $1, translations_meta = $2, updated_at = datetime('now'), updated_by = $3 WHERE id = $4",
+              [updatedTransStr, updatedMetaStr, req.user.id, tgt.id]
             );
           }
           inheritCount++;

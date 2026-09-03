@@ -24,10 +24,10 @@ const heavyOperationLimiter = rateLimit({
   validate: false
 });
 
-// AI 翻译接口专用的限流器
+// AI 翻译接口专用的限流器 (调优容量，支持单次大批量翻译)
 const aiTranslateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 分钟
-  max: 150,                // 限制 150 次
+  max: 300,                // 提升至 300 次，保证大批量翻译平滑进行
   message: { error: '翻译请求过于频繁，请稍候再试。' },
   validate: false
 });
