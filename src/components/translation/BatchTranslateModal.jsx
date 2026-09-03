@@ -242,7 +242,7 @@ export default function BatchTranslateModal({
               {batchPreviewList.map((item, idx) => {
                 const isChecked = selectedBatchItemIds.has(item.recordId);
                 return (
-                  <tr key={idx} style={{ opacity: isChecked ? 1 : 0.45, transition: 'opacity 0.15s' }}>
+                  <tr key={item.recordId || idx} style={{ opacity: isChecked ? 1 : 0.45, transition: 'opacity 0.15s' }}>
                     <td style={{ textAlign: 'center' }}>
                       <input
                         type="checkbox"

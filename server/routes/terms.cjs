@@ -22,7 +22,8 @@ async function requireAllTermsOwnership(userId, termIds, userRole) {
     `SELECT COUNT(DISTINCT t.id) as cnt FROM terms t
      JOIN versions v ON t.version_id = v.id
      JOIN project_members pm ON pm.project_id = v.project_id
-     WHERE t.id IN (${placeholders}) AND pm.user_id = $${termIds.length + 1}`,
+     WHERE t.id IN (${placeholders}) AND pm.user_id = $${termIds.length + 1}
+       AND pm.role IN ('owner', 'editor')`,
     [...termIds, userId]
   );
   return parseInt(row?.cnt || 0, 10) === termIds.length;
@@ -945,14 +946,14 @@ router.post('/terms/batch-copy', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: '目标版本不存在' });
     }
 
-    // RBAC: 目标版本归属项目必须是用户所在项目, 管理员放行
+    // RBAC: 目标版本归属项目必须是用户所在项目且非只读角色, 管理员放行
     if (req.user.role !== 'admin') {
       const targetMember = await db.queryOne(
         'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
         [targetVer.project_id, req.user.id]
       );
-      if (!targetMember) {
-        return res.status(403).json({ error: 'FORBIDDEN', message: '您无权向该目标版本写入词条。' });
+      if (!targetMember || targetMember.role === 'viewer') {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权向该目标版本写入词条。' });
       }
     }
 
@@ -1084,6 +1085,16 @@ router.post('/tables/:tableId/batch-generate-kw', authenticateToken, async (req,
     }
 
     const projectId = version.project_id || 'proj-default';
+    // RBAC: 检查用户在版本归属项目中的写权限 (管理员放行)
+    if (req.user.role !== 'admin') {
+      const member = await db.queryOne(
+        'SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2',
+        [projectId, req.user.id]
+      );
+      if (!member || member.role === 'viewer') {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权修改或生成 KW。' });
+      }
+    }
     let updatedCount = 0;
     let skippedCount = 0;
     const modifiedTerms = [];
@@ -1272,6 +1283,16 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此数据表。' });
     }
 
+    if (req.user.role !== 'admin') {
+      const verMembership = await db.queryOne(
+        'SELECT pm.role FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
+        [tableId, req.user.id]
+      );
+      if (!verMembership || verMembership.role === 'viewer') {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权修改此数据表。' });
+      }
+    }
+
     let successCount = 0;
 
     await db.transaction(async (tx) => {
@@ -1351,7 +1372,7 @@ router.post('/tables/:tableId/sync', authenticateToken, writeLimiter, async (req
 
       // 3. Update (Modified)
       for (const rec of updated) {
-        const existing = await tx.queryOne('SELECT kw, zh_cn, context, translations_meta FROM terms WHERE id = $1', [rec.recordId]);
+        const existing = await tx.queryOne('SELECT kw, zh_cn, context, translations, translations_meta FROM terms WHERE id = $1', [rec.recordId]);
         
         let kwVal = rec.fields && rec.fields['KW'] !== undefined 
           ? rec.fields['KW'].trim() 
@@ -1526,6 +1547,16 @@ router.delete('/tables/:tableId/clean-empty', authenticateToken, writeLimiter, a
   try {
     if (!(await requireVersionOwnership(req.user.id, tableId))) {
       return res.status(403).json({ error: 'FORBIDDEN', message: '您无权修改此数据表。' });
+    }
+
+    if (req.user.role !== 'admin') {
+      const verMembership = await db.queryOne(
+        'SELECT pm.role FROM versions v JOIN project_members pm ON v.project_id = pm.project_id WHERE v.id = $1 AND pm.user_id = $2',
+        [tableId, req.user.id]
+      );
+      if (!verMembership || verMembership.role === 'viewer') {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权清理词条。' });
+      }
     }
 
     const result = await db.run(`

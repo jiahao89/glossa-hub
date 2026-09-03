@@ -207,9 +207,14 @@ export default function EditTermModal({
       const termId = record.recordId || record.id;
       // 把 fields 拆成 server 期望的 { kw, context, owner, zh_cn, translations, translationsMeta, oldUpdatedAt }
       const translations = {};
-      const translationsMeta = {};
+      const baseMeta = record.translationsMeta || record.translations_meta || {};
+      const translationsMeta = { ...(typeof baseMeta === 'string' ? JSON.parse(baseMeta || '{}') : baseMeta) };
       for (const lang of targetLanguagesRef.current) {
-        translations[lang] = fields[lang] || '';
+        const val = fields[lang] || '';
+        translations[lang] = val;
+        if (!val.trim()) {
+          delete translationsMeta[lang];
+        }
       }
       const res = await apiFetch(`/api/terms/${termId}`, {
         method: 'PUT',

@@ -5,7 +5,8 @@ const { authenticateToken, requireProjectMember, requireRole } = require('../mid
 const { createAuditLog } = require('../services/auditLogger.cjs');
 
 // GET /api/projects/:projectId/recycle-bin - 获取回收站数据列表
-router.get('/projects/:projectId/recycle-bin', authenticateToken, requireProjectMember, requireRole(['owner']), async (_req, res) => {
+router.get('/projects/:projectId/recycle-bin', authenticateToken, requireProjectMember, requireRole(['owner']), async (req, res) => {
+  const { projectId } = req.params;
   const dbType = getDbType();
   try {
     const cleanupSql = dbType === 'postgres'
@@ -14,13 +15,32 @@ router.get('/projects/:projectId/recycle-bin', authenticateToken, requireProject
     await db.run(cleanupSql);
 
     const items = await db.query(
-      `SELECT r.id, r.entity_type, r.entity_name, r.deleted_at, r.expires_at, u.name AS deleted_by_name
+      `SELECT r.id, r.entity_type, r.entity_name, r.payload, r.deleted_at, r.expires_at, u.name AS deleted_by_name
        FROM recycle_bin r
        LEFT JOIN users u ON r.deleted_by = u.id
        ORDER BY r.deleted_at DESC`
     );
 
-    res.json(items);
+    // 租户数据隔离: 严格按 projectId 过滤
+    const filtered = items.filter(item => {
+      try {
+        const payload = typeof item.payload === 'string' ? JSON.parse(item.payload || '{}') : (item.payload || {});
+        if (item.entity_type === 'version' && payload.version) {
+          return payload.version.project_id === projectId;
+        } else if (item.entity_type === 'glossary_table' && payload.glossary_table) {
+          return payload.glossary_table.project_id === projectId;
+        } else if (item.entity_type === 'language' && payload.language) {
+          return payload.language.project_id === projectId;
+        } else if (item.entity_type === 'term' && payload.term) {
+          return !payload.term.project_id || payload.term.project_id === projectId;
+        }
+        return true;
+      } catch {
+        return true;
+      }
+    }).map(({ payload: _payload, ...rest }) => rest);
+
+    res.json(filtered);
   } catch (err) {
     console.error('获取回收站数据失败:', err);
     res.status(500).json({ error: '服务器内部错误，请稍后重试。' });

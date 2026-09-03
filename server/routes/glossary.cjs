@@ -5,12 +5,14 @@ const { db } = require('../config/db.cjs');
 const { authenticateToken, requireProjectMember, requireRole } = require('../middleware/auth.cjs');
 const { backupToRecycleBin } = require('../services/recycleBin.cjs');
 
+const { invalidateGlossaryCache } = require('../services/glossaryCache.cjs');
+
 /**
  * Guard helper: verify the calling user is a member of the project
  * that owns a given glossary_table row.
  * Returns true and populates res with 403/404 on failure.
  */
-async function requireGlossaryMember(req, res, tableId) {
+async function requireGlossaryMember(req, res, tableId, allowViewer = true) {
   if (req.user?.role === 'admin') return true;
   const tbl = await db.queryOne('SELECT project_id FROM glossary_tables WHERE id = $1', [tableId]);
   if (!tbl) {
@@ -25,6 +27,11 @@ async function requireGlossaryMember(req, res, tableId) {
     res.status(403).json({ error: 'FORBIDDEN', message: '您无权访问此词汇表。' });
     return false;
   }
+  if (!allowViewer && member.role === 'viewer') {
+    res.status(403).json({ error: 'FORBIDDEN', message: '只读审核人员无权修改专业词汇表。' });
+    return false;
+  }
+  req.glossaryProjectId = tbl.project_id;
   return true;
 }
 
@@ -126,7 +133,7 @@ router.post('/glossary-tables/:tableId/terms', authenticateToken, async (req, re
   const { cnTerm, enTerm, description, termsList, headers } = req.body;
 
   try {
-    if (!(await requireGlossaryMember(req, res, tableId))) return;
+    if (!(await requireGlossaryMember(req, res, tableId, false))) return;
     if (Array.isArray(termsList)) {
       // 拒绝空数组导入, 防止误操作清空整表术语
       if (termsList.length === 0) {
@@ -168,6 +175,7 @@ router.post('/glossary-tables/:tableId/terms', authenticateToken, async (req, re
           );
         }
       });
+      invalidateGlossaryCache(req.glossaryProjectId);
       return res.status(201).json({ message: `成功覆盖导入了 ${termsList.length} 条专业术语！`, count: termsList.length });
     }
 
@@ -193,6 +201,8 @@ router.post('/glossary-tables/:tableId/terms', authenticateToken, async (req, re
       [termId, tableId, cnTerm.trim(), enTerm.trim(), (description || '').trim(), createdTime, JSON.stringify(defaultFields)]
     );
 
+    invalidateGlossaryCache(req.glossaryProjectId);
+
     res.status(201).json({
       id: termId,
       cn_term: cnTerm,
@@ -210,7 +220,7 @@ router.post('/glossary-tables/:tableId/terms', authenticateToken, async (req, re
 router.delete('/glossary-tables/:tableId/terms/:termId', authenticateToken, async (req, res) => {
   const { tableId, termId } = req.params;
   try {
-    if (!(await requireGlossaryMember(req, res, tableId))) return;
+    if (!(await requireGlossaryMember(req, res, tableId, false))) return;
 
     const existing = await db.queryOne('SELECT id FROM glossary_terms WHERE id = $1 AND table_id = $2', [termId, tableId]);
     if (!existing) {
@@ -218,6 +228,7 @@ router.delete('/glossary-tables/:tableId/terms/:termId', authenticateToken, asyn
     }
 
     await db.run('DELETE FROM glossary_terms WHERE id = $1', [termId]);
+    invalidateGlossaryCache(req.glossaryProjectId);
     res.json({ message: '术语已成功删除' });
   } catch (err) {
     console.error('删除术语失败:', err);
