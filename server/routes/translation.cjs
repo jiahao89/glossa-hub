@@ -152,10 +152,10 @@ async function executeDifyWithFailover(primaryConfig, inputs, userIdStr) {
   for (let cIdx = 0; cIdx < uniqueCandidates.length; cIdx++) {
     const item = uniqueCandidates[cIdx];
     const isPrimary = (cIdx === 0);
-    // If an engine recently failed within 30s and there are alternatives, use a shorter timeout
+    // 超时时长放宽至 60 秒 (1 分钟)，确保长文本 + 17 语种大模型推理能够完整接收
     const recentFailTime = engineFailureTimestamps.get(item.baseUrl) || 0;
     const isRecentlyFailed = (Date.now() - recentFailTime < 30000);
-    const candidateTimeout = isRecentlyFailed ? 10000 : (isPrimary ? 35000 : 15000);
+    const candidateTimeout = isRecentlyFailed ? 20000 : 60000;
     try {
       const targetUrl = `${item.baseUrl}/workflows/run`;
       const response = await fetch(targetUrl, {
@@ -452,6 +452,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
     }
 
     let matchedTerms = [];
+    const nonLangKeys = new Set(['所在页面', '字号类别', 'KW', 'kw', 'CN（中文）', 'id', 'created_at', 'updated_at']);
     glossaryTerms.forEach(term => {
       const cn = (term.cn_term || '').trim();
       // 过滤单字符或纯符号，防止无意义的部分匹配导致 prompt 膨胀与 token 超标
@@ -460,7 +461,9 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
 
         let targetConstraints = { "英文": term.en_term };
         Object.keys(termFields).forEach(k => {
-          targetConstraints[k] = termFields[k];
+          if (!nonLangKeys.has(k) && termFields[k]) {
+            targetConstraints[k] = termFields[k];
+          }
         });
 
         matchedTerms.push({
