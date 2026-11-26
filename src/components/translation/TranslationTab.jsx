@@ -4,7 +4,8 @@ import {
   findTranslationForLang, 
   DEFAULT_TARGET_LANGUAGES,
   extractExistingTranslations,
-  formatExistingReferenceContext
+  formatExistingReferenceContext,
+  buildBatchTranslatePreview
 } from '../../utils/languageHelper';
 import { downloadBlob, buildExportFilename } from '../../utils/download.js';
 import { useToast } from '../Toast';
@@ -193,101 +194,186 @@ export default function TranslationTab({
   const fallbackUser = useMemo(() => safeGetLocalStorage('user', null), []);
   const currentUser = propUser ?? fallbackUser;
 
-  // Excluded target languages for translation (remembered per-table + global fallback)
+  // Excluded target languages for translation (strictly per-table, never leaked globally)
   const [excludedTranslateLangs, setExcludedTranslateLangs] = useState(() => {
-    return new Set(safeGetLocalStorage('glossa_excluded_translate_langs', []));
-  });
-
-  useEffect(() => {
+    try {
+      localStorage.removeItem('glossa_excluded_translate_langs');
+    } catch {}
     if (selectedTableId) {
       const tableSaved = safeGetLocalStorage(`glossa_excluded_translate_langs_${selectedTableId}`, null);
-      if (tableSaved && Array.isArray(tableSaved)) {
-        setExcludedTranslateLangs(new Set(tableSaved));
+      if (Array.isArray(tableSaved)) {
+        return new Set(tableSaved);
       }
     }
+    return new Set();
+  });
+
+  const [batchCandidateRecords, setBatchCandidateRecords] = useState([]);
+  const [batchSelectionMode, setBatchSelectionMode] = useState(false);
+  const [batchExcludedOnlyCount, setBatchExcludedOnlyCount] = useState(0);
+
+  // Filter out stale/renamed languages not present in the active project dictionary
+  const effectiveExcludedLangs = useMemo(
+    () => new Set(TARGET_LANGUAGES.filter(lang => excludedTranslateLangs.has(lang))),
+    [TARGET_LANGUAGES, excludedTranslateLangs]
+  );
+  const excludedActiveLangs = useMemo(
+    () => TARGET_LANGUAGES.filter(lang => effectiveExcludedLangs.has(lang)),
+    [TARGET_LANGUAGES, effectiveExcludedLangs]
+  );
+
+  useEffect(() => {
+    if (!selectedTableId) {
+      setExcludedTranslateLangs(new Set());
+      return;
+    }
+    const tableSaved = safeGetLocalStorage(`glossa_excluded_translate_langs_${selectedTableId}`, null);
+    setExcludedTranslateLangs(new Set(Array.isArray(tableSaved) ? tableSaved : []));
   }, [selectedTableId]);
+
+  const buildIdleBatchProgress = useCallback((preview, nextExcludedLangs) => {
+    const excludedList = TARGET_LANGUAGES.filter(lang => nextExcludedLangs.has(lang));
+    if (preview.activeCount === 0 && excludedList.length > 0) {
+      return {
+        total: 0,
+        current: 0,
+        status: `当前已排除 ${excludedList.join('、')}，所选词条在剩余语种范围内已全部翻译。请在上方恢复需要翻译的语种或点击「全部包含」。`
+      };
+    }
+    return {
+      total: preview.activeCount,
+      current: 0,
+      status: '等待开始批量翻译'
+    };
+  }, [TARGET_LANGUAGES]);
 
   const handleSetExcludedTranslateLangs = useCallback((newSet) => {
-    setExcludedTranslateLangs(newSet);
+    const normalized = new Set(Array.from(newSet || []).filter(lang => TARGET_LANGUAGES.includes(lang)));
+    setExcludedTranslateLangs(normalized);
     if (selectedTableId) {
       try {
-        localStorage.setItem(`glossa_excluded_translate_langs_${selectedTableId}`, JSON.stringify(Array.from(newSet)));
-        localStorage.setItem('glossa_excluded_translate_langs', JSON.stringify(Array.from(newSet)));
+        const storageKey = `glossa_excluded_translate_langs_${selectedTableId}`;
+        if (normalized.size === 0) {
+          localStorage.removeItem(storageKey);
+        } else {
+          localStorage.setItem(storageKey, JSON.stringify(Array.from(normalized)));
+        }
       } catch {}
     }
-  }, [selectedTableId]);
+
+    if (batchTranslateOpen && !isTranslatingBatch && batchCandidateRecords.length > 0) {
+      const prevIds = new Set(batchPreviewList.map(i => i.recordId));
+      const prevById = new Map(batchPreviewList.map(i => [i.recordId, i]));
+      const nextPreview = buildBatchTranslatePreview({
+        records: batchCandidateRecords,
+        targetLanguages: TARGET_LANGUAGES,
+        excludedLangs: normalized,
+        includeExcludedOnly: batchSelectionMode,
+        previousById: prevById,
+      });
+      setBatchPreviewList(nextPreview.items);
+      setBatchExcludedOnlyCount(nextPreview.excludedOnlyCount);
+      setSelectedBatchItemIds(prevSelected => {
+        const nextSelected = new Set();
+        nextPreview.items.forEach(item => {
+          if (prevSelected.has(item.recordId) || !prevIds.has(item.recordId)) {
+            nextSelected.add(item.recordId);
+          }
+        });
+        return nextSelected;
+      });
+      setBatchProgress(prev =>
+        (prev.current === 0 || prev.total === 0)
+          ? buildIdleBatchProgress(nextPreview, normalized)
+          : prev
+      );
+    }
+  }, [
+    TARGET_LANGUAGES,
+    selectedTableId,
+    batchTranslateOpen,
+    isTranslatingBatch,
+    batchCandidateRecords,
+    batchPreviewList,
+    batchSelectionMode,
+    buildIdleBatchProgress
+  ]);
 
   const handleToggleExcludeLang = useCallback((lang) => {
-    const next = new Set(excludedTranslateLangs);
+    const next = new Set(effectiveExcludedLangs);
     if (next.has(lang)) {
       next.delete(lang);
     } else {
       next.add(lang);
     }
     handleSetExcludedTranslateLangs(next);
-  }, [excludedTranslateLangs, handleSetExcludedTranslateLangs]);
+  }, [effectiveExcludedLangs, handleSetExcludedTranslateLangs]);
 
   const handleOpenBatchTranslate = async () => {
-    let targetRecords = records;
-    if (selectedRecordIds.size > 0) {
-      targetRecords = records.filter(r => selectedRecordIds.has(r.recordId || r.id));
+    const isSelectionMode = selectedRecordIds.size > 0;
+    const targetRecords = isSelectionMode
+      ? records.filter(r => selectedRecordIds.has(r.recordId || r.id))
+      : records;
+
+    if (isSelectionMode && targetRecords.length === 0) {
+      toast.info('选中的记录不在当前表中, 请重新勾选');
+      return;
     }
 
-    const activeTargetLangs = TARGET_LANGUAGES.filter(lang => !excludedTranslateLangs.has(lang));
+    const preview = buildBatchTranslatePreview({
+      records: targetRecords,
+      targetLanguages: TARGET_LANGUAGES,
+      excludedLangs: effectiveExcludedLangs,
+      includeExcludedOnly: isSelectionMode,
+    });
 
-    const itemsToTranslate = targetRecords.map(r => {
-      const fields = r.fields || {};
-      const zhCn = (fields['CN（中文）'] || '').trim();
-      if (!zhCn) return null; // Skip terms without Chinese source text
-      
-      const missingLangs = activeTargetLangs.filter(lang => !fields[lang] || String(fields[lang]).trim() === '');
-      if (missingLangs.length === 0) return null;
-      
-      return {
-        recordId: r.recordId || r.id,
-        KW: fields['KW'] || '',
-        '中文': zhCn,
-        '所在页面': fields['所在页面'] || '',
-        existingFields: fields,
-        missingLangs,
-        translations: {}
-      };
-    }).filter(Boolean);
-
-    if (itemsToTranslate.length === 0) {
-      if (selectedRecordIds.size > 0) {
-        if (targetRecords.length === 0) {
-          toast.info('选中的记录不在当前表中, 请重新勾选');
-        } else {
-          toast.info('选中的词条在当前翻译语种范围内均已完成翻译');
-        }
+    if (!preview.hasAnyIncomplete) {
+      if (isSelectionMode) {
+        toast.info(
+          preview.hasEmptySourceOnly
+            ? '选中的词条缺少中文源文本，无法进行 AI 翻译'
+            : '选中的词条全部语种均已完成翻译'
+        );
       } else {
-        toast.info('当前表格中在选定语种范围内没有待翻译的词条');
+        toast.info(
+          preview.hasEmptySourceOnly
+            ? '当前表格中没有包含中文源文本的待翻译词条'
+            : '当前表格中全部语种均已完成翻译，没有待翻译的词条'
+        );
       }
       return;
     }
 
+    setBatchCandidateRecords(targetRecords);
+    setBatchSelectionMode(isSelectionMode);
+    setBatchExcludedOnlyCount(preview.excludedOnlyCount);
     setBatchTargetTableId(selectedTableId);
-    setBatchPreviewList(itemsToTranslate);
+    setBatchPreviewList(preview.items);
     setBatchTranslateOpen(true);
-    setBatchProgress({ total: itemsToTranslate.length, current: 0, status: '等待开始批量翻译' });
-    setSelectedBatchItemIds(new Set(itemsToTranslate.map(i => i.recordId)));
+    setBatchProgress(buildIdleBatchProgress(preview, effectiveExcludedLangs));
+    setSelectedBatchItemIds(new Set(preview.items.map(i => i.recordId)));
   };
 
-  // Dynamically update missing languages when excludedTranslateLangs changes while modal is open
+  // Re-sync missing languages only if the project's language dictionary updates while the modal is open
+  const prevTargetLangsRef = useRef(targetLanguagesList);
   useEffect(() => {
-    if (batchTranslateOpen && batchPreviewList.length > 0) {
-      const activeTargetLangs = targetLanguagesList.filter(lang => !excludedTranslateLangs.has(lang));
-      setBatchPreviewList(prev => prev.map(item => {
-        const fields = item.existingFields || {};
-        const missingLangs = activeTargetLangs.filter(lang => !fields[lang] || String(fields[lang]).trim() === '');
-        return {
-          ...item,
-          missingLangs
-        };
-      }));
+    if (prevTargetLangsRef.current === targetLanguagesList) return;
+    prevTargetLangsRef.current = targetLanguagesList;
+    if (batchTranslateOpen && !isTranslatingBatch && batchCandidateRecords.length > 0) {
+      setBatchPreviewList(prev => {
+        const prevById = new Map(prev.map(i => [i.recordId, i]));
+        const nextPreview = buildBatchTranslatePreview({
+          records: batchCandidateRecords,
+          targetLanguages: targetLanguagesList,
+          excludedLangs: effectiveExcludedLangs,
+          includeExcludedOnly: batchSelectionMode,
+          previousById: prevById,
+        });
+        setBatchExcludedOnlyCount(nextPreview.excludedOnlyCount);
+        return nextPreview.items;
+      });
     }
-  }, [excludedTranslateLangs, batchTranslateOpen, targetLanguagesList, batchPreviewList.length]);
+  }, [targetLanguagesList, batchTranslateOpen, isTranslatingBatch, batchCandidateRecords, effectiveExcludedLangs, batchSelectionMode]);
 
   const handleStartBatchTranslate = async () => {
     setIsTranslatingBatch(true);
@@ -308,7 +394,7 @@ export default function TranslationTab({
       }
     };
 
-    const activeTargetLangs = targetLanguagesList.filter(lang => !excludedTranslateLangs.has(lang));
+    const activeTargetLangs = targetLanguagesList.filter(lang => !effectiveExcludedLangs.has(lang));
 
     // 收集所有待翻译的任务项
     const tasks = [];
@@ -323,7 +409,10 @@ export default function TranslationTab({
 
     if (tasks.length === 0) {
       setIsTranslatingBatch(false);
-      setBatchProgress({ total: 0, current: 0, status: '所选项已全部翻译，无需重复翻译。' });
+      const excludedNote = excludedActiveLangs.length > 0
+        ? `（当前已排除：${excludedActiveLangs.join('、')}，请在上方恢复包含后再试）`
+        : '';
+      setBatchProgress({ total: 0, current: 0, status: `所选项在当前语种范围内已全部翻译${excludedNote}` });
       return;
     }
 
@@ -1126,6 +1215,8 @@ export default function TranslationTab({
         onBatchGenerateKw={() => setBatchGenerateKwOpen(true)}
 
         onBatchTranslate={handleOpenBatchTranslate}
+        excludedLanguages={excludedActiveLangs}
+        onResetExcludedLangs={() => handleSetExcludedTranslateLangs(new Set())}
         onDataClean={handleDataClean}
         onClearHighlights={() => setModifiedCells({})}
         modifiedCount={Object.keys(modifiedCells).length}
@@ -1168,7 +1259,8 @@ export default function TranslationTab({
         onClose={() => setAddModalOpen(false)}
         selectedTableId={selectedTableId}
         targetLanguages={TARGET_LANGUAGES}
-        excludedTranslateLangs={excludedTranslateLangs}
+        excludedTranslateLangs={effectiveExcludedLangs}
+        onResetExcludedLangs={() => handleSetExcludedTranslateLangs(new Set())}
         onAddSuccess={(addedItem) => {
           if (addedItem && addedItem.recordId) {
             setModifiedCells(prev => ({
@@ -1274,7 +1366,8 @@ export default function TranslationTab({
         onStartBatchTranslate={handleStartBatchTranslate}
         onConfirmBatchWrite={handleConfirmBatchWrite}
         targetLanguages={TARGET_LANGUAGES}
-        excludedTranslateLangs={excludedTranslateLangs}
+        excludedTranslateLangs={effectiveExcludedLangs}
+        excludedOnlyCount={batchExcludedOnlyCount}
         onToggleExcludeLang={handleToggleExcludeLang}
         onSetExcludedLangs={handleSetExcludedTranslateLangs}
       />

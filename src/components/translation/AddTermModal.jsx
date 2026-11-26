@@ -10,7 +10,15 @@ import {
 import { useToast } from '../Toast';
 import { Loader2, Sparkles } from 'lucide-react';
 
-export default function AddTermModal({ open, onClose, selectedTableId, targetLanguages = [], excludedTranslateLangs = new Set(), onAddSuccess }) {
+export default function AddTermModal({
+  open,
+  onClose,
+  selectedTableId,
+  targetLanguages = [],
+  excludedTranslateLangs = new Set(),
+  onResetExcludedLangs,
+  onAddSuccess
+}) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -89,9 +97,10 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
       return;
     }
 
+    const excludedInModal = targetLanguages.filter(l => excludedTranslateLangs.has(l));
     const activeTargetLangs = targetLanguages.filter(l => !excludedTranslateLangs.has(l));
     if (activeTargetLangs.length === 0) {
-      toast.info('所有目标语种均已被排除');
+      toast.info('当前表所有目标语种均已被排除，请先恢复包含语种后再翻译');
       return;
     }
 
@@ -100,7 +109,11 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
 
     // 如果启用了保留已有翻译（默认），且所有语言均已存在翻译，则提示无需重复翻译
     if (preserveExisting && existingCount === activeTargetLangs.length) {
-      toast.info('所有目标语种均已有翻译。若需全部覆盖重新翻译，请取消勾选“保留已有翻译”');
+      if (excludedInModal.length > 0) {
+        toast.info(`当前翻译范围内语种均已有翻译（已排除：${excludedInModal.join('、')}）。如需补全，请先恢复全部语种或取消勾选“保留已有翻译”`);
+      } else {
+        toast.info('所有目标语种均已有翻译。若需全部覆盖重新翻译，请取消勾选“保留已有翻译”');
+      }
       return;
     }
 
@@ -307,6 +320,45 @@ export default function AddTermModal({ open, onClose, selectedTableId, targetLan
             <h4 style={{ fontSize: '0.9rem', marginBottom: '0', color: 'var(--text-primary)' }}>
               目标语言翻译
             </h4>
+            {(() => {
+              const excludedInModal = targetLanguages.filter(l => excludedTranslateLangs.has(l));
+              if (excludedInModal.length === 0) return null;
+              return (
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    color: 'var(--amber, #d97706)',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    borderRadius: '9999px',
+                    padding: '1px 8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <span>已排除：{excludedInModal.join('、')}</span>
+                  {onResetExcludedLangs && (
+                    <button
+                      type="button"
+                      onClick={onResetExcludedLangs}
+                      disabled={loading || isTranslating}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--accent)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontSize: '0.72rem',
+                        textDecoration: 'underline'
+                      }}
+                    >
+                      恢复全部
+                    </button>
+                  )}
+                </span>
+              );
+            })()}
             <label 
               style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
               title="勾选时默认保留已填语种不予修改，仅补充空白语种；取消勾选将全部覆盖重新翻译"

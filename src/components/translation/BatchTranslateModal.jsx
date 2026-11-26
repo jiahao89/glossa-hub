@@ -18,10 +18,17 @@ export default function BatchTranslateModal({
   onConfirmBatchWrite,
   targetLanguages = [],
   excludedTranslateLangs = new Set(),
+  excludedOnlyCount = 0,
   onToggleExcludeLang = () => {},
   onSetExcludedLangs = () => {}
 }) {
   if (!open) return null;
+
+  const excludedList = targetLanguages.filter(l => excludedTranslateLangs.has(l));
+  const translatableSelectedCount = batchPreviewList.filter(
+    i => selectedBatchItemIds.has(i.recordId) && Array.isArray(i.missingLangs) && i.missingLangs.length > 0
+  ).length;
+  const isScopeBlockingTranslation = translatableSelectedCount === 0 && excludedList.length > 0;
 
   const hasThai = targetLanguages.some(l => l.includes('泰') || l.toUpperCase().includes('TH'));
   const isThaiExcluded = Array.from(excludedTranslateLangs).some(l => l.includes('泰') || l.toUpperCase().includes('TH'));
@@ -42,11 +49,15 @@ export default function BatchTranslateModal({
     onSetExcludedLangs(new Set());
   };
 
+  const modalTitle = translatableSelectedCount !== selectedBatchItemIds.size
+    ? `Dify 批量智能翻译工作流 (已选 ${selectedBatchItemIds.size} / 共 ${batchPreviewList.length} 条 · 可译 ${translatableSelectedCount} 条)`
+    : `Dify 批量智能翻译工作流 (已选 ${selectedBatchItemIds.size} / 共 ${batchPreviewList.length} 条待翻译)`;
+
   return (
     <GlossaModal
       isOpen={open}
       onClose={onClose}
-      title={`Dify 批量智能翻译工作流 (已选 ${selectedBatchItemIds.size} / 共 ${batchPreviewList.length} 条待翻译)`}
+      title={modalTitle}
       maxWidth="920px"
       closeDisabled={isTranslatingBatch}
       footer={
@@ -61,12 +72,13 @@ export default function BatchTranslateModal({
           <button
             onClick={onStartBatchTranslate}
             className="btn btn-secondary"
-            disabled={isTranslatingBatch || isSavingBatch || selectedBatchItemIds.size === 0}
+            disabled={isTranslatingBatch || isSavingBatch || translatableSelectedCount === 0}
+            title={isScopeBlockingTranslation ? `当前已排除 ${excludedList.join('、')}，请先在上方恢复包含后再翻译` : undefined}
           >
             {isTranslatingBatch ? (
               <><Loader2 size={14} className="animate-spin" /> 正在调用 Dify 翻译...</>
             ) : (
-              `开始 Dify 翻译 (${selectedBatchItemIds.size})`
+              `开始 Dify 翻译 (${translatableSelectedCount})`
             )}
           </button>
           <button
@@ -112,7 +124,7 @@ export default function BatchTranslateModal({
         {/* Excluded Languages Filter Panel */}
         <div style={{
           backgroundColor: 'var(--bg-secondary)',
-          border: '1px solid var(--border-color)',
+          border: isScopeBlockingTranslation ? '1px solid var(--amber, #f59e0b)' : '1px solid var(--border-color)',
           borderRadius: 'var(--radius-md)',
           padding: '0.65rem 0.85rem',
           display: 'flex',
@@ -120,10 +132,10 @@ export default function BatchTranslateModal({
           gap: '0.5rem'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', flexWrap: 'wrap' }}>
               <span>🌐 翻译语种范围</span>
               <span style={{ fontSize: '0.72rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>
-                (默认保留已有翻译，仅对缺失语种进行智能补全；点击标签可额外排除语种)
+                (默认保留已有翻译，仅对缺失语种进行智能补全；点击标签可额外排除语种{excludedOnlyCount > 0 ? `；另有 ${excludedOnlyCount} 条仅缺已排除语种` : ''})
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -145,7 +157,7 @@ export default function BatchTranslateModal({
                   {isThaiExcluded ? '✓ 恢复包含泰语' : '✕ 排除泰语'}
                 </button>
               )}
-              {excludedTranslateLangs.size > 0 && (
+              {excludedList.length > 0 && (
                 <button
                   type="button"
                   onClick={handleIncludeAll}
@@ -197,7 +209,18 @@ export default function BatchTranslateModal({
         </div>
 
         {/* Progress and status alert */}
-        <div className="alert-box alert-box-info" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+        <div
+          className={`alert-box ${isScopeBlockingTranslation ? 'alert-box-warning' : 'alert-box-info'}`}
+          style={{
+            flexDirection: 'column',
+            gap: '0.5rem',
+            ...(isScopeBlockingTranslation ? {
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              borderColor: 'rgba(245, 158, 11, 0.45)',
+              color: 'var(--amber, #d97706)'
+            } : {})
+          }}
+        >
           <div style={{ fontWeight: '600' }}>{batchProgress.status}</div>
           {batchProgress.total > 0 && (
             <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden', marginTop: '0.25rem' }}>
@@ -262,7 +285,15 @@ export default function BatchTranslateModal({
                     <td className="mono">{item.KW}</td>
                     <td>{item.中文}</td>
                     <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                      {(Array.isArray(item.missingLangs) ? item.missingLangs : []).join(', ')}
+                      {Array.isArray(item.missingLangs) && item.missingLangs.length > 0 ? (
+                        item.missingLangs.join(', ')
+                      ) : Array.isArray(item.excludedMissingLangs) && item.excludedMissingLangs.length > 0 ? (
+                        <span style={{ color: 'var(--amber, #d97706)' }}>
+                          当前范围无待译（已排除：{item.excludedMissingLangs.join(', ')}）
+                        </span>
+                      ) : (
+                        '无'
+                      )}
                     </td>
                     <td>
                       {(!item.translations || Object.keys(item.translations).length === 0) ? (
