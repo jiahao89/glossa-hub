@@ -40,6 +40,8 @@ export default function TranslationToolbar({
   onClearSelection,
   onCopyContent,
   onBatchTranslate,
+  excludedLanguages = [],
+  onResetExcludedLangs,
   onBatchGenerateKw,
   onBatchClearTranslations,
   onBatchApprove,
@@ -70,6 +72,33 @@ export default function TranslationToolbar({
   const colDropdownRef = useRef(null);
   const exportDropdownRef = useRef(null);
   const toolsDropdownRef = useRef(null);
+
+  const excludedTooltipSuffix = excludedLanguages.length > 0
+    ? `（当前表已排除 ${excludedLanguages.length} 个语种：${excludedLanguages.join('、')}）`
+    : '';
+
+  const renderExcludedScopePill = () => {
+    if (excludedLanguages.length === 0) return null;
+    const summary = excludedLanguages.length <= 2
+      ? excludedLanguages.join('、')
+      : `${excludedLanguages.length} 个语种`;
+    return (
+      <button
+        type="button"
+        className="heroui-btn heroui-btn-sm"
+        onClick={onResetExcludedLangs}
+        title={`当前数据表已排除以下语种参与 AI 翻译：${excludedLanguages.join('、')}。点击恢复全部语种`}
+        style={{
+          fontSize: '0.74rem',
+          color: 'var(--amber, #d97706)',
+          borderColor: 'rgba(245, 158, 11, 0.45)',
+          backgroundColor: 'rgba(245, 158, 11, 0.08)',
+        }}
+      >
+        <span>已排除: {summary} · 恢复</span>
+      </button>
+    );
+  };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -192,14 +221,17 @@ export default function TranslationToolbar({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', flex: 1 }}>
             {/* ⭐ 1. 批量 AI 翻译所选 (N) */}
             {difyConfigured && projectRole !== 'viewer' && (
-              <button
-                className="heroui-btn heroui-btn-sm heroui-btn-ai"
-                onClick={onBatchTranslate}
-                title={`调用 Dify 翻译选中的 ${selectedCount} 个词条`}
-              >
-                <Sparkles size={13} />
-                <span>AI 翻译所选 ({selectedCount})</span>
-              </button>
+              <>
+                <button
+                  className="heroui-btn heroui-btn-sm heroui-btn-ai"
+                  onClick={onBatchTranslate}
+                  title={`调用 Dify 翻译选中的 ${selectedCount} 个词条${excludedTooltipSuffix}`}
+                >
+                  <Sparkles size={13} />
+                  <span>AI 翻译所选 ({selectedCount})</span>
+                </button>
+                {renderExcludedScopePill()}
+              </>
             )}
 
             {/* ⭐ 2. 复制表格内容 */}
@@ -438,10 +470,17 @@ export default function TranslationToolbar({
           {/* Right Functional Group: Primary Actions + Tools Dropdown at the far right */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'nowrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
             {difyConfigured && (
-              <button className="heroui-btn heroui-btn-ai" onClick={onBatchTranslate} title="调用 Dify 批量翻译 (扫描未翻译词条)">
-                <Bot size={14} />
-                <span>批量 AI 翻译</span>
-              </button>
+              <>
+                {renderExcludedScopePill()}
+                <button
+                  className="heroui-btn heroui-btn-ai"
+                  onClick={onBatchTranslate}
+                  title={`调用 Dify 批量翻译 (扫描未翻译词条)${excludedTooltipSuffix}`}
+                >
+                  <Bot size={14} />
+                  <span>批量 AI 翻译</span>
+                </button>
+              </>
             )}
 
             {projectRole !== 'viewer' && (

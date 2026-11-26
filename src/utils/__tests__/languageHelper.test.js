@@ -3,7 +3,8 @@ import {
   findTranslationForLang,
   extractExistingTranslations,
   formatExistingReferenceContext,
-  mergeTranslations 
+  mergeTranslations,
+  buildBatchTranslatePreview
 } from '../languageHelper';
 
 describe('findTranslationForLang', () => {
@@ -140,4 +141,97 @@ describe('mergeTranslations', () => {
     expect(changedCount).toBe(2);
   });
 });
+
+describe('buildBatchTranslatePreview', () => {
+  const langs = ['EN（英文）', 'FR（法）', '泰语'];
+
+  it('retains records missing only excluded languages when activeCount is 0 (prevents modal deadlock)', () => {
+    const records = [
+      {
+        recordId: 'rec-9',
+        fields: { KW: 'KW_OFF', 'CN（中文）': '关闭', 'EN（英文）': 'off', 'FR（法）': 'Arrêt', '泰语': '' }
+      },
+      {
+        recordId: 'rec-10',
+        fields: { KW: 'KW_RADAR', 'CN（中文）': '雷达', 'EN（英文）': 'Radar', 'FR（法）': 'Radar', '泰语': '' }
+      }
+    ];
+
+    const res = buildBatchTranslatePreview({
+      records,
+      targetLanguages: langs,
+      excludedLangs: new Set(['泰语']),
+      includeExcludedOnly: false,
+    });
+
+    expect(res.hasAnyIncomplete).toBe(true);
+    expect(res.activeCount).toBe(0);
+    expect(res.excludedOnlyCount).toBe(2);
+    expect(res.items).toHaveLength(2);
+    expect(res.items[0].missingLangs).toEqual([]);
+    expect(res.items[0].excludedMissingLangs).toEqual(['泰语']);
+  });
+
+  it('keeps excluded-only selected rows in selection mode while still separating active vs excluded missing langs', () => {
+    const records = [
+      {
+        recordId: 'rec-1',
+        fields: { 'CN（中文）': '开启', 'EN（英文）': 'On', 'FR（法）': '', '泰语': '' }
+      },
+      {
+        recordId: 'rec-2',
+        fields: { 'CN（中文）': '关闭', 'EN（英文）': 'off', 'FR（法）': 'Arrêt', '泰语': '' }
+      }
+    ];
+
+    const selectionRes = buildBatchTranslatePreview({
+      records,
+      targetLanguages: langs,
+      excludedLangs: new Set(['泰语']),
+      includeExcludedOnly: true,
+    });
+    expect(selectionRes.items).toHaveLength(2);
+    expect(selectionRes.activeCount).toBe(1);
+    expect(selectionRes.excludedOnlyCount).toBe(1);
+    expect(selectionRes.items[0].missingLangs).toEqual(['FR（法）']);
+    expect(selectionRes.items[1].missingLangs).toEqual([]);
+
+    const tableRes = buildBatchTranslatePreview({
+      records,
+      targetLanguages: langs,
+      excludedLangs: new Set(['泰语']),
+      includeExcludedOnly: false,
+    });
+    expect(tableRes.items).toHaveLength(1);
+    expect(tableRes.items[0].recordId).toBe('rec-1');
+  });
+
+  it('returns hasAnyIncomplete=false only when every target language is filled', () => {
+    const records = [
+      {
+        recordId: 'rec-done',
+        fields: { 'CN（中文）': '已复制', 'EN（英文）': 'Copied', 'FR（法）': 'Copié', '泰语': 'คัดลอกแล้ว' }
+      }
+    ];
+    const res = buildBatchTranslatePreview({
+      records,
+      targetLanguages: langs,
+      excludedLangs: new Set(['泰语']),
+      includeExcludedOnly: true,
+    });
+    expect(res.hasAnyIncomplete).toBe(false);
+    expect(res.hasEmptySourceOnly).toBe(false);
+    expect(res.items).toEqual([]);
+  });
+
+  it('flags empty Chinese source records accurately', () => {
+    const records = [
+      { recordId: 'rec-no-cn', fields: { 'CN（中文）': '   ', 'EN（英文）': '' } }
+    ];
+    const res = buildBatchTranslatePreview({ records, targetLanguages: langs });
+    expect(res.hasAnyIncomplete).toBe(false);
+    expect(res.hasEmptySourceOnly).toBe(true);
+  });
+});
+
 

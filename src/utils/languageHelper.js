@@ -137,3 +137,102 @@ export function mergeTranslations({ currentFields = {}, aiResult = {}, targetLan
   return { updatedFields, changedCount, preservedCount };
 }
 
+/**
+ * Build preview items for batch AI translation, distinguishing active missing
+ * languages from languages excluded by the current table's scope.
+ *
+ * When `includeExcludedOnly` is true (e.g. user explicitly checked rows), or
+ * when no records have active missing languages (`activeCount === 0`) while at
+ * least one record still has excluded missing languages, excluded-only records
+ * are retained so the modal can still open and let the user restore languages.
+ *
+ * @param {Object} params
+ * @param {Array<Object>} params.records - Candidate records to evaluate.
+ * @param {Array<string>} params.targetLanguages - Full project target languages.
+ * @param {Set<string>|Array<string>} [params.excludedLangs] - Currently excluded languages.
+ * @param {boolean} [params.includeExcludedOnly=false] - Retain records missing only excluded languages.
+ * @param {Map<string, Object>} [params.previousById] - Existing preview items keyed by recordId.
+ * @returns {{
+ *   items: Array<Object>,
+ *   hasAnyIncomplete: boolean,
+ *   hasEmptySourceOnly: boolean,
+ *   activeCount: number,
+ *   excludedOnlyCount: number
+ * }}
+ */
+export function buildBatchTranslatePreview({
+  records = [],
+  targetLanguages = [],
+  excludedLangs = new Set(),
+  includeExcludedOnly = false,
+  previousById = new Map(),
+}) {
+  const excludedSet = excludedLangs instanceof Set
+    ? excludedLangs
+    : new Set(Array.isArray(excludedLangs) ? excludedLangs : []);
+  const langs = Array.isArray(targetLanguages) ? targetLanguages : [];
+  const candidateList = Array.isArray(records) ? records : [];
+
+  let withZhCount = 0;
+  let emptyZhCount = 0;
+  const incompleteCandidates = [];
+
+  candidateList.forEach(r => {
+    const fields = r?.fields || {};
+    const zhCn = (fields['CN（中文）'] || '').trim();
+    if (!zhCn) {
+      emptyZhCount++;
+      return;
+    }
+    withZhCount++;
+
+    const allMissingLangs = langs.filter(
+      lang => !fields[lang] || String(fields[lang]).trim() === ''
+    );
+    if (allMissingLangs.length === 0) return;
+
+    const missingLangs = allMissingLangs.filter(lang => !excludedSet.has(lang));
+    const excludedMissingLangs = allMissingLangs.filter(lang => excludedSet.has(lang));
+    const recordId = r.recordId || r.id;
+    const prev = previousById instanceof Map ? previousById.get(recordId) : undefined;
+
+    incompleteCandidates.push({
+      recordId,
+      KW: fields['KW'] || '',
+      '中文': zhCn,
+      '所在页面': fields['所在页面'] || '',
+      existingFields: fields,
+      missingLangs,
+      excludedMissingLangs,
+      allMissingLangs,
+      translations: prev?.translations || {},
+      ...(prev?.tmMatch ? { tmMatch: true } : {}),
+    });
+  });
+
+  if (incompleteCandidates.length === 0) {
+    return {
+      items: [],
+      hasAnyIncomplete: false,
+      hasEmptySourceOnly: withZhCount === 0 && emptyZhCount > 0,
+      activeCount: 0,
+      excludedOnlyCount: 0,
+    };
+  }
+
+  const activeItems = incompleteCandidates.filter(item => item.missingLangs.length > 0);
+  const excludedOnlyCount = incompleteCandidates.length - activeItems.length;
+  const items = (includeExcludedOnly || activeItems.length === 0)
+    ? incompleteCandidates
+    : activeItems;
+
+  return {
+    items,
+    hasAnyIncomplete: true,
+    hasEmptySourceOnly: false,
+    activeCount: activeItems.length,
+    excludedOnlyCount,
+  };
+}
+
+
