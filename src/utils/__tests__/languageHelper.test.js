@@ -41,6 +41,25 @@ describe('findTranslationForLang', () => {
     // ES must not match target EN via name substring
     expect(findTranslationForLang({ ES: 'hola' }, 'EN（英文）')).toBeUndefined();
   });
+
+  it('matches Thai, Swedish, Norwegian, Dutch, Japanese, and Czech across ISO codes and English names', () => {
+    expect(findTranslationForLang({ TH: 'ปิด' }, '泰语')).toBe('ปิด');
+    expect(findTranslationForLang({ th: 'เรดาร์' }, '泰语')).toBe('เรดาร์');
+    expect(findTranslationForLang({ Thai: 'ปิด' }, '泰语')).toBe('ปิด');
+    expect(findTranslationForLang({ 'TH（泰语）': 'ปิด' }, '泰语')).toBe('ปิด');
+    expect(findTranslationForLang({ '泰语': '', TH: 'ปิด' }, '泰语')).toBe('ปิด');
+
+    expect(findTranslationForLang({ SV: 'Av' }, '瑞典')).toBe('Av');
+    expect(findTranslationForLang({ Swedish: 'Av' }, '瑞典')).toBe('Av');
+    expect(findTranslationForLang({ NB: 'Av' }, '挪威')).toBe('Av');
+    expect(findTranslationForLang({ NL: 'Uit' }, '荷兰')).toBe('Uit');
+    expect(findTranslationForLang({ JA: 'オフ' }, 'JP（日）')).toBe('オフ');
+    expect(findTranslationForLang({ CS: 'Vypnuto' }, 'CZ(捷克)')).toBe('Vypnuto');
+  });
+
+  it('ignores internal metadata keys such as _source and error', () => {
+    expect(findTranslationForLang({ _source: 'tm', error: 'none' }, 'EN（英文）')).toBeUndefined();
+  });
 });
 
 describe('extractExistingTranslations', () => {

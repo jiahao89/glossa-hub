@@ -245,4 +245,133 @@ describe('Batch translate excluded-language deadlock & isolation', () => {
       expect(screen.getByText(/当前翻译范围内语种均已有翻译（已排除：泰语）/)).toBeInTheDocument();
     });
   });
+
+  it('fills Thai translation when backend returns TH code', async () => {
+    mockFetch.mockImplementation((url) => {
+      const u = String(url);
+      if (u.includes('/languages')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => SAMPLE_LANGUAGES });
+      }
+      if (u.includes('/dify')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ apiKeyConfigured: true }) });
+      }
+      if (u === '/api/tables') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => TABLES });
+      }
+      if (u.includes('/api/tables/')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            records: [
+              {
+                id: 'rec-9',
+                recordId: 'rec-9',
+                status: 'DRAFT',
+                fields: { KW: 'KW_OFF', 'CN（中文）': '关闭', 'EN（英文）': 'off', 'FR（法）': 'Arrêt', '泰语': '' },
+              },
+            ],
+            total: 1,
+          }),
+        });
+      }
+      if (u.includes('/ai-translate')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ TH: 'ปิด' }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+
+    render(
+      <ToastProvider>
+        <TranslationTab difyConnected={true} projectRole="owner" selectedTableId="tbl-br-light" />
+      </ToastProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('关闭')).toBeInTheDocument();
+    });
+
+    const row9 = screen.getByText('关闭').closest('tr');
+    fireEvent.click(row9.querySelector('input[type="checkbox"]'));
+    fireEvent.click(screen.getByText('AI 翻译所选 (1)').closest('button'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /开始 Dify 翻译 \(1\)/ })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /开始 Dify 翻译 \(1\)/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('ปิด')).toBeInTheDocument();
+      expect(screen.getByText(/批量翻译全部完成/)).toBeInTheDocument();
+    });
+  });
+
+  it('surfaces per-row errorReason when backend omits requested Thai translation', async () => {
+    mockFetch.mockImplementation((url) => {
+      const u = String(url);
+      if (u.includes('/languages')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => SAMPLE_LANGUAGES });
+      }
+      if (u.includes('/dify')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ apiKeyConfigured: true }) });
+      }
+      if (u === '/api/tables') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => TABLES });
+      }
+      if (u.includes('/api/tables/')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            records: [
+              {
+                id: 'rec-10',
+                recordId: 'rec-10',
+                status: 'DRAFT',
+                fields: { KW: 'KW_RADAR', 'CN（中文）': '雷达', 'EN（英文）': 'Radar', 'FR（法）': 'Radar', '泰语': '' },
+              },
+            ],
+            total: 1,
+          }),
+        });
+      }
+      if (u.includes('/ai-translate')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ EN: 'Radar' }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+
+    render(
+      <ToastProvider>
+        <TranslationTab difyConnected={true} projectRole="owner" selectedTableId="tbl-br-light" />
+      </ToastProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('雷达')).toBeInTheDocument();
+    });
+
+    const row10 = screen.getByText('雷达').closest('tr');
+    fireEvent.click(row10.querySelector('input[type="checkbox"]'));
+    fireEvent.click(screen.getByText('AI 翻译所选 (1)').closest('button'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /开始 Dify 翻译 \(1\)/ })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /开始 Dify 翻译 \(1\)/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/AI 未返回目标语种（泰语）的有效译文/)).toBeInTheDocument();
+    });
+  });
 });

@@ -11,16 +11,28 @@
  */
 export function findTranslationForLang(result, targetLang) {
   if (!result || typeof result !== 'object') return undefined;
-  if (result[targetLang] !== undefined) return result[targetLang];
+  if (
+    result[targetLang] !== undefined
+    && result[targetLang] !== null
+    && String(result[targetLang]).trim() !== ''
+  ) {
+    return result[targetLang];
+  }
 
+  const nameClean = String(targetLang)
+    .replace(/^[A-Za-z]+\s*[（(]?/i, '')
+    .replace(/[）)]?$/g, '')
+    .replace(/语|文/g, '')
+    .trim();
+  const targetClean = String(targetLang).replace(/[（()）]/g, '').replace(/语|文/g, '').trim();
   const codeMatch = String(targetLang).match(/^([A-Za-z]+)/);
-  const code = codeMatch ? codeMatch[1].toUpperCase() : '';
-  const nameClean = String(targetLang).replace(/^[A-Za-z]+\s*[（(]?/i, '')
-                              .replace(/[）)]?$/g, '')
-                              .replace(/语|文/g, '')
-                              .trim();
+  const rawCode = codeMatch
+    ? codeMatch[1].toUpperCase()
+    : (CHINESE_NAME_TO_CODE[nameClean] || CHINESE_NAME_TO_CODE[targetClean] || ENGLISH_NAME_TO_CODE[kLower(targetClean)] || '');
+  const code = CODE_ALIASES[rawCode] || rawCode;
 
   for (const [k, v] of Object.entries(result)) {
+    if (!k || k.startsWith('_') || k === 'error') continue;
     if (v === undefined || v === null || String(v).trim() === '') continue;
     const kClean = k.replace(/[（()）]/g, '').replace(/语|文/g, '').trim();
 
@@ -29,11 +41,14 @@ export function findTranslationForLang(result, targetLang) {
     const kCodeMatch = k.match(/^([A-Za-z]+)/);
     const kCodeRaw = kCodeMatch ? kCodeMatch[1].toUpperCase() : '';
     const kCode = kCodeRaw.length > 0 && kCodeRaw.length <= 3 ? kCodeRaw : '';
-    // Map common English language names to codes, so "English" matches target "EN（英文）"
-    const kCodeFromName = ENGLISH_NAME_TO_CODE[kLower(kClean)] || '';
+    // Map common English / Chinese language names to codes, so "TH" / "Thai" matches "泰语"
+    const kCodeFromName = ENGLISH_NAME_TO_CODE[kLower(kClean)]
+      || CHINESE_NAME_TO_CODE[kClean]
+      || '';
+    const kCodeResolved = CODE_ALIASES[kCode || kCodeFromName] || (kCode || kCodeFromName);
 
-    if (code && (kCode === code || kCodeFromName === code
-      || kCode.startsWith(code + '_') || kCode.startsWith(code + '-'))) {
+    if (code && kCodeResolved && (kCodeResolved === code
+      || kCodeResolved.startsWith(code + '_') || kCodeResolved.startsWith(code + '-'))) {
       return v;
     }
     if (nameClean && (kClean.includes(nameClean) || nameClean.includes(kClean))) {
@@ -47,13 +62,28 @@ function kLower(s) {
   return String(s).toLowerCase().trim();
 }
 
+/** Common Chinese language names mapped to canonical ISO-like codes. */
+const CHINESE_NAME_TO_CODE = {
+  英: 'EN', 中: 'CN', 简中: 'CN', 繁: 'TC', 繁体: 'TC', 繁体中: 'TC',
+  法: 'FR', 德: 'DE', 西班牙: 'ES', 西: 'ES', 意大利: 'IT', 意: 'IT',
+  葡萄牙: 'PT', 葡: 'PT', 韩: 'KO', 日: 'JP', 俄罗斯: 'RU', 俄: 'RU',
+  波兰: 'PL', 波: 'PL', 丹麦: 'DA', 捷克: 'CZ',
+  瑞典: 'SE', 挪威: 'NO', 荷兰: 'NL', 泰: 'TH',
+};
+
+/** Equivalent ISO-639-1 / regional codes mapped to canonical GlossaHub codes. */
+const CODE_ALIASES = {
+  JA: 'JP', SV: 'SE', CS: 'CZ', NB: 'NO', NN: 'NO',
+  TW: 'TC', CHT: 'TC', ZH_TW: 'TC',
+};
+
 /** Common English language names the AI may return, mapped to ISO-like codes. */
 const ENGLISH_NAME_TO_CODE = {
-  english: 'EN', chinese: 'CN', 'traditional chinese': 'TC', french: 'FR',
-  german: 'DE', spanish: 'ES', italian: 'IT', portuguese: 'PT',
+  english: 'EN', chinese: 'CN', 'traditional chinese': 'TC', 'zh-tw': 'TC', zh_tw: 'TC',
+  french: 'FR', german: 'DE', spanish: 'ES', italian: 'IT', portuguese: 'PT',
   korean: 'KO', japanese: 'JP', russian: 'RU', polish: 'PL',
   danish: 'DA', czech: 'CZ', swedish: 'SE', norwegian: 'NO', dutch: 'NL',
-  thai: 'TH',
+  thai: 'TH', thailand: 'TH',
 };
 
 /**

@@ -44,6 +44,60 @@ describe('AI Translation & Glossary Interception (/api/projects/:projectId/ai-tr
     expect(res.body['EN（英文）']).toBe('Cadence Sensor');
   });
 
+  it('should fall through to Dify when exact glossary match lacks the requested language (e.g. Thai)', async () => {
+    await db.run(
+      `INSERT OR IGNORE INTO glossary_terms (id, table_id, cn_term, en_term, description, created_at, fields)
+       VALUES ('gt-term-close', $1, '关闭', 'close', '', datetime('now'), '{"EN（英文）":"close","FR（法）":"fermer"}')`,
+      [testTableId]
+    );
+
+    const origFetch = global.fetch;
+    let calledDifyInputs = null;
+    global.fetch = async (url, opts) => {
+      if (typeof url === 'string' && url.includes('/workflows/run')) {
+        const body = JSON.parse(opts.body);
+        calledDifyInputs = body.inputs;
+        const sse = 'data: ' + JSON.stringify({
+          event: 'workflow_finished',
+          data: { status: 'succeeded', outputs: { text: '{"TH":"ปิด"}' } },
+        }) + '\n\n';
+        const encoder = new TextEncoder();
+        return {
+          ok: true,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(sse));
+              controller.close();
+            },
+          }),
+        };
+      }
+      return origFetch(url, opts);
+    };
+
+    try {
+      const res = await request(app)
+        .post('/api/projects/proj-default/ai-translate')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          inputs: {
+            KW: 'KW_OFF',
+            text: '关闭',
+            target_languages: '泰语',
+            existing_translations: { 'EN（英文）': 'off' },
+          },
+        });
+
+      expect(res.status).toBe(200);
+      expect(calledDifyInputs).toBeTruthy();
+      expect(calledDifyInputs.target_languages).toBe('泰语');
+      expect(res.body.TH).toBe('ปิด');
+      expect(res.body._source).not.toBe('tm');
+    } finally {
+      global.fetch = origFetch;
+    }
+  });
+
   it('should generate KW correctly using backend helper endpoint', async () => {
     const origFetch = global.fetch;
     global.fetch = async (url) => {
