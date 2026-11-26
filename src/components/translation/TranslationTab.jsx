@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { apiFetch, safeGetLocalStorage } from '../../utils/api';
-import { 
-  findTranslationForLang, 
+import {
+  findTranslationForLang,
   DEFAULT_TARGET_LANGUAGES,
   extractExistingTranslations,
   formatExistingReferenceContext,
@@ -21,7 +21,7 @@ import TranslationTable from './TranslationTable';
 import CopyContentModal from './CopyContentModal';
 import BatchGenerateKwModal from './BatchGenerateKwModal';
 
-export default function TranslationTab({ 
+export default function TranslationTab({
   difyConnected = false,
   user: propUser,
   selectedTableId: propSelectedTableId,
@@ -198,7 +198,7 @@ export default function TranslationTab({
   const [excludedTranslateLangs, setExcludedTranslateLangs] = useState(() => {
     try {
       localStorage.removeItem('glossa_excluded_translate_langs');
-    } catch {}
+    } catch { }
     if (selectedTableId) {
       const tableSaved = safeGetLocalStorage(`glossa_excluded_translate_langs_${selectedTableId}`, null);
       if (Array.isArray(tableSaved)) {
@@ -258,7 +258,7 @@ export default function TranslationTab({
         } else {
           localStorage.setItem(storageKey, JSON.stringify(Array.from(normalized)));
         }
-      } catch {}
+      } catch { }
     }
 
     if (batchTranslateOpen && !isTranslatingBatch && batchCandidateRecords.length > 0) {
@@ -401,7 +401,7 @@ export default function TranslationTab({
     for (let i = 0; i < workingList.length; i++) {
       const item = workingList[i];
       if (!selectedBatchItemIds.has(item.recordId)) continue;
-      
+
       const effectiveMissingLangs = (item.missingLangs || []).filter(l => activeTargetLangs.includes(l));
       if (effectiveMissingLangs.length === 0) continue;
       tasks.push({ item, index: i, effectiveMissingLangs });
@@ -481,29 +481,38 @@ export default function TranslationTab({
         if (!res || !res.ok) {
           throw lastErr || new Error('翻译失败');
         }
-        
+
         const result = await res.json().catch(() => ({}));
-        
+        if (result && result.error) {
+          throw new Error(result.error);
+        }
+
         const trans = {};
         effectiveMissingLangs.forEach(lang => {
           const val = findTranslationForLang(result, lang);
           if (val) trans[lang] = val;
         });
-        
+
         const nextItem = { ...workingList[i] };
         if (result._source === 'tm') {
           nextItem.tmMatch = true;
         }
-        
+
         if (Object.keys(trans).length > 0) {
           nextItem.translations = { ...(nextItem.translations || {}), ...trans };
+          delete nextItem.errorReason;
           successCount++;
         } else {
+          nextItem.errorReason = `AI 未返回目标语种（${effectiveMissingLangs.join('、')}）的有效译文`;
           errorCount++;
         }
         workingList[i] = nextItem;
       } catch (err) {
         errorCount++;
+        workingList[i] = {
+          ...workingList[i],
+          errorReason: err.message || '翻译请求失败',
+        };
         console.error(`翻译词条 ${item.KW} 失败:`, err);
         toast.error(`翻译词条「${item.KW || item['中文']}」失败: ${err.message}`);
       } finally {
@@ -534,9 +543,9 @@ export default function TranslationTab({
     flushPreview(true);
     setIsTranslatingBatch(false);
     if (errorCount > 0) {
-      setBatchProgress(prev => ({ 
-        ...prev, 
-        status: `批量翻译完成！${successCount} 条成功` + (errorCount > 0 ? `，${errorCount} 条失败/无输出` : '') + '。请检查预览内容。' 
+      setBatchProgress(prev => ({
+        ...prev,
+        status: `批量翻译完成！${successCount} 条成功` + (errorCount > 0 ? `，${errorCount} 条失败/无输出` : '') + '。请检查预览内容。'
       }));
     } else {
       setBatchProgress(prev => ({ ...prev, status: '批量翻译全部完成！请检查预览内容并确认写入。' }));
@@ -547,7 +556,7 @@ export default function TranslationTab({
     try {
       setIsSavingBatch(true);
       const recordsToUpdate = [];
-      
+
       batchPreviewList.forEach(item => {
         if (!selectedBatchItemIds.has(item.recordId)) return;
         const fields = {};
@@ -589,8 +598,8 @@ export default function TranslationTab({
         return {
           recordId: id,
           fields: {
-             ...(existingRec ? existingRec.fields : {}),
-             ...newFields
+            ...(existingRec ? existingRec.fields : {}),
+            ...newFields
           },
           translationsMeta: newMeta
         };
@@ -601,12 +610,12 @@ export default function TranslationTab({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ added: [], updated: updatedForSync })
       });
-      
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '写入失败');
       }
-      
+
       toast.success('批量翻译写入成功');
       setModifiedCells(prev => {
         const newModified = { ...prev };
@@ -625,7 +634,7 @@ export default function TranslationTab({
       setBatchTranslateOpen(false);
       setBatchPreviewList([]);
       loadTableData(batchTargetTableId);
-    } catch(err) {
+    } catch (err) {
       toast.error(err.message);
     } finally {
       setIsSavingBatch(false);
@@ -1178,7 +1187,7 @@ export default function TranslationTab({
         onExportXLS={handleExportXLS}
         onExportCSV={handleExportCSV}
         csvImportNode={
-          <CSVImportHandler 
+          <CSVImportHandler
             selectedTableId={selectedTableId}
             currentRecords={records}
             targetLanguages={targetLanguagesList}

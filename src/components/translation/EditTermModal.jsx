@@ -206,6 +206,9 @@ export default function EditTermModal({
         throw new Error(data.error || '翻译接口失败');
       }
       const result = await res.json().catch(() => ({}));
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
       const { updatedFields, changedCount, preservedCount } = mergeTranslations({
         currentFields: fields,
         aiResult: result,

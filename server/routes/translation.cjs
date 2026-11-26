@@ -6,6 +6,13 @@ const { aiTranslateLimiter } = require('../middleware/rateLimiters.cjs');
 const { getEffectiveDifyConfig, generateKwHelper, getBuiltinKeys } = require('../services/difyService.cjs');
 const { parseJsonField } = require('../utils/jsonFields.cjs');
 const { getCachedGlossaryTerms } = require('../services/glossaryCache.cjs');
+const {
+  parseTargetLanguages,
+  resolveGlossaryTranslations,
+  buildMatchedGlossaryTerms,
+  parseDifyWorkflowOutputs,
+  findMatchingNonEmptyValue,
+} = require('../utils/translationHelper.cjs');
 
 // Preferred Dify engine memory (avoid retrying broken endpoints for 45s on every term)
 let preferredEngineUrl = null;
@@ -363,6 +370,7 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
 
     const allMatches = glossaryTerms.filter(term => term.cn_term === zhCn);
     let fullMatch = null;
+    const parsedTargetLangs = parseTargetLanguages(targetLangs);
 
     if (allMatches.length === 1) {
       fullMatch = allMatches[0];
@@ -395,6 +403,14 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
           }
         }
 
+        // Prefer glossary candidates that actually contain translations for the requested target languages
+        if (parsedTargetLangs.length > 0) {
+          const hitCount = parsedTargetLangs.filter(lang =>
+            Boolean(findMatchingNonEmptyValue({ ...termFields, 'EN（英文）': enTerm }, lang))
+          ).length;
+          score += hitCount * 40;
+        }
+
         subTerms.forEach(sub => {
           const subEn = (sub.en_term || '').toLowerCase().replace(/[^a-z0-9]/g, '');
           if (subEn.length >= 3) {
@@ -421,92 +437,42 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
       fullMatch = scoredMatches[0].term;
     }
 
+    let partialGlossaryTm = {};
+    let fullMatchSource = null;
+    const aiInputs = { ...inputs };
+
     if (fullMatch) {
-      const parsedTargetLangs = (typeof targetLangs === 'string' ? targetLangs.split(',') : targetLangs).map(l => l.trim()).filter(Boolean);
-      let tmTranslations = {};
-      const termFields = parseJsonField(fullMatch && fullMatch.fields);
-
-      const fieldsKeys = Object.keys(termFields);
-      parsedTargetLangs.forEach(lang => {
-        if (lang === '英文' || lang.includes('EN') || lang.toLowerCase() === 'english') {
-          tmTranslations[lang] = typeof fullMatch.en_term === 'object' 
-            ? (fullMatch.en_term?.text || JSON.stringify(fullMatch.en_term)) 
-            : String(fullMatch.en_term || '');
-        } else {
-          const normLang = lang.replace(/语|文/g, '');
-          const matchedKey = fieldsKeys.find(k => k === lang || k.includes(normLang));
-          let rawVal = matchedKey ? termFields[matchedKey] : '';
-          if (typeof rawVal === 'object' && rawVal !== null) {
-            if (Array.isArray(rawVal)) {
-              rawVal = rawVal.map(x => (typeof x === 'object' ? x?.text || '' : String(x))).join('');
-            } else if (rawVal.text !== undefined) {
-              rawVal = String(rawVal.text);
-            } else {
-              rawVal = JSON.stringify(rawVal);
-            }
-          }
-          tmTranslations[lang] = String(rawVal || '');
-        }
-      });
-
-      // 默认不纠正调用方已提供的现存翻译
-      if (inputs.preserve_existing !== false && inputs.existing_translations && typeof inputs.existing_translations === 'object') {
-        Object.entries(inputs.existing_translations).forEach(([k, v]) => {
-          if (v && String(v).trim()) {
-            const matchedKey = Object.keys(tmTranslations).find(tk => tk === k || tk.replace(/语|文/g, '') === k.replace(/语|文/g, ''));
-            if (matchedKey) {
-              tmTranslations[matchedKey] = String(v).trim();
-            } else {
-              tmTranslations[k] = String(v).trim();
-            }
-          }
-        });
+      const resolved = resolveGlossaryTranslations(fullMatch, parsedTargetLangs, inputs);
+      if (resolved.isComplete) {
+        return res.json({ ...resolved.tmTranslations, _source: 'tm' });
       }
-
-      return res.json({ ...tmTranslations, _source: 'tm' });
+      // Glossary matched the Chinese term, but lacks translations for some/all requested languages
+      // (e.g. legacy 16-language glossary missing Thai). Fall through to Dify for the missing ones.
+      partialGlossaryTm = resolved.tmTranslations;
+      fullMatchSource = resolved.glossarySource;
+      if (resolved.missingFromGlossary.length > 0) {
+        aiInputs.target_languages = resolved.missingFromGlossary.join(',');
+      }
     }
 
-    let matchedTerms = [];
-    const nonLangKeys = new Set(['所在页面', '字号类别', 'KW', 'kw', 'CN（中文）', 'id', 'created_at', 'updated_at']);
-    glossaryTerms.forEach(term => {
-      const cn = (term.cn_term || '').trim();
-      // 过滤单字符或纯符号，防止无意义的部分匹配导致 prompt 膨胀与 token 超标
-      if (cn.length >= 2 && zhCn.includes(cn)) {
-        const termFields = parseJsonField(term && term.fields);
-
-        let targetConstraints = { "英文": term.en_term };
-        Object.keys(termFields).forEach(k => {
-          if (!nonLangKeys.has(k) && termFields[k]) {
-            targetConstraints[k] = termFields[k];
-          }
-        });
-
-        matchedTerms.push({
-          "中文名词": cn,
-          "各语种强制翻译": targetConstraints
-        });
-      }
-    });
-
-    // 如果传入了现有语种翻译（如英语已译），将其置顶为第一优先级的强制对齐约束
-    if (inputs.existing_translations && typeof inputs.existing_translations === 'object' && Object.keys(inputs.existing_translations).length > 0) {
-      matchedTerms.unshift({
-        "中文名词": zhCn,
-        "各语种强制翻译": inputs.existing_translations,
-        "重要规则": "当前词条已确认的现有翻译，请严格保持各目标语种含义与已有翻译对齐，切勿纠正或修改已有翻译"
-      });
-    }
+    const matchedTerms = buildMatchedGlossaryTerms(
+      glossaryTerms,
+      zhCn,
+      fullMatch,
+      inputs.existing_translations,
+      fullMatchSource
+    );
 
     if (matchedTerms.length > 0) {
       // 限制最多注入 15 条最相关的名词约束，防止 prompt 过大导致 LLM 推理卡顿 30+ 秒
-      inputs.glossary_context = JSON.stringify(matchedTerms.slice(0, 15), null, 2);
+      aiInputs.glossary_context = JSON.stringify(matchedTerms.slice(0, 15), null, 2);
     } else {
-      inputs.glossary_context = "";
+      aiInputs.glossary_context = "";
     }
     // === END GLOSSARY INTERCEPTION ===
 
     const config = await getEffectiveDifyConfig(projectId);
-    const result = await executeDifyWithFailover(config, inputs, `user_${userId}`);
+    const result = await executeDifyWithFailover(config, aiInputs, `user_${userId}`);
 
     if (!result.ok) {
       const errorText = result.errorText || '';
@@ -569,156 +535,25 @@ router.post('/projects/:projectId/ai-translate', authenticateToken, requireProje
     const usageTokens = data.data?.total_tokens || 0;
     const usageElapsed = data.data?.elapsed_time || 0;
     const usageStatus = data.data?.status || 'success';
+    const loggedTargetLangs = Array.isArray(aiInputs.target_languages)
+      ? aiInputs.target_languages.join(',')
+      : String(aiInputs.target_languages || (Array.isArray(targetLangs) ? targetLangs.join(',') : targetLangs) || '');
     db.query(
       'INSERT INTO ai_usage_logs (user_id, project_id, term_kw, zh_cn, target_languages, total_tokens, elapsed_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [userId, projectId, termKw, zhCn.slice(0, 200), targetLangs, usageTokens, usageElapsed, usageStatus]
+      [userId, projectId, termKw, zhCn.slice(0, 200), loggedTargetLangs, usageTokens, usageElapsed, usageStatus]
     ).catch(err => console.error('AI用量日志写入失败:', err.message));
 
-    let outputs = data.data?.outputs || data.outputs;
-    if (!outputs || typeof outputs !== 'object' || Object.keys(outputs).length === 0) {
-      if (data.data?.result || data.result) {
-        outputs = { result: data.data?.result || data.result };
-      } else if (data.data?.text || data.text) {
-        outputs = { text: data.data?.text || data.text };
-      } else if (data.data?.answer || data.answer) {
-        outputs = { answer: data.data?.answer || data.answer };
-      } else if (data.data?.response || data.response) {
-        outputs = { response: data.data?.response || data.response };
-      } else if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
-        outputs = data.data;
-      } else {
-        outputs = data;
-      }
+    const parsedOut = parseDifyWorkflowOutputs(data, parsedTargetLangs);
+    if (!parsedOut.ok) {
+      console.error('⚠️ Dify output parse failed:', parsedOut.error, JSON.stringify(data).slice(0, 300));
+      return res.status(parsedOut.status || 500).json({ error: parsedOut.error });
     }
 
-    if (!outputs || typeof outputs !== 'object') {
-      console.error('⚠️ Dify raw data:', JSON.stringify(data));
-      return res.status(500).json({ error: `Dify 工作流未返回任何有效数据。原始响应: ${JSON.stringify(data).slice(0, 300)}` });
-    }
+    const mergedResult = Object.keys(partialGlossaryTm).length > 0
+      ? { ...parsedOut.resultObj, ...partialGlossaryTm, _source: 'tm+ai' }
+      : parsedOut.resultObj;
 
-    const outputKeys = Object.keys(outputs);
-    if (outputKeys.some(k => k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || k.includes('EN') || k.includes('FR') || k.includes('CN') || k.includes('中文'))) {
-      return res.json(outputs);
-    }
-
-    let rawVal = outputs.result || outputs.translations || outputs.output || outputs.text || outputs.answer || outputs.response || outputs.res || outputs.data || outputs.json;
-
-    if (rawVal === undefined && outputKeys.length === 1) {
-      rawVal = outputs[outputKeys[0]];
-    }
-
-    if (rawVal === undefined) {
-      for (const key of outputKeys) {
-        const val = outputs[key];
-        if (typeof val === 'string' && val.trim().startsWith('{')) {
-          rawVal = val;
-          break;
-        }
-      }
-    }
-
-    if (rawVal === undefined || rawVal === null) {
-      console.error('⚠️ Dify raw response data structure:', JSON.stringify(data));
-      return res.status(500).json({ 
-        error: `Dify 工作流未包含有效输出变量 (当前 Dify 输出字段为: ${outputKeys.join(', ') || '无'})。原始响应片段: ${JSON.stringify(data).slice(0, 200)}` 
-      });
-    }
-
-    // Robust JSON Repair & Extraction Helper (Strips DeepSeek <think> reasoning blocks)
-    const tryExtractAndParseJson = (inputStr) => {
-      if (!inputStr || typeof inputStr !== 'string') return null;
-      let cleaned = inputStr.trim();
-
-      // 1. Remove <think>...</think> reasoning blocks and Chinese thinking headers
-      cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-      cleaned = cleaned.replace(/已深度思考[\s\S]*?(?=\{|$)/gi, '').trim();
-      cleaned = cleaned.replace(/Thinking Process:[\s\S]*?(?=\{|$)/gi, '').trim();
-
-      // 2. Remove markdown code blocks (```json ... ```)
-      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-
-      // 3. Direct JSON parse attempt
-      try {
-        const obj = JSON.parse(cleaned);
-        if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
-      } catch {}
-
-      // 4. Try parsing from first index of '{' to last index of '}'
-      const firstOpen = cleaned.indexOf('{');
-      const lastClose = cleaned.lastIndexOf('}');
-      if (firstOpen !== -1 && lastClose > firstOpen) {
-        const candidate = cleaned.slice(firstOpen, lastClose + 1);
-        try {
-          const obj = JSON.parse(candidate);
-          if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
-        } catch {}
-
-        try {
-          let repaired = candidate
-            .replace(/,\s*([}\]])/g, '$1')
-            .replace(/(['"])?([a-zA-Z0-9_\u4e00-\u9fa5]+)\1\s*:/g, '"$2":');
-          const obj = JSON.parse(repaired);
-          if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
-        } catch {}
-      }
-
-      // 5. General regex match fallback
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const obj = JSON.parse(jsonMatch[0]);
-          if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
-        } catch {}
-
-        try {
-          let repaired = jsonMatch[0]
-            .replace(/,\s*([}\]])/g, '$1')
-            .replace(/(['"])?([a-zA-Z0-9_\u4e00-\u9fa5]+)\1\s*:/g, '"$2":');
-          const obj = JSON.parse(repaired);
-          if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
-        } catch {}
-      }
-      return null;
-    };
-
-    const isTranslationObj = (obj) => {
-      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
-      const keys = Object.keys(obj);
-      return keys.length > 0 && !obj.error && keys.some(k => 
-        k.includes('英') || k.includes('法') || k.includes('德') || k.includes('日') || 
-        k.includes('EN') || k.includes('FR') || k.includes('DE') || k.includes('ES') || 
-        k.includes('CN') || k.includes('中文') || k.length <= 6
-      );
-    };
-
-    if (typeof rawVal === 'object' && rawVal !== null) {
-      if (rawVal.error) {
-        const fallbackText = rawVal.raw_output || rawVal.text || rawVal.result || rawVal.raw || '';
-        const repairedObj = tryExtractAndParseJson(fallbackText);
-        if (repairedObj && isTranslationObj(repairedObj)) {
-          console.log('✅ 成功从 Dify Code 节点的 raw_output 中容错解析出完整 JSON 翻译!');
-          return res.json(repairedObj);
-        }
-        return res.status(500).json({ error: `Dify 脚本节点抛出错误: ${rawVal.error}` });
-      }
-      return res.json(rawVal);
-    }
-
-    const parsedObj = tryExtractAndParseJson(String(rawVal));
-    if (parsedObj && typeof parsedObj === 'object') {
-      if (parsedObj.error) {
-        const fallbackText = parsedObj.raw_output || parsedObj.text || '';
-        const repairedObj = tryExtractAndParseJson(fallbackText);
-        if (repairedObj && isTranslationObj(repairedObj)) {
-          console.log('✅ 成功容错修复解析 Dify raw_output JSON!');
-          return res.json(repairedObj);
-        }
-        return res.status(200).json({ error: `Dify 脚本节点抛出错误: ${parsedObj.error}` });
-      }
-      return res.json(parsedObj);
-    }
-
-    res.status(500).json({ error: `解析 Dify 输出 JSON 失败。原始输出为: ${String(rawVal).slice(0, 200)}` });
+    return res.json(mergedResult);
   } catch (err) {
     console.error('中转 AI 翻译失败:', err);
     // ⭐ 调试模式:把异常消息 + Render 出口 IP 暴露出来 (仅管理员, 防止向普通用户泄漏内部错误细节)

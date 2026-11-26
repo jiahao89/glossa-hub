@@ -297,7 +297,11 @@ export default function BatchTranslateModal({
                     </td>
                     <td>
                       {(!item.translations || Object.keys(item.translations).length === 0) ? (
-                        <span className="cell-empty">等待运行...</span>
+                        item.errorReason ? (
+                          <span style={{ color: 'var(--red)', fontSize: '0.75rem' }}>{item.errorReason}</span>
+                        ) : (
+                          <span className="cell-empty">等待运行...</span>
+                        )
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                           {Object.entries(item.translations).map(([lang, val]) => (

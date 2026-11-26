@@ -151,6 +151,9 @@ export default function AddTermModal({
       }
 
       const result = await res.json().catch(() => ({}));
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
       const { updatedFields, changedCount, preservedCount } = mergeTranslations({
         currentFields: newFields,
         aiResult: result,
